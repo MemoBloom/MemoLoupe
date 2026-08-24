@@ -1,0 +1,7 @@
+{
+  "service": "asr",
+  "status": "complete",
+  "transcript": {
+    "segments": []
+  }
+}

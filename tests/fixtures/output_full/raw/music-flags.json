@@ -1,0 +1,77 @@
+{
+  "method": "numpy STFT：语音间隙电平/低频判定 + 谱平坦度突变事件",
+  "musicIntervals": [
+    {
+      "endSec": 3.2,
+      "origin": "gapAnchor",
+      "startSec": 0.0
+    }
+  ],
+  "shots": [
+    {
+      "basis": "镜头有 100% 时长落在实测音乐区间内。",
+      "confidence": "high",
+      "endMs": 3203,
+      "events": [],
+      "musicOverlapRatio": 1.0,
+      "shotID": "SH0001",
+      "silentOverlapRatio": 0.0,
+      "startMs": 0,
+      "state": "music"
+    },
+    {
+      "basis": "镜头整体电平低于静音阈值，未测到音乐区间。",
+      "confidence": "high",
+      "endMs": 6400,
+      "events": [],
+      "musicOverlapRatio": 0.0,
+      "shotID": "SH0002",
+      "silentOverlapRatio": 1.0,
+      "startMs": 3203,
+      "state": "silent"
+    },
+    {
+      "basis": "音频信号不足，无法确认是否有背景音乐。",
+      "confidence": "unknown",
+      "endMs": 9800,
+      "events": [],
+      "musicOverlapRatio": 0.0,
+      "shotID": "SH0003",
+      "silentOverlapRatio": 0.0,
+      "startMs": 6400,
+      "state": "unknown"
+    }
+  ],
+  "speechGaps": [
+    {
+      "endSec": 0.82,
+      "measurements": {
+        "medianBassEnergy": 242.1,
+        "medianFlatness": 0.31,
+        "medianLevelDb": -12.5
+      },
+      "startSec": 0.0,
+      "state": "music"
+    }
+  ],
+  "stateTally": {
+    "music": 1,
+    "silent": 1,
+    "unknown": 1
+  },
+  "status": "complete",
+  "textureEvents": [
+    {
+      "atSec": 0.42,
+      "flatnessDelta": 0.19,
+      "kind": "textureRise",
+      "label": "音质地变粗糙（疑似音乐/打击乐进入）"
+    }
+  ],
+  "thresholds": {
+    "musicBassEnergy": 150.0,
+    "musicLevelDb": -18.0,
+    "sampleRate": 22050,
+    "silentLevelDb": -22.0
+  }
+}

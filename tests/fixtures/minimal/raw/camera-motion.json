@@ -1,0 +1,24 @@
+{
+  "analysis": {
+    "capabilityStatus": "complete",
+    "durationMs": 1000,
+    "maximumFramesPerShot": 12,
+    "method": "Apple Vision VNTrackHomographicImageRegistrationRequest + VNTrackOpticalFlowRequest",
+    "sampleFps": 2.0
+  },
+  "shots": [
+    {
+      "cameraMovement": "unknown",
+      "cameraMovementCandidates": [],
+      "confidence": "unknown",
+      "endMs": 1000,
+      "evidence": {},
+      "metrics": {},
+      "movementIntensity": "unknown",
+      "neutralMotions": [],
+      "sequenceIndex": 1,
+      "shotID": "SH0001",
+      "startMs": 0
+    }
+  ]
+}

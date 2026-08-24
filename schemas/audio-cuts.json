@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/audio-cuts.json",
+  "title": "MemoLoupe audio-cuts.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "analysis", "boundaries", "shots"],
+  "$defs": {
+    "shotBoundarySide": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["classification", "labelZh", "visualTimeMs"],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "sourceStart",
+            "sourceEnd",
+            "synchronizedCut",
+            "pictureCutAudioContinuous",
+            "audioBoundaryUndetermined",
+            "unavailable"
+          ]
+        },
+        "labelZh": { "type": "string" },
+        "visualTimeMs": { "type": "integer", "minimum": 0 },
+        "audioTimeMs": { "type": ["integer", "null"], "minimum": 0 },
+        "offsetMs": { "type": ["integer", "null"] },
+        "confidence": { "type": "string" },
+        "audioBoundaryID": {
+          "type": "string",
+          "pattern": "^AU\\d{4}$"
+        },
+        "audioBoundaryScore": { "type": "number" }
+      }
+    }
+  },
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["complete", "unavailable"]
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["method", "syncToleranceMs", "associationWindowMs"],
+      "properties": {
+        "method": { "const": "audioFeatureNoveltyHardCutCandidates" },
+        "analysisSampleRate": { "type": "integer", "minimum": 1 },
+        "frameMs": { "type": "integer", "minimum": 1 },
+        "threshold": { "type": "number" },
+        "syncToleranceMs": { "type": "integer", "minimum": 0 },
+        "associationWindowMs": { "type": "integer", "minimum": 0 },
+        "selectedBoundaryCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "audioBoundaryID",
+          "timeMs",
+          "score",
+          "confidence",
+          "featureDeltas"
+        ],
+        "properties": {
+          "audioBoundaryID": {
+            "type": "string",
+            "pattern": "^AU\\d{4}$"
+          },
+          "timeMs": { "type": "integer", "minimum": 0 },
+          "score": { "type": "number" },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium"]
+          },
+          "featureDeltas": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["shotID", "boundaryIn", "boundaryOut"],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "boundaryIn": { "$ref": "#/$defs/shotBoundarySide" },
+          "boundaryOut": { "$ref": "#/$defs/shotBoundarySide" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "adoptionHints": null,
+  "asrTextStats": {
+    "characterCount": 0,
+    "segmentCount": 0,
+    "speechDurationMs": 0
+  },
+  "createdAt": "2026-08-21T08:00:00+00:00",
+  "discussionItems": [],
+  "distillStatus": "empty",
+  "id": "profile-0123456789ab",
+  "pacing": {
+    "audioBoundaryBySlot": [],
+    "densityCurve": [],
+    "musicAlignment": "unknown",
+    "shotDuration": {
+      "mean": 1.0
+    },
+    "slotPacing": []
+  },
+  "schemaVersion": 2,
+  "source": {
+    "durationSeconds": 1.0,
+    "shotAnalysisPath": "/outputs/minimal/shot-analysis.html",
+    "sourceRevision": "0123456789ab",
+    "storyAnalysisPath": "/outputs/minimal/story-analysis.html",
+    "videoPath": "/Users/me/Videos/minimal-reference.mp4",
+    "videoTitle": "minimal-reference"
+  },
+  "structure": {
+    "expectationChains": [],
+    "hook": null,
+    "nonLinearDevices": [],
+    "payoff": null,
+    "slots": [
+      {
+        "L1": {
+          "durationShare": 1.0,
+          "functionalTitle": null,
+          "intendedReaction": null,
+          "minBlocks": 1,
+          "narrativeFunction": "setup",
+          "rangeSeconds": [
+            0.0,
+            1.0
+          ],
+          "types": [
+            "开场引入"
+          ]
+        },
+        "L2": {
+          "carriage": null,
+          "pattern": null,
+          "referenceContent": "单镜头全片。"
+        },
+        "L3": {
+          "avgShotSeconds": 1.0,
+          "shotCount": 1,
+          "shotIds": [
+            "SH0001"
+          ]
+        },
+        "slotId": "S001"
+      }
+    ],
+    "turns": []
+  },
+  "structureRequirements": [],
+  "style": {}
+}

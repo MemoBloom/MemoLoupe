@@ -1,0 +1,60 @@
+{
+  "extraction": {
+    "cachedFrames": 0,
+    "mode": "auto",
+    "workerCount": 4
+  },
+  "failedFrames": [],
+  "frames": [
+    {
+      "evidenceID": "F_SH0001_MAIN",
+      "fileRef": "evidence/frames/F_SH0001_MAIN.jpg",
+      "frameID": "F_SH0001_MAIN",
+      "frameType": "representative",
+      "quality": "usable",
+      "range": {
+        "endMs": 1602,
+        "startMs": 1602
+      },
+      "shotID": "SH0001",
+      "summary": "agent visual review required",
+      "timeMs": 1602
+    },
+    {
+      "evidenceID": "F_SH0002_MAIN",
+      "fileRef": "evidence/frames/F_SH0002_MAIN.jpg",
+      "frameID": "F_SH0002_MAIN",
+      "frameType": "representative",
+      "quality": "usable",
+      "range": {
+        "endMs": 4800,
+        "startMs": 4800
+      },
+      "shotID": "SH0002",
+      "summary": "agent visual review required",
+      "timeMs": 4800
+    },
+    {
+      "evidenceID": "F_SH0003_MAIN",
+      "fileRef": "evidence/frames/F_SH0003_MAIN.jpg",
+      "frameID": "F_SH0003_MAIN",
+      "frameType": "representative",
+      "quality": "usable",
+      "range": {
+        "endMs": 8100,
+        "startMs": 8100
+      },
+      "shotID": "SH0003",
+      "summary": "agent visual review required",
+      "timeMs": 8100
+    }
+  ],
+  "request": {
+    "inputCacheKey": "proxy-a1b2",
+    "inputVideo": "/outputs/travel/media/lapian-proxy.mp4",
+    "jpegQuality": 5,
+    "sourceRevisionID": "a1b2c3d4e5f6",
+    "width": 640
+  },
+  "status": "complete"
+}

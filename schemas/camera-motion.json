@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/camera-motion.json",
+  "title": "MemoLoupe camera-motion.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["analysis", "shots"],
+  "properties": {
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "method",
+        "capabilityStatus",
+        "durationMs",
+        "sampleFps",
+        "maximumFramesPerShot"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "capabilityStatus": {
+          "type": "string",
+          "enum": ["complete", "unavailable", "failed"]
+        },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "sourceWidth": { "type": "integer", "minimum": 1 },
+        "sourceHeight": { "type": "integer", "minimum": 1 },
+        "sampleFps": { "type": "number" },
+        "maximumFramesPerShot": { "type": "integer", "minimum": 1 },
+        "maximumImageDimension": { "type": "integer", "minimum": 1 },
+        "opticalFlowEnabled": { "type": "boolean" },
+        "units": { "type": "string" }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "sequenceIndex",
+          "startMs",
+          "endMs",
+          "cameraMovement",
+          "cameraMovementCandidates",
+          "movementIntensity",
+          "confidence",
+          "neutralMotions",
+          "metrics",
+          "evidence"
+        ],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "sequenceIndex": { "type": "integer", "minimum": 1 },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "sampleCount": { "type": "integer", "minimum": 0 },
+          "cameraMovement": {
+            "type": "string",
+            "enum": [
+              "static",
+              "pan_left",
+              "pan_right",
+              "tilt_up",
+              "tilt_down",
+              "zoom_in",
+              "zoom_out",
+              "roll",
+              "handheld",
+              "unknown",
+              "discontinuity"
+            ]
+          },
+          "cameraMovementCandidates": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "movementIntensity": {
+            "type": "string",
+            "enum": ["static", "low", "medium", "high", "unknown"]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "unknown"]
+          },
+          "neutralMotions": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "needsReview": { "type": "boolean" },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "method": { "type": "string" },
+              "discontinuityFrameIndexes": {
+                "type": "array",
+                "items": { "type": "integer" }
+              },
+              "frames": { "type": "array" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

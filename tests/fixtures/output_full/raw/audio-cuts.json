@@ -1,0 +1,97 @@
+{
+  "analysis": {
+    "analysisSampleRate": 16000,
+    "associationWindowMs": 500,
+    "frameMs": 20,
+    "method": "audioFeatureNoveltyHardCutCandidates",
+    "selectedBoundaryCount": 2,
+    "syncToleranceMs": 100,
+    "threshold": 8.0
+  },
+  "boundaries": [
+    {
+      "audioBoundaryID": "AU0001",
+      "confidence": "high",
+      "featureDeltas": {
+        "rmsDb": 7.2,
+        "zeroCrossingRate": 0.04
+      },
+      "score": 12.41,
+      "timeMs": 3200
+    },
+    {
+      "audioBoundaryID": "AU0002",
+      "confidence": "medium",
+      "featureDeltas": {
+        "rmsDb": 5.1,
+        "zeroCrossingRate": 0.03
+      },
+      "score": 9.87,
+      "timeMs": 6395
+    }
+  ],
+  "shots": [
+    {
+      "boundaryIn": {
+        "classification": "sourceStart",
+        "confidence": "high",
+        "labelZh": "片头（音画同时开始）",
+        "visualTimeMs": 0
+      },
+      "boundaryOut": {
+        "audioBoundaryID": "AU0001",
+        "audioBoundaryScore": 12.41,
+        "audioTimeMs": 3200,
+        "classification": "synchronizedCut",
+        "confidence": "high",
+        "labelZh": "音画同步切（偏差 -3 ms）",
+        "offsetMs": -3,
+        "visualTimeMs": 3203
+      },
+      "shotID": "SH0001"
+    },
+    {
+      "boundaryIn": {
+        "audioBoundaryID": "AU0001",
+        "audioBoundaryScore": 12.41,
+        "audioTimeMs": 3200,
+        "classification": "synchronizedCut",
+        "confidence": "high",
+        "labelZh": "音画同步切（偏差 -3 ms）",
+        "offsetMs": -3,
+        "visualTimeMs": 3203
+      },
+      "boundaryOut": {
+        "audioBoundaryID": "AU0002",
+        "audioBoundaryScore": 9.87,
+        "audioTimeMs": 6395,
+        "classification": "synchronizedCut",
+        "confidence": "medium",
+        "labelZh": "音画同步切（偏差 -5 ms）",
+        "offsetMs": -5,
+        "visualTimeMs": 6400
+      },
+      "shotID": "SH0002"
+    },
+    {
+      "boundaryIn": {
+        "audioBoundaryID": "AU0002",
+        "audioBoundaryScore": 9.87,
+        "audioTimeMs": 6395,
+        "classification": "synchronizedCut",
+        "confidence": "medium",
+        "labelZh": "音画同步切（偏差 -5 ms）",
+        "offsetMs": -5,
+        "visualTimeMs": 6400
+      },
+      "boundaryOut": {
+        "classification": "sourceEnd",
+        "confidence": "high",
+        "labelZh": "片尾（音画同时结束）",
+        "visualTimeMs": 9800
+      },
+      "shotID": "SH0003"
+    }
+  ],
+  "status": "complete"
+}

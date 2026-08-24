@@ -1,0 +1,113 @@
+{
+  "analysis": {
+    "capabilityStatus": "complete",
+    "durationMs": 9800,
+    "maximumFramesPerShot": 12,
+    "maximumImageDimension": 960,
+    "method": "Apple Vision VNTrackHomographicImageRegistrationRequest + VNTrackOpticalFlowRequest",
+    "opticalFlowEnabled": true,
+    "sampleFps": 2.0,
+    "sourceHeight": 1080,
+    "sourceWidth": 1920,
+    "units": "pixel-equivalent motion at the sampled, preferred-transform image size"
+  },
+  "shots": [
+    {
+      "cameraMovement": "pan_right",
+      "cameraMovementCandidates": [
+        "pan_right"
+      ],
+      "confidence": "medium",
+      "durationMs": 3203,
+      "endMs": 3203,
+      "evidence": {
+        "discontinuityFrameIndexes": [],
+        "frames": [],
+        "method": "Apple Vision VNTrackHomographicImageRegistrationRequest + VNTrackOpticalFlowRequest"
+      },
+      "metrics": {
+        "geometricMotionScore": 8.2,
+        "homographyFrameCount": 5,
+        "medianFrameShiftX": -8.2,
+        "medianFrameShiftY": 0.4,
+        "medianRotationDegrees": 0.02,
+        "medianScale": 1.001,
+        "motionScore": 8.2,
+        "opticalFlowFrameCount": 5
+      },
+      "movementIntensity": "medium",
+      "needsReview": true,
+      "neutralMotions": [
+        "horizontal_frame_shift"
+      ],
+      "sampleCount": 6,
+      "sequenceIndex": 1,
+      "shotID": "SH0001",
+      "startMs": 0
+    },
+    {
+      "cameraMovement": "static",
+      "cameraMovementCandidates": [
+        "static"
+      ],
+      "confidence": "high",
+      "durationMs": 3197,
+      "endMs": 6400,
+      "evidence": {
+        "discontinuityFrameIndexes": [],
+        "frames": [],
+        "method": "Apple Vision VNTrackHomographicImageRegistrationRequest + VNTrackOpticalFlowRequest"
+      },
+      "metrics": {
+        "geometricMotionScore": 0.1,
+        "homographyFrameCount": 6,
+        "medianFrameShiftX": 0.1,
+        "medianFrameShiftY": 0.0,
+        "medianRotationDegrees": 0.0,
+        "medianScale": 1.0,
+        "motionScore": 0.1,
+        "opticalFlowFrameCount": 6
+      },
+      "movementIntensity": "static",
+      "needsReview": false,
+      "neutralMotions": [],
+      "sampleCount": 6,
+      "sequenceIndex": 2,
+      "shotID": "SH0002",
+      "startMs": 3203
+    },
+    {
+      "cameraMovement": "handheld",
+      "cameraMovementCandidates": [
+        "handheld"
+      ],
+      "confidence": "low",
+      "durationMs": 3400,
+      "endMs": 9800,
+      "evidence": {
+        "discontinuityFrameIndexes": [],
+        "frames": [],
+        "method": "Apple Vision VNTrackHomographicImageRegistrationRequest + VNTrackOpticalFlowRequest"
+      },
+      "metrics": {
+        "geometricMotionScore": 12.6,
+        "homographyFrameCount": 4,
+        "medianFrameShiftX": 3.4,
+        "medianFrameShiftY": 2.9,
+        "medianRotationDegrees": 0.31,
+        "medianScale": 1.004,
+        "motionScore": 12.6,
+        "opticalFlowFrameCount": 5
+      },
+      "movementIntensity": "high",
+      "needsReview": true,
+      "neutralMotions": [
+        "irregular_frame_jitter"
+      ],
+      "sampleCount": 6,
+      "sequenceIndex": 3,
+      "shotID": "SH0003",
+      "startMs": 6400
+    }
+  ]
+}

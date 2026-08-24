@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/audio-energy.json",
+  "title": "MemoLoupe audio-energy.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "source",
+    "durationMs",
+    "sampleRate",
+    "hasAudio",
+    "thresholds",
+    "shots"
+  ],
+  "properties": {
+    "source": { "type": "string" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "sampleRate": { "type": "integer", "minimum": 1 },
+    "hasAudio": { "type": "boolean" },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["shotID", "label", "medianDb", "frameCount"],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "label": {
+            "type": "string",
+            "enum": ["静音", "低", "中", "高", "峰值", "unknown"]
+          },
+          "medianDb": { "type": ["number", "null"] },
+          "frameCount": { "type": "integer", "minimum": 0 },
+          "minDb": { "type": "number" },
+          "maxDb": { "type": "number" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "analysis": {
+    "associationWindowMs": 500,
+    "method": "audioFeatureNoveltyHardCutCandidates",
+    "syncToleranceMs": 100
+  },
+  "boundaries": [],
+  "shots": [
+    {
+      "boundaryIn": {
+        "classification": "sourceStart",
+        "labelZh": "片头（音画同时开始）",
+        "visualTimeMs": 0
+      },
+      "boundaryOut": {
+        "classification": "sourceEnd",
+        "labelZh": "片尾（音画同时结束）",
+        "visualTimeMs": 1000
+      },
+      "shotID": "SH0001"
+    }
+  ],
+  "status": "complete"
+}

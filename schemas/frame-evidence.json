@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/frame-evidence.json",
+  "title": "MemoLoupe frame-evidence.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "request", "frames", "failedFrames"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["complete", "failed"]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["sourceRevisionID", "inputVideo", "inputCacheKey", "width"],
+      "properties": {
+        "sourceRevisionID": { "type": ["string", "null"] },
+        "inputVideo": { "type": "string" },
+        "inputCacheKey": { "type": "string" },
+        "width": { "type": "integer", "minimum": 1 },
+        "jpegQuality": { "type": "integer" }
+      }
+    },
+    "extraction": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": { "type": "string" },
+        "workerCount": { "type": "integer", "minimum": 1 },
+        "cachedFrames": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "evidenceID",
+          "frameID",
+          "shotID",
+          "frameType",
+          "timeMs",
+          "range",
+          "fileRef",
+          "quality",
+          "summary"
+        ],
+        "properties": {
+          "evidenceID": {
+            "type": "string",
+            "pattern": "^F_SH\\d{4}_(MAIN|K\\d{2})$"
+          },
+          "frameID": {
+            "type": "string",
+            "pattern": "^F_SH\\d{4}_(MAIN|K\\d{2})$"
+          },
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "frameType": {
+            "type": "string",
+            "enum": ["representative", "keyframe"]
+          },
+          "timeMs": { "type": "integer", "minimum": 0 },
+          "range": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["startMs", "endMs"],
+            "properties": {
+              "startMs": { "type": "integer", "minimum": 0 },
+              "endMs": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "fileRef": { "type": "string" },
+          "quality": {
+            "type": "string",
+            "enum": ["usable", "unknown"]
+          },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "failedFrames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

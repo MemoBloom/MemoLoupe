@@ -1,0 +1,23 @@
+{
+  "service": "asr",
+  "status": "complete",
+  "transcript": {
+    "segments": [
+      {
+        "confidence": 0.92,
+        "endMs": 2460,
+        "speaker": "SPEAKER_0",
+        "startMs": 820,
+        "text": "今天我们从机场出发。"
+      },
+      {
+        "confidence": 0.88,
+        "endMs": 5200,
+        "speaker": "SPEAKER_0",
+        "startMs": 3500,
+        "text": "第二段解说。"
+      }
+    ],
+    "text": "今天我们从机场出发。第二段解说。"
+  }
+}

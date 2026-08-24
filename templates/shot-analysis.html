@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-document-type="shotAnalysis" data-document-status="__DOCUMENT_STATUS__" data-contract-version="__CONTRACT_VERSION__" data-source-revision="__SOURCE_REVISION__">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>MemoLoupe Shot Analysis</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; margin: 0; color: #1f2328; background: #f6f8fa; }
+  header.metadata { padding: 16px 20px; background: #fff; border-bottom: 1px solid #d0d7de; }
+  header.metadata h1 { font-size: 18px; margin: 0 0 8px; }
+  .metadata-grid { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+  .metadata-grid div { display: flex; gap: 6px; }
+  .metadata-grid dt { color: #57606a; }
+  .metadata-grid dd { margin: 0; font-weight: 600; }
+  .toolbar { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; display: flex; gap: 16px; align-items: center; }
+  #shot-player { width: 480px; max-width: 100%; background: #000; display: block; margin: 12px 20px; }
+  .table-wrap { overflow-x: auto; padding: 12px 20px 20px; }
+  table { border-collapse: collapse; background: #fff; }
+  th, td { border: 1px solid #d0d7de; padding: 6px 10px; vertical-align: top; text-align: left; font-size: 13px; }
+  thead th { background: #f6f8fa; }
+  tbody th[scope="row"] { position: sticky; left: 0; background: #f6f8fa; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; white-space: nowrap; }
+  .shot-head { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+  .shot-id { font-weight: 700; font-family: ui-monospace, SFMono-Regular, monospace; }
+  .timecode code { background: #eaeef2; padding: 1px 4px; border-radius: 4px; user-select: all; }
+  .shot-frame { max-width: 180px; border: 1px solid #d0d7de; border-radius: 4px; }
+  .needs-review-badge { color: #9a6700; font-weight: 600; }
+  .play-btn { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
+  .play-btn:disabled { color: #57606a; cursor: not-allowed; background: #f6f8fa; }
+  .play-btn:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  .cell-text { display: block; }
+  .cell-confidence { display: block; color: #57606a; font-size: 11px; margin-top: 2px; }
+  .cell-verified { display: inline-block; color: #1a7f37; font-size: 11px; margin-left: 4px; }
+  .state-value { color: #1f2328; }
+  .state-absent { color: #1a7f37; background: #dafbe1; }
+  .state-absent-claimed { color: #9a6700; background: #fff8c5; }
+  .state-unknown { color: #57606a; background: #f6f8fa; }
+  .state-unmapped { color: #8250df; background: #fbefff; }
+  .shot-hidden { display: none; }
+</style>
+</head>
+<body>
+<!--METADATA-->
+<div class="toolbar">
+  <label for="filter-needs-review"><input type="checkbox" id="filter-needs-review"> 只显示需人工复核的镜头</label>
+</div>
+<video id="shot-player" controls preload="none" aria-label="镜头播放器"></video>
+<div class="table-wrap">
+<!--SHOT_TABLE-->
+</div>
+<script>
+(function () {
+  var player = document.getElementById("shot-player");
+  var currentEndMs = null;
+  player.addEventListener("timeupdate", function () {
+    if (currentEndMs !== null && player.currentTime * 1000 >= currentEndMs) {
+      player.pause();
+      currentEndMs = null;
+    }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".play-btn"), function (btn) {
+    btn.addEventListener("click", function () {
+      var src = btn.getAttribute("data-clip-src");
+      if (!src) { return; }
+      var startMs = parseInt(btn.getAttribute("data-start-ms"), 10) || 0;
+      currentEndMs = parseInt(btn.getAttribute("data-end-ms"), 10);
+      if (player.getAttribute("src") !== src) { player.setAttribute("src", src); }
+      player.currentTime = startMs / 1000;
+      player.play();
+    });
+  });
+  var filter = document.getElementById("filter-needs-review");
+  filter.addEventListener("change", function () {
+    var hide = {};
+    Array.prototype.forEach.call(document.querySelectorAll("th[data-needs-review]"), function (th) {
+      hide[th.getAttribute("data-shot-id")] = filter.checked && th.getAttribute("data-needs-review") !== "true";
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-shot-id]"), function (el) {
+      var sid = el.getAttribute("data-shot-id");
+      if (Object.prototype.hasOwnProperty.call(hide, sid)) {
+        el.classList.toggle("shot-hidden", hide[sid]);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

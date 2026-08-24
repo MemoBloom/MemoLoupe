@@ -1,0 +1,38 @@
+{
+  "durationMs": 9800,
+  "hasAudio": true,
+  "sampleRate": 48000,
+  "shots": [
+    {
+      "frameCount": 160,
+      "label": "中",
+      "maxDb": -18.1,
+      "medianDb": -28.4,
+      "minDb": -38.2,
+      "shotID": "SH0001"
+    },
+    {
+      "frameCount": 160,
+      "label": "低",
+      "maxDb": -40.1,
+      "medianDb": -45.0,
+      "minDb": -52.0,
+      "shotID": "SH0002"
+    },
+    {
+      "frameCount": 170,
+      "label": "高",
+      "maxDb": -10.2,
+      "medianDb": -15.0,
+      "minDb": -20.5,
+      "shotID": "SH0003"
+    }
+  ],
+  "source": "/Users/me/Videos/travel-reference.mp4",
+  "thresholds": {
+    "high": -12.0,
+    "low": -40.0,
+    "medium": -25.0,
+    "silent": -60.0
+  }
+}

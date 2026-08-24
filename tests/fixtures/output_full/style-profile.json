@@ -1,0 +1,214 @@
+{
+  "adoptionHints": {
+    "cautions": [
+      "不要强求用户拥有同一机场或同一地点素材"
+    ],
+    "strengths": [
+      "用行动而不是旁白快速建立主题"
+    ],
+    "suggestedDefault": "L1+L2"
+  },
+  "asrTextStats": {
+    "characterCount": 16,
+    "segmentCount": 2,
+    "speechDurationMs": 3340
+  },
+  "createdAt": "2026-08-21T08:00:00+00:00",
+  "discussionItems": [
+    {
+      "category": "applicability",
+      "defaultIfUnanswered": "用最强环境建立镜头替代出发动作",
+      "id": "q-1",
+      "impactLevel": "preference",
+      "layer": "L2",
+      "options": [
+        {
+          "id": "a",
+          "label": "有明确出发镜头"
+        },
+        {
+          "id": "b",
+          "label": "用抵达或开场环境替代"
+        }
+      ],
+      "question": "用户素材里是否有能承担出发/进入状态的镜头？"
+    }
+  ],
+  "distillStatus": "complete",
+  "id": "profile-a1b2c3d4e5f6",
+  "pacing": {
+    "audioBoundaryBySlot": [
+      {
+        "boundaryAligned": true,
+        "slotId": "S001"
+      },
+      {
+        "boundaryAligned": true,
+        "slotId": "S002"
+      }
+    ],
+    "densityCurve": [
+      {
+        "density": "中",
+        "slotId": "S001"
+      },
+      {
+        "density": "高",
+        "slotId": "S002"
+      }
+    ],
+    "musicAlignment": "music starts near opening",
+    "shotDuration": {
+      "mean": 3.2666666666666666,
+      "p50": 3.203
+    },
+    "slotPacing": [
+      {
+        "avgShotSeconds": 3.2,
+        "shotCount": 2,
+        "slotId": "S001"
+      },
+      {
+        "avgShotSeconds": 3.4,
+        "shotCount": 1,
+        "slotId": "S002"
+      }
+    ]
+  },
+  "schemaVersion": 2,
+  "source": {
+    "durationSeconds": 9.8,
+    "formType": null,
+    "platform": null,
+    "shotAnalysisPath": "/outputs/travel/shot-analysis.html",
+    "sourceRevision": "a1b2c3d4e5f6",
+    "storyAnalysisPath": "/outputs/travel/story-analysis.html",
+    "videoPath": "/Users/me/Videos/travel-reference.mp4",
+    "videoTitle": "travel-reference"
+  },
+  "structure": {
+    "expectationChains": [
+      {
+        "evidence": {
+          "blockId": "B0001",
+          "relation": "铺垫 → B0002"
+        },
+        "fromSlot": "S001",
+        "kind": "铺垫",
+        "toSlot": "S002"
+      }
+    ],
+    "hook": {
+      "L1": {
+        "atSeconds": 0.0,
+        "blockId": "B0001",
+        "slotId": "S001"
+      },
+      "L2": {
+        "form": "用出发动作直接制造旅程期待",
+        "referenceContent": "旅行从机场出发。"
+      },
+      "L3": {
+        "shotIds": [
+          "SH0001",
+          "SH0002"
+        ]
+      }
+    },
+    "nonLinearDevices": [],
+    "payoff": null,
+    "slots": [
+      {
+        "L1": {
+          "durationShare": 0.6530612244897959,
+          "functionalTitle": "期待型旅程开场",
+          "intendedReaction": "好奇/想看下去",
+          "minBlocks": 1,
+          "narrativeFunction": "setup",
+          "rangeSeconds": [
+            0.0,
+            6.4
+          ],
+          "types": [
+            "开场引入"
+          ]
+        },
+        "L2": {
+          "carriage": "出发动线承载",
+          "pattern": "快切建立情绪",
+          "referenceContent": "用机场、行李和出发动作建立旅程期待。"
+        },
+        "L3": {
+          "avgShotSeconds": 3.2,
+          "shotCount": 2,
+          "shotIds": [
+            "SH0001",
+            "SH0002"
+          ]
+        },
+        "slotId": "S001"
+      },
+      {
+        "L1": {
+          "durationShare": 0.3469387755102041,
+          "functionalTitle": "目的地体验兑现",
+          "intendedReaction": "共鸣/代入",
+          "minBlocks": 1,
+          "narrativeFunction": "resolution",
+          "rangeSeconds": [
+            6.4,
+            9.8
+          ],
+          "types": [
+            "高潮兑现"
+          ]
+        },
+        "L2": {
+          "carriage": "场景沉浸承载",
+          "pattern": "放缓节奏兑现期待",
+          "referenceContent": "目的地街景兑现前段建立的旅程期待。"
+        },
+        "L3": {
+          "avgShotSeconds": 3.4,
+          "shotCount": 1,
+          "shotIds": [
+            "SH0003"
+          ]
+        },
+        "slotId": "S002"
+      }
+    ],
+    "turns": []
+  },
+  "structureRequirements": [
+    {
+      "description": "需要能表达出发或进入旅程状态的素材。",
+      "minEvidence": "至少 2 个可用镜头",
+      "requirementType": "evidence",
+      "slotId": "S001"
+    }
+  ],
+  "style": {
+    "bgm": {
+      "coverage": 0.33
+    },
+    "cameraMovement": {
+      "固定": 0.33,
+      "手持": 0.33,
+      "跟": 0.34
+    },
+    "framing": {
+      "全景": 1.0
+    },
+    "hostedCoverage": 0.0,
+    "textOverlay": {
+      "coverage": 0.33
+    },
+    "transitions": {
+      "硬切": 1.0
+    },
+    "voiceMix": {
+      "speechCoverage": 0.34
+    }
+  }
+}

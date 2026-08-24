@@ -1,0 +1,42 @@
+{
+  "blocks": [
+    {
+      "audienceReaction": "好奇/想看下去",
+      "blockRelation": "铺垫",
+      "boundary": {
+        "label": "片头",
+        "level": "start",
+        "signal": "片头"
+      },
+      "coreContent": "单镜头建立主题。",
+      "divisionAxis": "行动/任务",
+      "divisionRationale": "单镜头全片。",
+      "endMs": 1000,
+      "informationRole": "建立背景",
+      "narrativeDensity": "中",
+      "primaryRole": "hook",
+      "relationReason": "全片只有一个故事块。",
+      "shotIDs": [
+        "SH0001"
+      ],
+      "startMs": 0,
+      "storyBlockID": "B0001",
+      "visualIndependence": "静音也能看懂"
+    }
+  ],
+  "boundarySource": "asr-gap",
+  "gapMs": 1200,
+  "generatedAt": "2026-08-21T08:00:00+00:00",
+  "slots": [
+    {
+      "blockIDs": [
+        "B0001"
+      ],
+      "slotID": "S001",
+      "slotRationale": "单块全片。",
+      "slotTitle": "开场",
+      "slotType": "开场引入"
+    }
+  ],
+  "status": "complete"
+}

@@ -1,0 +1,387 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/style-profile.json",
+  "title": "MemoLoupe style-profile.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "id",
+    "createdAt",
+    "source",
+    "structure",
+    "pacing",
+    "style",
+    "structureRequirements",
+    "adoptionHints",
+    "discussionItems",
+    "asrTextStats",
+    "distillStatus"
+  ],
+  "$defs": {
+    "ratio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/ratio" }
+    },
+    "profileSlot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["slotId", "L1", "L2", "L3"],
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "pattern": "^S\\d{3}$"
+        },
+        "L1": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "types",
+            "functionalTitle",
+            "narrativeFunction",
+            "durationShare",
+            "rangeSeconds",
+            "intendedReaction",
+            "minBlocks"
+          ],
+          "properties": {
+            "types": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "functionalTitle": { "type": ["string", "null"] },
+            "narrativeFunction": {
+              "type": "string",
+              "enum": [
+                "setup",
+                "progression",
+                "complication",
+                "resolution",
+                "reflection"
+              ]
+            },
+            "durationShare": { "$ref": "#/$defs/ratio" },
+            "rangeSeconds": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "number" }
+            },
+            "intendedReaction": { "type": ["string", "null"] },
+            "minBlocks": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "L2": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["carriage", "pattern", "referenceContent"],
+          "properties": {
+            "carriage": { "type": ["string", "null"] },
+            "pattern": { "type": ["string", "null"] },
+            "referenceContent": { "type": "string" }
+          }
+        },
+        "L3": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["shotIds", "shotCount", "avgShotSeconds"],
+          "properties": {
+            "shotIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^SH\\d{4}$"
+              }
+            },
+            "shotCount": { "type": "integer", "minimum": 0 },
+            "avgShotSeconds": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "layeredRole": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["L1", "L2", "L3"],
+      "properties": {
+        "L1": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["atSeconds", "slotId", "blockId"],
+          "properties": {
+            "atSeconds": { "type": "number", "minimum": 0 },
+            "slotId": {
+              "type": "string",
+              "pattern": "^S\\d{3}$"
+            },
+            "blockId": {
+              "type": "string",
+              "pattern": "^B\\d{4}$"
+            }
+          }
+        },
+        "L2": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["form", "referenceContent"],
+          "properties": {
+            "form": { "type": "string" },
+            "referenceContent": { "type": "string" }
+          }
+        },
+        "L3": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["shotIds"],
+          "properties": {
+            "shotIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^SH\\d{4}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "id": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "videoTitle",
+        "videoPath",
+        "durationSeconds",
+        "shotAnalysisPath",
+        "storyAnalysisPath",
+        "sourceRevision"
+      ],
+      "properties": {
+        "videoTitle": { "type": ["string", "null"] },
+        "videoPath": { "type": ["string", "null"] },
+        "durationSeconds": { "type": "number", "minimum": 0 },
+        "platform": { "type": ["string", "null"] },
+        "formType": { "type": ["string", "null"] },
+        "shotAnalysisPath": { "type": "string" },
+        "storyAnalysisPath": { "type": "string" },
+        "sourceRevision": { "type": ["string", "null"] }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "slots",
+        "hook",
+        "payoff",
+        "turns",
+        "nonLinearDevices",
+        "expectationChains"
+      ],
+      "properties": {
+        "slots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/profileSlot" }
+        },
+        "hook": { "$ref": "#/$defs/layeredRole" },
+        "payoff": { "$ref": "#/$defs/layeredRole" },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "nonLinearDevices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "expectationChains": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["kind", "fromSlot", "toSlot"],
+            "properties": {
+              "kind": { "type": "string" },
+              "fromSlot": { "type": "string" },
+              "toSlot": { "type": "string" },
+              "evidence": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "blockId": {
+                    "type": "string",
+                    "pattern": "^B\\d{4}$"
+                  },
+                  "relation": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "pacing": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "shotDuration",
+        "densityCurve",
+        "slotPacing",
+        "audioBoundaryBySlot",
+        "musicAlignment"
+      ],
+      "properties": {
+        "shotDuration": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "densityCurve": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["slotId", "density"],
+            "properties": {
+              "slotId": { "type": "string" },
+              "density": { "type": "string" }
+            }
+          }
+        },
+        "slotPacing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["slotId", "shotCount", "avgShotSeconds"],
+            "properties": {
+              "slotId": { "type": "string" },
+              "shotCount": { "type": "integer", "minimum": 0 },
+              "avgShotSeconds": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "audioBoundaryBySlot": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["slotId", "boundaryAligned"],
+            "properties": {
+              "slotId": { "type": "string" },
+              "boundaryAligned": { "type": "boolean" }
+            }
+          }
+        },
+        "musicAlignment": { "type": "string" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "transitions": { "$ref": "#/$defs/distribution" },
+        "framing": { "$ref": "#/$defs/distribution" },
+        "cameraMovement": { "$ref": "#/$defs/distribution" },
+        "textOverlay": { "$ref": "#/$defs/distribution" },
+        "bgm": { "$ref": "#/$defs/distribution" },
+        "voiceMix": { "$ref": "#/$defs/distribution" },
+        "hostedCoverage": { "$ref": "#/$defs/ratio" }
+      }
+    },
+    "structureRequirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["slotId", "requirementType", "description", "minEvidence"],
+        "properties": {
+          "slotId": { "type": "string" },
+          "requirementType": { "type": "string" },
+          "description": { "type": "string" },
+          "minEvidence": { "type": "string" }
+        }
+      }
+    },
+    "adoptionHints": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "required": ["strengths", "cautions", "suggestedDefault"],
+      "properties": {
+        "strengths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "cautions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suggestedDefault": { "type": "string" }
+      }
+    },
+    "discussionItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "layer",
+          "category",
+          "question",
+          "options",
+          "impactLevel",
+          "defaultIfUnanswered"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "layer": { "type": "string" },
+          "category": { "type": "string" },
+          "question": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["id", "label"],
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" }
+              }
+            }
+          },
+          "impactLevel": { "type": "string" },
+          "defaultIfUnanswered": { "type": "string" }
+        }
+      }
+    },
+    "asrTextStats": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["segmentCount", "characterCount", "speechDurationMs"],
+      "properties": {
+        "segmentCount": { "type": "integer", "minimum": 0 },
+        "characterCount": { "type": "integer", "minimum": 0 },
+        "speechDurationMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "distillStatus": {
+      "type": "string",
+      "enum": ["complete", "empty", "unavailable", "skipped"]
+    }
+  }
+}

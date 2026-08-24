@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/shots.json",
+  "title": "MemoLoupe shots.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["analysis", "boundaries", "shots"],
+  "properties": {
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "method",
+        "fps",
+        "sourceFps",
+        "durationMs",
+        "selectedBoundaryCount"
+      ],
+      "properties": {
+        "method": { "const": "memoClipHardCutCandidateCuts" },
+        "fps": { "type": "number" },
+        "sourceFps": { "type": "number" },
+        "sampleWidth": { "type": "integer", "minimum": 1 },
+        "sampleHeight": { "type": "integer", "minimum": 1 },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "selectedBoundaryCount": { "type": "integer", "minimum": 0 },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "timeSec",
+          "score",
+          "histogramSimilarity",
+          "edgeSimilarity",
+          "confidence",
+          "selectionReason"
+        ],
+        "properties": {
+          "timeSec": { "type": "number" },
+          "score": { "type": "number" },
+          "histogramSimilarity": { "type": "number" },
+          "edgeSimilarity": { "type": "number" },
+          "brightness": { "type": "number" },
+          "brightnessDelta": { "type": "number" },
+          "frameIndex": { "type": "integer", "minimum": 0 },
+          "type": { "type": "string" },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "selectionReason": {
+            "type": "string",
+            "enum": ["rawNegativeScore", "adaptiveOutlier"]
+          }
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "sequenceIndex",
+          "detectedStartMs",
+          "detectedEndMs",
+          "finalStartMs",
+          "finalEndMs",
+          "durationMs",
+          "boundaryIn",
+          "boundaryOut",
+          "needsReview"
+        ],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "sequenceIndex": { "type": "integer", "minimum": 1 },
+          "detectedStartMs": { "type": "integer", "minimum": 0 },
+          "detectedEndMs": { "type": "integer", "minimum": 0 },
+          "finalStartMs": { "type": "integer", "minimum": 0 },
+          "finalEndMs": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "boundaryIn": { "$ref": "#/$defs/boundaryRef" },
+          "boundaryOut": { "$ref": "#/$defs/boundaryRef" },
+          "needsReview": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "boundaryRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "confidence", "metric"],
+      "properties": {
+        "type": { "type": "string" },
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "metric": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "properties": {
+            "timeSec": { "type": "number" },
+            "score": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

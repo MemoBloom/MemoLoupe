@@ -1,0 +1,45 @@
+{
+  "source": {
+    "analysisCoverage": [
+      {
+        "capability": "mediaMetadata",
+        "note": "ffprobe",
+        "status": "complete"
+      },
+      {
+        "capability": "shotDetection",
+        "status": "complete"
+      },
+      {
+        "capability": "audioAnalysis",
+        "status": "complete"
+      }
+    ],
+    "analyzedRange": {
+      "endMs": 9800,
+      "startMs": 0
+    },
+    "aspectRatio": 1.777778,
+    "assetID": "travel-reference",
+    "audioTracks": [
+      {
+        "channels": 2,
+        "hasEffects": "unknown",
+        "hasMusic": "unknown",
+        "hasSpeech": "unknown",
+        "language": "unknown",
+        "sampleRate": 48000,
+        "trackID": "1"
+      }
+    ],
+    "durationMs": 9800,
+    "durationSec": 9.8,
+    "frameRate": 29.97003,
+    "resolution": {
+      "height": 1080,
+      "width": 1920
+    },
+    "revisionID": "a1b2c3d4e5f6",
+    "sourcePath": "/Users/me/Videos/travel-reference.mp4"
+  }
+}

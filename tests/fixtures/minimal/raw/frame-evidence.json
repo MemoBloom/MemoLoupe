@@ -1,0 +1,26 @@
+{
+  "failedFrames": [],
+  "frames": [
+    {
+      "evidenceID": "F_SH0001_MAIN",
+      "fileRef": "evidence/frames/F_SH0001_MAIN.jpg",
+      "frameID": "F_SH0001_MAIN",
+      "frameType": "representative",
+      "quality": "usable",
+      "range": {
+        "endMs": 500,
+        "startMs": 500
+      },
+      "shotID": "SH0001",
+      "summary": "agent visual review required",
+      "timeMs": 500
+    }
+  ],
+  "request": {
+    "inputCacheKey": "proxy-0123",
+    "inputVideo": "/outputs/minimal/media/lapian-proxy.mp4",
+    "sourceRevisionID": "0123456789ab",
+    "width": 640
+  },
+  "status": "complete"
+}

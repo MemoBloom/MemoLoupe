@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/music-flags.json",
+  "title": "MemoLoupe music-flags.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "method",
+    "stateTally",
+    "thresholds",
+    "speechGaps",
+    "textureEvents",
+    "musicIntervals",
+    "shots"
+  ],
+  "$defs": {
+    "textureEvent": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["atSec", "kind", "label"],
+      "properties": {
+        "atSec": { "type": "number", "minimum": 0 },
+        "kind": { "type": "string" },
+        "flatnessDelta": { "type": "number" },
+        "label": { "type": "string" }
+      }
+    }
+  },
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "unavailable", "skipped", "failed"]
+    },
+    "method": { "type": "string" },
+    "stateTally": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "speechGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["startSec", "endSec", "state"],
+        "properties": {
+          "startSec": { "type": "number", "minimum": 0 },
+          "endSec": { "type": "number", "minimum": 0 },
+          "state": {
+            "type": "string",
+            "enum": ["music", "silent", "unknown"]
+          },
+          "measurements": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    },
+    "textureEvents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/textureEvent" }
+    },
+    "musicIntervals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["startSec", "endSec"],
+        "properties": {
+          "startSec": { "type": "number", "minimum": 0 },
+          "endSec": { "type": "number", "minimum": 0 },
+          "origin": { "type": "string" }
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "startMs",
+          "endMs",
+          "state",
+          "confidence",
+          "basis",
+          "musicOverlapRatio",
+          "silentOverlapRatio",
+          "events"
+        ],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "state": {
+            "type": "string",
+            "enum": ["music", "silent", "unknown"]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "unknown"]
+          },
+          "basis": { "type": "string" },
+          "musicOverlapRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+          "silentOverlapRatio": { "type": "number", "minimum": 0, "maximum": 1 },
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/textureEvent" }
+          }
+        }
+      }
+    }
+  }
+}

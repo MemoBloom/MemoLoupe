@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "documents": {
+    "shotAnalysis": {
+      "requiredFields": ["visual.content", "visual.framing", "audio.speech"],
+      "requireVerifiedStates": ["unmapped", "absent-claimed"],
+      "allowUnknown": true,
+      "requireValidEvidenceRefs": true
+    },
+    "storyAnalysis": {
+      "requiredBlockFields": ["primaryRole", "coreContent", "audienceReaction"],
+      "requireAllShotsAssigned": true,
+      "requireAllBlocksAssignedToSlot": true
+    }
+  }
+}

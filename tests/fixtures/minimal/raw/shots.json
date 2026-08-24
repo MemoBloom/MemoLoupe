@@ -1,0 +1,32 @@
+{
+  "analysis": {
+    "durationMs": 1000,
+    "fps": 29.97003,
+    "method": "memoClipHardCutCandidateCuts",
+    "selectedBoundaryCount": 0,
+    "sourceFps": 29.97003
+  },
+  "boundaries": [],
+  "shots": [
+    {
+      "boundaryIn": {
+        "confidence": "high",
+        "metric": null,
+        "type": "sourceStart"
+      },
+      "boundaryOut": {
+        "confidence": "high",
+        "metric": null,
+        "type": "sourceEnd"
+      },
+      "detectedEndMs": 1000,
+      "detectedStartMs": 0,
+      "durationMs": 1000,
+      "finalEndMs": 1000,
+      "finalStartMs": 0,
+      "needsReview": false,
+      "sequenceIndex": 1,
+      "shotID": "SH0001"
+    }
+  ]
+}

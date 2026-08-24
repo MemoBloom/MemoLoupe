@@ -1,0 +1,16 @@
+{
+  "audioStatus": "complete",
+  "method": "ffmpeg blurdetect + signalstats + astats + blackdetect + freezedetect",
+  "shots": [
+    {
+      "confidence": "unknown",
+      "endMs": 1000,
+      "flags": [],
+      "measurements": {},
+      "shotID": "SH0001",
+      "startMs": 0
+    }
+  ],
+  "status": "complete",
+  "thresholds": {}
+}

@@ -1,0 +1,270 @@
+{
+  "batches": [
+    {
+      "batchID": "B0001",
+      "response": {
+        "shots": [
+          {
+            "audio": {
+              "bgmStyle": "轻快 电子",
+              "soundEffects": "行李轮声",
+              "speech": "今天我们从机场出发。"
+            },
+            "components": {
+              "compositingEvents": "无",
+              "texts": [
+                {
+                  "textAnimation": "淡入",
+                  "textContent": "DAY 1",
+                  "textStyle": "白色粗体",
+                  "textType": "标题"
+                }
+              ]
+            },
+            "confidence": {
+              "audio": "medium",
+              "editing": "medium",
+              "overall": "medium",
+              "visual": "medium"
+            },
+            "editing": {
+              "continuity": "动作连续",
+              "transition": "硬切"
+            },
+            "evidenceRefs": [
+              "raw/shots.json#shots[0]",
+              "evidence/frames/F_SH0001_MAIN.jpg"
+            ],
+            "function": {
+              "shotTone": "轻快",
+              "sourceMedium": "实拍素材",
+              "subjectEmotion": "期待"
+            },
+            "shotID": "SH0001",
+            "visual": {
+              "actions": "拖行李走动",
+              "brightness": "明亮",
+              "cameraAngle": "平视",
+              "cameraMovement": "跟",
+              "colorTemperature": "冷",
+              "composition": "居中",
+              "content": "机场出发画面",
+              "contrast": "中",
+              "depthOfField": "深景深",
+              "dominantColor": "蓝白",
+              "framing": "全景",
+              "lensFeel": "广角感",
+              "lightingType": "自然光",
+              "movementIntensity": "medium",
+              "perspective": "第三人称观察",
+              "props": "行李箱",
+              "saturation": "中",
+              "setting": "机场出发大厅",
+              "subjectCoverage": "全身",
+              "subjects": "旅行者",
+              "texture": "清晰"
+            }
+          },
+          {
+            "audio": {
+              "bgmStyle": "轻快 电子",
+              "soundEffects": "行李轮声",
+              "speech": "第二段解说。"
+            },
+            "components": {
+              "compositingEvents": "无",
+              "texts": [
+                {
+                  "textAnimation": "淡入",
+                  "textContent": "DAY 1",
+                  "textStyle": "白色粗体",
+                  "textType": "标题"
+                }
+              ]
+            },
+            "confidence": {
+              "audio": "medium",
+              "editing": "medium",
+              "overall": "medium",
+              "visual": "medium"
+            },
+            "editing": {
+              "continuity": "动作连续",
+              "transition": "硬切"
+            },
+            "function": {
+              "shotTone": "轻快",
+              "sourceMedium": "实拍素材",
+              "subjectEmotion": "期待"
+            },
+            "shotID": "SH0002",
+            "visual": {
+              "actions": "拖行李走动",
+              "brightness": "明亮",
+              "cameraAngle": "平视",
+              "cameraMovement": "跟",
+              "colorTemperature": "冷",
+              "composition": "居中",
+              "content": "行李传送带画面",
+              "contrast": "中",
+              "depthOfField": "深景深",
+              "dominantColor": "蓝白",
+              "framing": "全景",
+              "lensFeel": "广角感",
+              "lightingType": "自然光",
+              "movementIntensity": "medium",
+              "perspective": "第三人称观察",
+              "props": "行李箱",
+              "saturation": "中",
+              "setting": "机场出发大厅",
+              "subjectCoverage": "全身",
+              "subjects": "旅行者",
+              "texture": "清晰"
+            }
+          },
+          {
+            "audio": {
+              "bgmStyle": "轻快 电子",
+              "soundEffects": "行李轮声",
+              "speech": "无"
+            },
+            "components": {
+              "compositingEvents": "无",
+              "texts": [
+                {
+                  "textAnimation": "淡入",
+                  "textContent": "DAY 1",
+                  "textStyle": "白色粗体",
+                  "textType": "标题"
+                }
+              ]
+            },
+            "confidence": {
+              "audio": "medium",
+              "editing": "medium",
+              "overall": "medium",
+              "visual": "medium"
+            },
+            "editing": {
+              "continuity": "动作连续",
+              "transition": "硬切"
+            },
+            "function": {
+              "shotTone": "轻快",
+              "sourceMedium": "实拍素材",
+              "subjectEmotion": "期待"
+            },
+            "shotID": "SH0003",
+            "visual": {
+              "actions": "拖行李走动",
+              "brightness": "明亮",
+              "cameraAngle": "平视",
+              "cameraMovement": "跟",
+              "colorTemperature": "冷",
+              "composition": "居中",
+              "content": "目的地街景画面",
+              "contrast": "中",
+              "depthOfField": "深景深",
+              "dominantColor": "蓝白",
+              "framing": "全景",
+              "lensFeel": "广角感",
+              "lightingType": "自然光",
+              "movementIntensity": "medium",
+              "perspective": "第三人称观察",
+              "props": "行李箱",
+              "saturation": "中",
+              "setting": "机场出发大厅",
+              "subjectCoverage": "全身",
+              "subjects": "旅行者",
+              "texture": "清晰"
+            }
+          }
+        ]
+      },
+      "shotIDs": [
+        "SH0001",
+        "SH0002",
+        "SH0003"
+      ],
+      "status": "complete"
+    }
+  ],
+  "clips": [
+    {
+      "durationMs": 3203,
+      "endMs": 3203,
+      "file": "clips/SH0001.mp4",
+      "modelDurationMs": 3203,
+      "modelFile": "clips/model-proxy/SH0001-a1b2.mp4",
+      "modelNormalization": {
+        "cacheKey": "proxy-a1b2",
+        "file": "clips/model-proxy/SH0001-a1b2.mp4",
+        "strategy": "shared-audio-proxy"
+      },
+      "shotID": "SH0001",
+      "startMs": 0
+    },
+    {
+      "durationMs": 3197,
+      "endMs": 6400,
+      "file": "clips/SH0002.mp4",
+      "modelDurationMs": 3197,
+      "modelFile": "clips/model-proxy/SH0002-a1b2.mp4",
+      "modelNormalization": {
+        "cacheKey": "proxy-a1b2",
+        "file": "clips/model-proxy/SH0002-a1b2.mp4",
+        "strategy": "shared-audio-proxy"
+      },
+      "shotID": "SH0002",
+      "startMs": 3203
+    },
+    {
+      "durationMs": 3400,
+      "endMs": 9800,
+      "file": "clips/SH0003.mp4",
+      "modelDurationMs": 3400,
+      "modelFile": "clips/model-proxy/SH0003-a1b2.mp4",
+      "modelNormalization": {
+        "cacheKey": "proxy-a1b2",
+        "file": "clips/model-proxy/SH0003-a1b2.mp4",
+        "strategy": "shared-audio-proxy"
+      },
+      "shotID": "SH0003",
+      "startMs": 6400
+    }
+  ],
+  "completedShots": 3,
+  "failedShots": 0,
+  "pendingShots": 0,
+  "permanentFailureShots": 0,
+  "request": {
+    "batchSize": 4,
+    "clipTransport": "videoDataURI",
+    "concurrency": 10,
+    "externalFrameExtraction": false,
+    "fallbackModel": "mimo-v2.5",
+    "mediaResolution": "default",
+    "model": "mimo-v2.5",
+    "shortClipPolicy": {
+      "minimumDurationMs": 800,
+      "recoveryMinimumDurationMs": 2000,
+      "recoveryWidth": 720
+    },
+    "sourceRevisionID": "a1b2c3d4e5f6",
+    "videoFPS": 10.0
+  },
+  "retryPolicy": {
+    "checkpointAfterEachRequest": true,
+    "fallbackFromBatchToSingleShot": true,
+    "maxRetries": 3
+  },
+  "schemaFingerprint": "86ad19c6afbf1a02",
+  "service": "unifiedAudioVideo",
+  "shotStatuses": {
+    "SH0001": "succeeded",
+    "SH0002": "succeeded",
+    "SH0003": "succeeded"
+  },
+  "status": "complete",
+  "terminal": true
+}

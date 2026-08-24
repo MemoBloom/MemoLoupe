@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/quality-flags.json",
+  "title": "MemoLoupe quality-flags.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["status", "method", "audioStatus", "thresholds", "shots"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["complete"]
+    },
+    "method": { "type": "string" },
+    "audioStatus": {
+      "type": "string",
+      "enum": ["complete", "absent", "failed"]
+    },
+    "flaggedShotCount": { "type": "integer", "minimum": 0 },
+    "shotCount": { "type": "integer", "minimum": 0 },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "startMs",
+          "endMs",
+          "flags",
+          "confidence",
+          "measurements"
+        ],
+        "properties": {
+          "shotID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}$"
+          },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "画面模糊",
+                "欠曝",
+                "过曝",
+                "音频削波",
+                "黑场",
+                "画面冻结"
+              ]
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "unknown"]
+          },
+          "measurements": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/unified-media.json",
+  "title": "MemoLoupe unified-media.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "service",
+    "schemaFingerprint",
+    "request",
+    "retryPolicy",
+    "clips",
+    "batches",
+    "shotStatuses",
+    "status"
+  ],
+  "$defs": {
+    "shotID": {
+      "type": "string",
+      "pattern": "^SH\\d{4}$"
+    },
+    "modelShot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "shotID",
+        "visual",
+        "function",
+        "audio",
+        "components",
+        "editing",
+        "confidence"
+      ],
+      "properties": {
+        "shotID": { "$ref": "#/$defs/shotID" },
+        "visual": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "content",
+            "subjects",
+            "actions",
+            "setting",
+            "props",
+            "framing",
+            "subjectCoverage",
+            "cameraAngle",
+            "composition",
+            "perspective",
+            "lensFeel",
+            "cameraMovement",
+            "movementIntensity",
+            "brightness",
+            "contrast",
+            "lightingType",
+            "colorTemperature",
+            "dominantColor",
+            "saturation",
+            "depthOfField",
+            "texture"
+          ],
+          "properties": {
+            "content": { "type": "string" },
+            "subjects": { "type": "string" },
+            "actions": { "type": "string" },
+            "setting": { "type": "string" },
+            "props": { "type": "string" },
+            "framing": { "type": "string" },
+            "subjectCoverage": { "type": "string" },
+            "cameraAngle": { "type": "string" },
+            "composition": { "type": "string" },
+            "perspective": { "type": "string" },
+            "lensFeel": { "type": "string" },
+            "cameraMovement": { "type": "string" },
+            "movementIntensity": { "type": "string" },
+            "brightness": { "type": "string" },
+            "contrast": { "type": "string" },
+            "lightingType": { "type": "string" },
+            "colorTemperature": { "type": "string" },
+            "dominantColor": { "type": "string" },
+            "saturation": { "type": "string" },
+            "depthOfField": { "type": "string" },
+            "texture": { "type": "string" }
+          }
+        },
+        "function": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["sourceMedium", "subjectEmotion", "shotTone"],
+          "properties": {
+            "sourceMedium": { "type": "string" },
+            "subjectEmotion": { "type": "string" },
+            "shotTone": { "type": "string" }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["speech", "bgmStyle", "soundEffects"],
+          "properties": {
+            "speech": { "type": "string" },
+            "bgmStyle": { "type": "string" },
+            "soundEffects": { "type": "string" }
+          }
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["texts", "compositingEvents"],
+          "properties": {
+            "texts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "textContent",
+                  "textType",
+                  "textStyle",
+                  "textAnimation"
+                ],
+                "properties": {
+                  "textContent": { "type": "string" },
+                  "textType": { "type": "string" },
+                  "textStyle": { "type": "string" },
+                  "textAnimation": { "type": "string" }
+                }
+              }
+            },
+            "compositingEvents": { "type": "string" }
+          }
+        },
+        "editing": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["transition", "continuity"],
+          "properties": {
+            "transition": { "type": "string" },
+            "continuity": { "type": "string" }
+          }
+        },
+        "confidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["visual", "audio", "editing", "overall"],
+          "properties": {
+            "visual": {
+              "type": "string",
+              "enum": ["high", "medium", "low", "unknown"]
+            },
+            "audio": {
+              "type": "string",
+              "enum": ["high", "medium", "low", "unknown"]
+            },
+            "editing": {
+              "type": "string",
+              "enum": ["high", "medium", "low", "unknown"]
+            },
+            "overall": {
+              "type": "string",
+              "enum": ["high", "medium", "low", "unknown"]
+            }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "service": { "const": "unifiedAudioVideo" },
+    "schemaFingerprint": { "type": "string" },
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "model",
+        "clipTransport",
+        "batchSize",
+        "concurrency",
+        "externalFrameExtraction",
+        "videoFPS",
+        "mediaResolution",
+        "sourceRevisionID",
+        "shortClipPolicy"
+      ],
+      "properties": {
+        "model": { "type": "string" },
+        "fallbackModel": { "type": ["string", "null"] },
+        "clipTransport": { "const": "videoDataURI" },
+        "batchSize": { "type": "integer", "minimum": 1 },
+        "concurrency": { "type": "integer", "minimum": 1 },
+        "externalFrameExtraction": { "const": false },
+        "videoFPS": { "type": "number" },
+        "mediaResolution": {
+          "type": "string",
+          "enum": ["default", "low", "high"]
+        },
+        "sourceRevisionID": { "type": ["string", "null"] },
+        "shortClipPolicy": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "minimumDurationMs",
+            "recoveryMinimumDurationMs",
+            "recoveryWidth"
+          ],
+          "properties": {
+            "minimumDurationMs": { "type": "integer", "minimum": 0 },
+            "recoveryMinimumDurationMs": { "type": "integer", "minimum": 0 },
+            "recoveryWidth": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "maxRetries",
+        "fallbackFromBatchToSingleShot",
+        "checkpointAfterEachRequest"
+      ],
+      "properties": {
+        "maxRetries": { "type": "integer", "minimum": 0 },
+        "fallbackFromBatchToSingleShot": { "type": "boolean" },
+        "checkpointAfterEachRequest": { "type": "boolean" }
+      }
+    },
+    "clips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "startMs",
+          "endMs",
+          "durationMs",
+          "file",
+          "modelFile",
+          "modelDurationMs"
+        ],
+        "properties": {
+          "shotID": { "$ref": "#/$defs/shotID" },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "file": { "type": "string" },
+          "modelFile": { "type": "string" },
+          "modelDurationMs": { "type": "integer", "minimum": 0 },
+          "modelNormalization": {
+            "type": ["object", "null"],
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "batches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["batchID", "shotIDs", "status"],
+        "properties": {
+          "batchID": {
+            "type": "string",
+            "pattern": "^B\\d{4}$"
+          },
+          "shotIDs": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/shotID" }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["complete", "dryRun", "failed"]
+          },
+          "response": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["shots"],
+            "properties": {
+              "shots": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/modelShot" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "shotStatuses": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["succeeded", "pending", "permanent_failure"]
+      }
+    },
+    "completedShots": { "type": "integer", "minimum": 0 },
+    "failedShots": { "type": "integer", "minimum": 0 },
+    "pendingShots": { "type": "integer", "minimum": 0 },
+    "permanentFailureShots": { "type": "integer", "minimum": 0 },
+    "terminal": { "type": "boolean" },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "running", "dryRun", "skipped", "failed"]
+    }
+  }
+}

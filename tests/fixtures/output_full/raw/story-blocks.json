@@ -1,0 +1,79 @@
+{
+  "blocks": [
+    {
+      "audienceReaction": "好奇/想看下去",
+      "blockRelation": "铺垫 → B0002",
+      "blockTitle": "机场出发",
+      "boundary": {
+        "label": "片头",
+        "level": "start",
+        "signal": "片头"
+      },
+      "boundaryBasis": "片头先用机场和行李建立旅程开始。",
+      "coreContent": "旅行从机场出发，建立即将展开的旅程期待。",
+      "divisionAxis": "行动/任务",
+      "divisionRationale": "这两个镜头都在交代出发行动。",
+      "endMs": 6400,
+      "informationRole": "建立背景、推进新信息",
+      "narrativeDensity": "中",
+      "primaryRole": "hook",
+      "relationReason": "先建立出发场景，后续进入目的地体验。",
+      "shotIDs": [
+        "SH0001",
+        "SH0002"
+      ],
+      "startMs": 0,
+      "storyBlockID": "B0001",
+      "visualIndependence": "静音也能看懂"
+    },
+    {
+      "audienceReaction": "共鸣/代入",
+      "blockRelation": "兑现",
+      "blockTitle": "目的地体验",
+      "boundary": {
+        "label": "停顿切分",
+        "level": "gap",
+        "signal": "ASR 停顿 1300ms"
+      },
+      "boundaryBasis": "ASR 在 6.4s 附近出现超过阈值的停顿。",
+      "coreContent": "目的地街景兑现前段建立的旅程期待。",
+      "divisionAxis": "场景/时空",
+      "divisionRationale": "到达新场景后进入体验段。",
+      "endMs": 9800,
+      "informationRole": "得出结论",
+      "narrativeDensity": "高",
+      "primaryRole": "payoff",
+      "relationReason": "前段铺垫的期待在本段落地。",
+      "shotIDs": [
+        "SH0003"
+      ],
+      "startMs": 6400,
+      "storyBlockID": "B0002",
+      "visualIndependence": "需要声音辅助"
+    }
+  ],
+  "boundarySource": "asr-gap",
+  "gapMs": 1200,
+  "generatedAt": "2026-08-21T08:00:00+00:00",
+  "slots": [
+    {
+      "blockIDs": [
+        "B0001"
+      ],
+      "slotID": "S001",
+      "slotRationale": "片头以出发动作和地点建立旅拍主题。",
+      "slotTitle": "旅程启动",
+      "slotType": "开场引入"
+    },
+    {
+      "blockIDs": [
+        "B0002"
+      ],
+      "slotID": "S002",
+      "slotRationale": "目的地体验承担全片情绪兑现。",
+      "slotTitle": "体验兑现",
+      "slotType": "高潮兑现"
+    }
+  ],
+  "status": "complete"
+}

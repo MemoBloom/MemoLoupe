@@ -1,0 +1,15 @@
+{
+  "durationMs": 1000,
+  "hasAudio": true,
+  "sampleRate": 48000,
+  "shots": [
+    {
+      "frameCount": 0,
+      "label": "unknown",
+      "medianDb": null,
+      "shotID": "SH0001"
+    }
+  ],
+  "source": "/Users/me/Videos/minimal-reference.mp4",
+  "thresholds": {}
+}

@@ -1,0 +1,114 @@
+{
+  "analysis": {
+    "durationMs": 9800,
+    "fps": 29.97003,
+    "limitations": [
+      "This detects hard-cut candidates; dissolves, fades, overlays, and fast subject motion still require visual confirmation."
+    ],
+    "method": "memoClipHardCutCandidateCuts",
+    "sampleHeight": 128,
+    "sampleWidth": 128,
+    "selectedBoundaryCount": 2,
+    "sourceFps": 29.97003
+  },
+  "boundaries": [
+    {
+      "brightness": 0.52,
+      "brightnessDelta": 0.18,
+      "confidence": "high",
+      "edgeSimilarity": 0.37,
+      "frameIndex": 96,
+      "histogramSimilarity": 0.41,
+      "score": -0.812,
+      "selectionReason": "rawNegativeScore",
+      "timeSec": 3.203,
+      "type": "hardCutCandidate"
+    },
+    {
+      "brightness": 0.47,
+      "brightnessDelta": 0.12,
+      "confidence": "medium",
+      "edgeSimilarity": 0.33,
+      "frameIndex": 192,
+      "histogramSimilarity": 0.38,
+      "score": -0.655,
+      "selectionReason": "adaptiveOutlier",
+      "timeSec": 6.4,
+      "type": "hardCutCandidate"
+    }
+  ],
+  "shots": [
+    {
+      "boundaryIn": {
+        "confidence": "high",
+        "metric": null,
+        "type": "sourceStart"
+      },
+      "boundaryOut": {
+        "confidence": "high",
+        "metric": {
+          "score": -0.812,
+          "timeSec": 3.203
+        },
+        "type": "hardCutCandidate"
+      },
+      "detectedEndMs": 3203,
+      "detectedStartMs": 0,
+      "durationMs": 3203,
+      "finalEndMs": 3203,
+      "finalStartMs": 0,
+      "needsReview": true,
+      "sequenceIndex": 1,
+      "shotID": "SH0001"
+    },
+    {
+      "boundaryIn": {
+        "confidence": "high",
+        "metric": {
+          "score": -0.812,
+          "timeSec": 3.203
+        },
+        "type": "hardCutCandidate"
+      },
+      "boundaryOut": {
+        "confidence": "medium",
+        "metric": {
+          "score": -0.655,
+          "timeSec": 6.4
+        },
+        "type": "hardCutCandidate"
+      },
+      "detectedEndMs": 6400,
+      "detectedStartMs": 3203,
+      "durationMs": 3197,
+      "finalEndMs": 6400,
+      "finalStartMs": 3203,
+      "needsReview": false,
+      "sequenceIndex": 2,
+      "shotID": "SH0002"
+    },
+    {
+      "boundaryIn": {
+        "confidence": "medium",
+        "metric": {
+          "score": -0.655,
+          "timeSec": 6.4
+        },
+        "type": "hardCutCandidate"
+      },
+      "boundaryOut": {
+        "confidence": "high",
+        "metric": null,
+        "type": "sourceEnd"
+      },
+      "detectedEndMs": 9800,
+      "detectedStartMs": 6400,
+      "durationMs": 3400,
+      "finalEndMs": 9800,
+      "finalStartMs": 6400,
+      "needsReview": true,
+      "sequenceIndex": 3,
+      "shotID": "SH0003"
+    }
+  ]
+}

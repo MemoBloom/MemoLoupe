@@ -1,0 +1,56 @@
+{
+  "audioStatus": "complete",
+  "flaggedShotCount": 1,
+  "method": "ffmpeg blurdetect + signalstats + astats + blackdetect + freezedetect",
+  "shotCount": 3,
+  "shots": [
+    {
+      "confidence": "high",
+      "endMs": 3203,
+      "flags": [
+        "画面模糊"
+      ],
+      "measurements": {
+        "audioSampleCount": 160,
+        "medianBlur": 12.7,
+        "medianYAVG": 120.4,
+        "videoSampleCount": 6
+      },
+      "shotID": "SH0001",
+      "startMs": 0
+    },
+    {
+      "confidence": "high",
+      "endMs": 6400,
+      "flags": [],
+      "measurements": {
+        "audioSampleCount": 160,
+        "medianBlur": 5.1,
+        "medianYAVG": 118.2,
+        "videoSampleCount": 6
+      },
+      "shotID": "SH0002",
+      "startMs": 3203
+    },
+    {
+      "confidence": "medium",
+      "endMs": 9800,
+      "flags": [],
+      "measurements": {
+        "audioSampleCount": 170,
+        "medianBlur": 6.3,
+        "medianYAVG": 121.0,
+        "videoSampleCount": 7
+      },
+      "shotID": "SH0003",
+      "startMs": 6400
+    }
+  ],
+  "status": "complete",
+  "thresholds": {
+    "blurFlagThreshold": 11.0,
+    "overexposedYAVG": 215.0,
+    "underexposedYAVG": 40.0,
+    "videoSampleFps": 2.0
+  }
+}

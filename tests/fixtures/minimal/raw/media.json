@@ -1,0 +1,21 @@
+{
+  "source": {
+    "analysisCoverage": [],
+    "analyzedRange": {
+      "endMs": 1000,
+      "startMs": 0
+    },
+    "aspectRatio": 1.777778,
+    "assetID": "minimal-reference",
+    "audioTracks": [],
+    "durationMs": 1000,
+    "durationSec": 1.0,
+    "frameRate": 29.97003,
+    "resolution": {
+      "height": 1080,
+      "width": 1920
+    },
+    "revisionID": "0123456789ab",
+    "sourcePath": "/Users/me/Videos/minimal-reference.mp4"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/asr.json",
+  "title": "MemoLoupe asr.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["service", "status", "transcript"],
+  "properties": {
+    "service": { "const": "asr" },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "skipped", "failed"]
+    },
+    "transcript": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["segments"],
+      "properties": {
+        "text": { "type": "string" },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["startMs", "endMs", "text"],
+            "properties": {
+              "startMs": { "type": "integer", "minimum": 0 },
+              "endMs": { "type": "integer", "minimum": 0 },
+              "text": { "type": "string" },
+              "speaker": { "type": ["string", "null"] },
+              "confidence": { "type": ["number", "string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

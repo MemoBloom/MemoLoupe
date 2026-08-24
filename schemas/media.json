@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/media.json",
+  "title": "MemoLoupe media.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["source"],
+  "properties": {
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "assetID",
+        "sourcePath",
+        "revisionID",
+        "durationMs",
+        "durationSec",
+        "frameRate",
+        "resolution",
+        "aspectRatio",
+        "audioTracks",
+        "analyzedRange",
+        "analysisCoverage"
+      ],
+      "properties": {
+        "assetID": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "revisionID": { "type": "string" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "durationSec": { "type": "number", "minimum": 0 },
+        "frameRate": { "type": ["number", "null"] },
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "aspectRatio": { "type": ["number", "null"] },
+        "audioTracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "trackID",
+              "language",
+              "channels",
+              "sampleRate",
+              "hasSpeech",
+              "hasMusic",
+              "hasEffects"
+            ],
+            "properties": {
+              "trackID": { "type": "string" },
+              "language": { "type": "string" },
+              "channels": { "type": "integer", "minimum": 1 },
+              "sampleRate": { "type": "integer", "minimum": 1 },
+              "hasSpeech": { "type": "string" },
+              "hasMusic": { "type": "string" },
+              "hasEffects": { "type": "string" }
+            }
+          }
+        },
+        "analyzedRange": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["startMs", "endMs"],
+          "properties": {
+            "startMs": { "type": "integer", "minimum": 0 },
+            "endMs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "analysisCoverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["capability", "status"],
+            "properties": {
+              "capability": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["complete", "partial", "unavailable", "skipped", "failed"]
+              },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

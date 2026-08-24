@@ -1,0 +1,109 @@
+{
+  "batches": [
+    {
+      "batchID": "B0001",
+      "response": {
+        "shots": [
+          {
+            "audio": {
+              "bgmStyle": "轻快 电子",
+              "soundEffects": "行李轮声",
+              "speech": "无"
+            },
+            "components": {
+              "compositingEvents": "无",
+              "texts": [
+                {
+                  "textAnimation": "淡入",
+                  "textContent": "DAY 1",
+                  "textStyle": "白色粗体",
+                  "textType": "标题"
+                }
+              ]
+            },
+            "confidence": {
+              "audio": "medium",
+              "editing": "medium",
+              "overall": "medium",
+              "visual": "medium"
+            },
+            "editing": {
+              "continuity": "动作连续",
+              "transition": "硬切"
+            },
+            "function": {
+              "shotTone": "轻快",
+              "sourceMedium": "实拍素材",
+              "subjectEmotion": "期待"
+            },
+            "shotID": "SH0001",
+            "visual": {
+              "actions": "拖行李走动",
+              "brightness": "明亮",
+              "cameraAngle": "平视",
+              "cameraMovement": "跟",
+              "colorTemperature": "冷",
+              "composition": "居中",
+              "content": "机场出发画面",
+              "contrast": "中",
+              "depthOfField": "深景深",
+              "dominantColor": "蓝白",
+              "framing": "全景",
+              "lensFeel": "广角感",
+              "lightingType": "自然光",
+              "movementIntensity": "medium",
+              "perspective": "第三人称观察",
+              "props": "行李箱",
+              "saturation": "中",
+              "setting": "机场出发大厅",
+              "subjectCoverage": "全身",
+              "subjects": "旅行者",
+              "texture": "清晰"
+            }
+          }
+        ]
+      },
+      "shotIDs": [
+        "SH0001"
+      ],
+      "status": "complete"
+    }
+  ],
+  "clips": [
+    {
+      "durationMs": 1000,
+      "endMs": 1000,
+      "file": "clips/SH0001.mp4",
+      "modelDurationMs": 1000,
+      "modelFile": "clips/model-proxy/SH0001-0123.mp4",
+      "shotID": "SH0001",
+      "startMs": 0
+    }
+  ],
+  "request": {
+    "batchSize": 4,
+    "clipTransport": "videoDataURI",
+    "concurrency": 10,
+    "externalFrameExtraction": false,
+    "mediaResolution": "default",
+    "model": "mimo-v2.5",
+    "shortClipPolicy": {
+      "minimumDurationMs": 800,
+      "recoveryMinimumDurationMs": 2000,
+      "recoveryWidth": 720
+    },
+    "sourceRevisionID": "0123456789ab",
+    "videoFPS": 10.0
+  },
+  "retryPolicy": {
+    "checkpointAfterEachRequest": true,
+    "fallbackFromBatchToSingleShot": true,
+    "maxRetries": 3
+  },
+  "schemaFingerprint": "86ad19c6afbf1a02",
+  "service": "unifiedAudioVideo",
+  "shotStatuses": {
+    "SH0001": "succeeded"
+  },
+  "status": "complete"
+}
