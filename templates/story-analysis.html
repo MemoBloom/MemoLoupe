@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-document-type="storyAnalysis" data-document-status="__DOCUMENT_STATUS__" data-contract-version="__CONTRACT_VERSION__" data-source-revision="__SOURCE_REVISION__">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>MemoLoupe Story Analysis</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; margin: 0; color: #1f2328; background: #f6f8fa; }
+  header.metadata { padding: 16px 20px; background: #fff; border-bottom: 1px solid #d0d7de; }
+  header.metadata h1 { font-size: 18px; margin: 0 0 8px; }
+  .metadata-grid { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+  .metadata-grid div { display: flex; gap: 6px; }
+  .metadata-grid dt { color: #57606a; }
+  .metadata-grid dd { margin: 0; font-weight: 600; }
+  #validation-summary { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; font-size: 13px; }
+  #validation-summary h2 { font-size: 14px; margin: 0 0 4px; }
+  #validation-summary pre { margin: 0; white-space: pre-wrap; }
+  .validation-empty { color: #57606a; margin: 0; }
+  .correction-warnings { color: #9a6700; margin: 4px 0 0; }
+  .toolbar { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .toolbar button { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
+  .toolbar button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  #pending-indicator { color: #9a6700; font-size: 13px; }
+  #story-player { width: 480px; max-width: 100%; background: #000; display: block; margin: 12px 20px; }
+  .story-layout { display: flex; align-items: flex-start; gap: 12px; padding: 12px 20px 20px; }
+  .main-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .timeline-card, .coverage-card, .slots-card { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px 16px; }
+  .timeline-card h2, .coverage-card h2, .slots-card h2 { font-size: 14px; margin: 0 0 8px; }
+  .story-timeline { display: flex; gap: 2px; align-items: stretch; height: 44px; }
+  .story-timeline-segment { border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; background: #0969da; min-width: 48px; overflow: hidden; }
+  .story-timeline-segment a { color: #fff; text-decoration: none; font-weight: 600; }
+  .story-timeline-segment a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .coverage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .coverage-table th, .coverage-table td { border: 1px solid #d0d7de; padding: 5px 8px; text-align: left; }
+  .coverage-table thead th { background: #f6f8fa; }
+  .jump-btn { font: inherit; padding: 2px 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
+  .jump-btn:disabled { color: #57606a; cursor: not-allowed; background: #f6f8fa; }
+  .jump-btn:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  .story-block { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px 16px; scroll-margin-top: 12px; }
+  .story-block:target { border-color: #0969da; box-shadow: 0 0 0 1px #0969da; }
+  .block-header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .block-header h3 { font-size: 16px; margin: 0; }
+  .block-title { color: #0969da; }
+  .block-header .timecode code { background: #eaeef2; padding: 1px 4px; border-radius: 4px; user-select: all; }
+  .block-header .duration { color: #57606a; font-size: 12px; }
+  .boundary-badge { font-size: 12px; color: #57606a; background: #eaeef2; border-radius: 10px; padding: 1px 8px; }
+  .status-badge { font-size: 12px; border-radius: 10px; padding: 1px 8px; }
+  .status-badge.status-complete { color: #1a7f37; background: #dafbe1; }
+  .status-badge.status-scaffold { color: #9a6700; background: #fff8c5; }
+  .block-shots { margin: 8px 0; font-size: 13px; color: #57606a; }
+  .block-shots .jump-btn { margin-right: 6px; margin-top: 4px; }
+  .narrative { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .narrative th, .narrative td { border: 1px solid #d0d7de; padding: 6px 10px; vertical-align: top; text-align: left; font-size: 13px; }
+  .narrative th[scope="row"] { background: #f6f8fa; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; white-space: nowrap; width: 170px; }
+  .cell-text { display: block; }
+  .cell-confidence { display: block; color: #57606a; font-size: 11px; margin-top: 2px; }
+  .cell-verified { display: inline-block; color: #1a7f37; font-size: 11px; margin-left: 4px; }
+  .cell-edit { display: block; margin-top: 4px; font: inherit; font-size: 12px; max-width: 220px; }
+  .cell-verify { display: block; margin-top: 4px; font-size: 12px; color: #1a7f37; }
+  .cell-edit:focus-visible, .verify-toggle:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  .state-value { color: #1f2328; }
+  .state-unknown { color: #57606a; background: #f6f8fa; }
+  .block-relations { margin-top: 8px; font-size: 13px; color: #57606a; }
+  .block-relations div { margin-top: 2px; }
+  .block-relations code { background: #eaeef2; padding: 1px 4px; border-radius: 4px; }
+  .story-slot { border: 1px dashed #d0d7de; border-radius: 6px; padding: 8px 12px; margin-top: 8px; }
+  .story-slot header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .story-slot h3 { font-size: 14px; margin: 0; }
+  .story-slot .slot-type { color: #8250df; }
+  .slot-blocks { font-size: 12px; color: #57606a; margin-top: 4px; }
+  .slot-blocks a { color: #0969da; }
+  .slot-rationale { font-size: 12px; color: #57606a; margin: 4px 0 0; }
+  .slot-fields { border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+  .slot-fields th, .slot-fields td { border: 1px solid #d0d7de; padding: 4px 8px; vertical-align: top; text-align: left; }
+  .slot-fields th[scope="row"] { background: #f6f8fa; font-family: ui-monospace, SFMono-Regular, monospace; }
+  #evidence-drawer { flex: 0 0 260px; position: sticky; top: 12px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; font-size: 13px; }
+  #evidence-drawer h2 { font-size: 14px; margin: 0 0 4px; }
+  #evidence-drawer .drawer-hint { color: #57606a; margin: 0; }
+  #evidence-drawer code { word-break: break-all; font-size: 11px; }
+</style>
+</head>
+<body>
+<!--METADATA-->
+<!--VALIDATION_SUMMARY-->
+<div class="toolbar">
+  <label for="loop-shot"><input type="checkbox" id="loop-shot"> 循环播放该镜头</label>
+  <button type="button" id="export-corrections">导出 corrections JSON</button>
+  <button type="button" id="save-corrections" hidden>保存到本地</button>
+  <button type="button" id="confirm-document">确认文档</button>
+  <span id="pending-indicator" role="status" aria-live="polite"></span>
+</div>
+<video id="story-player" controls preload="none" aria-label="故事块镜头播放器"></video>
+<div class="story-layout">
+<div class="main-col">
+<!--STORY_TIMELINE-->
+<!--SHOT_COVERAGE-->
+<!--STORY_BLOCKS-->
+<!--STORY_SLOTS-->
+</div>
+<aside id="evidence-drawer" aria-label="证据与复核详情">
+  <h2>证据详情</h2>
+  <p class="drawer-hint">点击叙事字段单元格查看证据引用。</p>
+  <div id="evidence-drawer-content"></div>
+</aside>
+</div>
+<script>
+(function () {
+  "use strict";
+  window.__REVIEW_SERVER__ = __SERVER_MODE__;
+  var DOCUMENT_TYPE = "storyAnalysis";
+  var SOURCE_REVISION_ID = __SOURCE_REVISION_JS__;
+
+  // ---- 播放器：定位镜头区间播放（可选循环）----
+  var player = document.getElementById("story-player");
+  var loopToggle = document.getElementById("loop-shot");
+  var currentStartMs = 0;
+  var currentEndMs = null;
+
+  function playShot(src, startMs, endMs) {
+    currentStartMs = startMs;
+    currentEndMs = endMs;
+    if (player.getAttribute("src") !== src) { player.setAttribute("src", src); }
+    player.currentTime = startMs / 1000;
+    player.play();
+  }
+  player.addEventListener("timeupdate", function () {
+    if (currentEndMs === null) { return; }
+    if (player.currentTime * 1000 >= currentEndMs) {
+      if (loopToggle.checked) {
+        player.currentTime = currentStartMs / 1000;
+      } else {
+        player.pause();
+        currentEndMs = null;
+      }
+    }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".jump-btn[data-clip-src]"), function (btn) {
+    btn.addEventListener("click", function () {
+      playShot(btn.getAttribute("data-clip-src"),
+               parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
+               parseInt(btn.getAttribute("data-end-ms"), 10));
+    });
+  });
+
+  // ---- 人工修正：pendingChanges 累积（entityID = block/slot/shot ID）----
+  var pendingChanges = [];
+  var indicator = document.getElementById("pending-indicator");
+  function entityIDOf(el) {
+    var value = el.getAttribute("data-entity-id") ||
+      el.getAttribute("data-shot-id") ||
+      el.getAttribute("data-block-id") ||
+      el.getAttribute("data-slot-id");
+    return value || null;
+  }
+  function sameKey(a, b) {
+    return a.entityID === b.entityID && a.field === b.field &&
+      (a.kind || "field") === (b.kind || "field");
+  }
+  function recordChange(change) {
+    change.changedAt = new Date().toISOString();
+    change.actor = "human";
+    for (var i = pendingChanges.length - 1; i >= 0; i--) {
+      if (sameKey(pendingChanges[i], change)) { pendingChanges.splice(i, 1); }
+    }
+    pendingChanges.push(change);
+    indicator.textContent = "有 " + pendingChanges.length + " 项未导出修改";
+  }
+  window.addEventListener("beforeunload", function (event) {
+    if (pendingChanges.length > 0) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+
+  function cellOf(el) { return el.closest("td[data-field]"); }
+  function currentVerified(td) {
+    var box = td.querySelector(".verify-toggle");
+    return box ? box.checked : false;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".cell-edit"), function (control) {
+    control.addEventListener("change", function () {
+      var td = cellOf(control);
+      var entityId = entityIDOf(control);
+      if (!td || !entityId) { return; }
+      var state, newValue;
+      if (control.tagName === "SELECT") {
+        if (control.value === "") { return; }  // 占位选项：尚未选择映射值
+        if (control.value === "unknown") { state = "unknown"; newValue = null; }
+        else { state = "value"; newValue = control.value; }
+      } else {
+        var text = control.value.trim();
+        if (text === "") { state = "unknown"; newValue = null; }
+        else { state = "value"; newValue = text; }
+      }
+      recordChange({
+        entityID: entityId,
+        field: control.getAttribute("data-field"),
+        oldValue: control.getAttribute("data-initial-value") || null,
+        newValue: newValue,
+        state: state,
+        verified: currentVerified(td)
+      });
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".verify-toggle"), function (box) {
+    box.addEventListener("change", function () {
+      var td = cellOf(box);
+      var entityId = entityIDOf(box);
+      if (!td || !entityId) { return; }
+      var control = td.querySelector(".cell-edit");
+      var newValue = null;
+      if (control && control.tagName !== "SELECT" && control.value.trim() !== "") {
+        newValue = control.value.trim();
+      } else if (control && control.tagName === "SELECT" &&
+                 control.value !== "" && control.value !== "unknown") {
+        newValue = control.value;
+      }
+      recordChange({
+        entityID: entityId,
+        field: box.getAttribute("data-field"),
+        oldValue: control ? (control.getAttribute("data-initial-value") || null) : null,
+        newValue: newValue,
+        state: td.getAttribute("data-value-state"),
+        verified: box.checked
+      });
+    });
+  });
+
+  // ---- corrections 导出 / 保存 / 确认 ----
+  function correctionsPayload() {
+    return {
+      correctionVersion: 1,
+      documentType: DOCUMENT_TYPE,
+      sourceRevisionID: SOURCE_REVISION_ID,
+      changes: pendingChanges
+    };
+  }
+  document.getElementById("export-corrections").addEventListener("click", function () {
+    var blob = new Blob([JSON.stringify(correctionsPayload(), null, 2)],
+                        { type: "application/json" });
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "corrections-" + DOCUMENT_TYPE + ".json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+  var saveButton = document.getElementById("save-corrections");
+  if (window.__REVIEW_SERVER__) { saveButton.hidden = false; }
+  saveButton.addEventListener("click", function () {
+    fetch("/api/corrections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(correctionsPayload())
+    }).then(function (resp) {
+      if (resp.ok) {
+        pendingChanges = [];
+        indicator.textContent = "已保存到本地";
+      } else {
+        indicator.textContent = "保存失败：HTTP " + resp.status;
+      }
+    }).catch(function (err) {
+      indicator.textContent = "保存失败：" + err;
+    });
+  });
+  document.getElementById("confirm-document").addEventListener("click", function () {
+    if (!window.__REVIEW_SERVER__) {
+      indicator.textContent = "离线模式：请导出 corrections JSON 后用 CLI 确认文档";
+      return;
+    }
+    fetch("/api/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentType: DOCUMENT_TYPE, sourceRevisionID: SOURCE_REVISION_ID })
+    }).then(function (resp) {
+      indicator.textContent = resp.ok ? "文档已确认" : "确认失败：HTTP " + resp.status;
+    }).catch(function (err) {
+      indicator.textContent = "确认失败：" + err;
+    });
+  });
+
+  // ---- 证据抽屉：点击单元格显示证据引用 ----
+  var drawer = document.getElementById("evidence-drawer-content");
+  Array.prototype.forEach.call(document.querySelectorAll("td[data-field]"), function (td) {
+    td.addEventListener("click", function (event) {
+      if (event.target.closest("select, input, button, textarea, label, a")) { return; }
+      var field = td.getAttribute("data-field");
+      var entityId = entityIDOf(td) || "?";
+      drawer.textContent = "";
+      var heading = document.createElement("h3");
+      heading.textContent = entityId + " · " + field;
+      drawer.appendChild(heading);
+      var refs = (td.getAttribute("data-evidence-refs") || "").split(/\s+/);
+      var list = document.createElement("ul");
+      var hasRef = false;
+      refs.forEach(function (ref) {
+        if (!ref) { return; }
+        hasRef = true;
+        var item = document.createElement("li");
+        if (/\.(jpe?g|png)$/i.test(ref)) {
+          var img = document.createElement("img");
+          img.setAttribute("src", ref);
+          img.setAttribute("alt", entityId + " " + field + " 证据帧");
+          img.className = "drawer-frame";
+          item.appendChild(img);
+        }
+        var code = document.createElement("code");
+        code.textContent = ref;
+        item.appendChild(code);
+        list.appendChild(item);
+      });
+      if (hasRef) {
+        drawer.appendChild(list);
+      } else {
+        var none = document.createElement("p");
+        none.textContent = "该字段无证据引用（unknown 豁免）。";
+        drawer.appendChild(none);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

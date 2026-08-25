@@ -66,6 +66,19 @@ HTML 不得包含模型调用、媒体分析或业务聚合逻辑。渲染器先
 - 播放按钮；
 - 镜头级验证进度。
 
+镜头列头的机器可读 review 语义（稳定契约）：
+
+```html
+<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203"
+    data-needs-review="true"
+    data-review-reasons="[&quot;visual.cameraMovement：…不一致，需人工复核&quot;]">
+```
+
+- `data-review-reasons` 为 JSON 字符串数组：resolver 冲突理由在前，`shots.json`
+  `needsReview=true` 时追加 `"shots.json 标记 needsReview"`；无理由时为 `[]`。
+- 不变量：`data-needs-review="true"` 当且仅当 `data-review-reasons` 非空。
+- `title` 属性仅为人类可读 tooltip，机器消费一律走 `data-review-reasons`。
+
 点击镜头标题、缩略图或播放按钮时，播放器定位到 finalStartMs，并只播放到 finalEndMs。必须避免播放器越界继续播放下一镜头；允许用户关闭区间循环。
 
 ### 3.3 字段单元格
@@ -216,6 +229,9 @@ HTML 可以内嵌 JS，但静态 HTML 无权直接覆盖本地文件。推荐支
 - evidence refs 格式正确。
 - 每镜头至少有一个可追溯证据列。
 - `unmapped` 应保留可见原始值或修正入口。
+- 镜头列头必须携带 `data-needs-review ∈ {true,false}` 与
+  `data-review-reasons`（JSON 字符串数组），且二者一致：
+  needs-review="true" 当且仅当 reasons 非空。
 
 ### 8.3 安全检查
 
@@ -233,6 +249,8 @@ HTML 可以内嵌 JS，但静态 HTML 无权直接覆盖本地文件。推荐支
 - Observation state/value/source 与 resolver 结果一致，人工 correction 除外。
 - evidence refs 指向正确 shot。
 - 文档 source revision 一致。
+- shots.json 标记 `needsReview=true` 的镜头，页面列头 `data-needs-review`
+  必须为 `true`（resolver 冲突理由可独立置 true，反向不要求）。
 
 ### 8.5 回归护栏
 

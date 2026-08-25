@@ -4,19 +4,27 @@
 
 - §8.1 结构：document type/status 枚举、必需 metadata、id 唯一、
   table/tbody/tr/td 嵌套（缺 tbody 报具体错误）、story-block 禁区、
-  shotAnalysis 至少一个镜头列；
+  shotAnalysis 至少一个镜头列、storyAnalysis 至少一个 story-block
+  （且列头/块头带必需机器属性）；
 - §8.2 单元格：data-value-state 五态 + labelOnly、五态必备
   confidence/source/verified、verified 取值、evidence refs 可解析、
   每镜头至少一个可追溯证据单元格；单元格内的内联编辑控件
   （select/input/textarea/button/label）合法放行，``data-original-value``
   为合法属性，``data-verified="true"`` 合法出现；
+- 镜头列 review 语义：shotAnalysis 镜头列头必须携带
+  ``data-needs-review ∈ {true,false}`` 与 ``data-review-reasons``
+  （JSON 字符串数组），且二者一致——needs-review="true" 当且仅当
+  reasons 非空（roadmap 03-01）；
 - §5.1/§2：页面必须有带可访问名称的确认按钮（id=confirm-document
   或可访问名称含“确认”；按钮文本或 aria-label 至少其一非空）；
 - §8.3 安全：禁外链 script、禁 javascript: URL、禁 http(s) 外链 img/script/link；
 - §8.4 严格模式（需提供 output-dir root）：页面 shotID 集合与
   final 边界对齐 raw/shots.json，source revision 对齐 raw/media.json；
+  storyAnalysis 页面的 story-block 集合与 raw/story-blocks.json 对齐
+  （block ID、shotIDs、start/end、block 引用的 shot 必须存在）；
   data-document-status 与 corrections/<docType>.json 推导状态一致
-  （corrections 文件不存在时要求 draft）。
+  （corrections 文件不存在时要求 draft）；raw shots.json 标记
+  needsReview=true 的镜头，页面列头 data-needs-review 必须为 true。
 
 所有 issue 携带行号（HTMLParser.getpos()）。
 """
@@ -24,12 +32,13 @@
 from __future__ import annotations
 
 import importlib
+import json
 from html.parser import HTMLParser
 from pathlib import Path
 
 from memoloupe.core.errors import ContractError, EvidenceRefError
 from memoloupe.core.atomic_io import read_json
-from memoloupe.core.evidence_refs import parse_evidence_ref
+from memoloupe.core.evidence_refs import parse_evidence_ref, resolve_json_pointer
 from memoloupe.validate.json_contracts import ValidationIssue
 
 HTML_CONTRACT_VERSION = "htmlcheck.v1"
@@ -81,8 +90,16 @@ class _Checker(HTMLParser):
         self._table_stack: list[dict[str, object]] = []
         # 镜头列：th/td 同时带 data-shot-id/data-start-ms/data-end-ms。
         self.shot_columns: list[tuple[str, str, str, int]] = []
+        # 镜头列 review 语义：shotID -> data-needs-review / data-review-reasons。
+        self.shot_review: dict[str, dict[str, object]] = {}
         # 每个镜头的可追溯证据单元格计数。
         self.evidence_cells: dict[str, int] = {}
+        # storyAnalysis：story-block 结构（class=story-block 或 data-story-block-id）。
+        self.story_blocks: list[dict[str, object]] = []
+        # story-block 内带非空 data-evidence-refs 的单元格计数。
+        self.block_evidence_cells: dict[str, int] = {}
+        # 严格模式下需要解析到实际文件/JSON 节点的 HTML evidence refs。
+        self.html_evidence_refs: list[tuple[int, str, str]] = []
         self.story_block_lines: list[int] = []
         # 按钮收集：确认按钮存在性与可访问名称检查（docs/04 §2/§5.1）。
         self.buttons: list[dict[str, object]] = []
@@ -116,6 +133,17 @@ class _Checker(HTMLParser):
         classes = attr_map.get("class", "").split()
         if "story-block" in classes:
             self.story_block_lines.append(line)
+            # 只收集 class=story-block 的块根元素（时间线等辅助元素虽然也带
+            # data-story-block-id，但不构成 story-block DOM）。
+            self.story_blocks.append(
+                {
+                    "block_id": attr_map.get("data-story-block-id", ""),
+                    "shot_ids": (attr_map.get("data-shot-ids") or "").split(),
+                    "start_ms": attr_map.get("data-start-ms"),
+                    "end_ms": attr_map.get("data-end-ms"),
+                    "line": line,
+                }
+            )
 
         if tag in _STRUCTURAL_TAGS:
             self._check_nesting(tag, line)
@@ -126,6 +154,7 @@ class _Checker(HTMLParser):
             end_ms = attr_map.get("data-end-ms")
             if shot_id and start_ms is not None and end_ms is not None:
                 self.shot_columns.append((shot_id, start_ms, end_ms, line))
+                self._check_review_attrs(attr_map, line, shot_id)
         if tag == "td" and "data-field" in attr_map:
             self._check_cell(attr_map, line)
         if tag == "button":
@@ -271,9 +300,69 @@ class _Checker(HTMLParser):
                         f"data-evidence-refs 条目非法：{exc.reason}",
                         expected="合法 evidenceRef", actual=ref,
                     ))
+                else:
+                    self.html_evidence_refs.append((line, attrs["data-field"], ref))
             shot_id = attrs.get("data-shot-id")
             if shot_id:
                 self.evidence_cells[shot_id] = self.evidence_cells.get(shot_id, 0) + 1
+            block_id = attrs.get("data-block-id")
+            if block_id:
+                self.block_evidence_cells[block_id] = (
+                    self.block_evidence_cells.get(block_id, 0) + 1
+                )
+
+    def _check_review_attrs(self, attrs: dict[str, str], line: int, shot_id: str) -> None:
+        """镜头列 needsReview 机器语义（roadmap 03-01）。
+
+        稳定语义：``data-review-reasons`` 为 JSON 字符串数组（空数组表示无理由），
+        ``data-needs-review="true"`` 当且仅当该数组非空。属性是否必有由
+        :meth:`finish` 按文档类型收尾检查；此处做取值与一致性校验。
+        """
+        needs_review = attrs.get("data-needs-review")
+        reasons_raw = attrs.get("data-review-reasons")
+        self.shot_review[shot_id] = {
+            "line": line,
+            "needs_review": needs_review,
+            "reasons": reasons_raw,
+        }
+        if needs_review is not None and needs_review not in ("true", "false"):
+            self.issues.append(_issue(
+                self.artifact, line, "th",
+                "data-needs-review 只能是 true/false",
+                expected="true|false", actual=needs_review,
+            ))
+        reasons: list[str] | None = None
+        if reasons_raw is not None:
+            try:
+                parsed = json.loads(reasons_raw)
+            except json.JSONDecodeError:
+                parsed = None
+            if not isinstance(parsed, list) or not all(
+                isinstance(item, str) for item in parsed
+            ):
+                self.issues.append(_issue(
+                    self.artifact, line, "th",
+                    "data-review-reasons 必须是 JSON 字符串数组",
+                    expected='例如 ["理由1","理由2"] 或 []',
+                    actual=reasons_raw[:60],
+                ))
+            else:
+                reasons = parsed
+        if needs_review == "true" and reasons is not None and not reasons:
+            self.issues.append(_issue(
+                self.artifact, line, "th",
+                f"镜头 {shot_id} data-needs-review=\"true\" 但 "
+                "data-review-reasons 为空数组",
+                expected="非空 reasons 或 needs-review=\"false\"", actual="[]",
+            ))
+        if needs_review == "false" and reasons:
+            self.issues.append(_issue(
+                self.artifact, line, "th",
+                f"镜头 {shot_id} data-needs-review=\"false\" 但 "
+                "data-review-reasons 非空",
+                expected="空 reasons 或 needs-review=\"true\"",
+                actual=json.dumps(reasons, ensure_ascii=False)[:60],
+            ))
 
     # ------------------------------------------------------------------
     # 文档级收尾检查
@@ -361,6 +450,50 @@ class _Checker(HTMLParser):
                         f"镜头 {shot_id} 没有任何带非空 data-evidence-refs 的单元格",
                         expected="每镜头至少一个可追溯证据列", actual="0",
                     ))
+                review = self.shot_review.get(shot_id, {})
+                for required in ("data-needs-review", "data-review-reasons"):
+                    key = "needs_review" if required == "data-needs-review" else "reasons"
+                    if review.get(key) is None:
+                        self.issues.append(_issue(
+                            self.artifact, col_line, "th",
+                            f"镜头 {shot_id} 列头缺 {required}",
+                            expected=required, actual="缺失",
+                        ))
+
+        elif doc_type == "storyAnalysis":
+            # docs/04 §4：story 页面必须包含 story-block DOM，且块头携带
+            # 机器可读属性（block ID / shotIDs / 起止时间）。
+            if not self.story_blocks:
+                self.issues.append(_issue(
+                    self.artifact, line, "html",
+                    "storyAnalysis 必须包含至少一个 story-block"
+                    "（class=story-block 且带 data-story-block-id 的元素）",
+                    expected=">= 1 个 story-block", actual="0",
+                ))
+            for block in self.story_blocks:
+                block_id = block["block_id"]
+                col_line = int(block["line"])
+                # HTML 属性名 -> 收集字典键（data- 前缀去掉、连字符转下划线）。
+                for attr, key in (
+                    ("data-story-block-id", "block_id"),
+                    ("data-shot-ids", "shot_ids"),
+                    ("data-start-ms", "start_ms"),
+                    ("data-end-ms", "end_ms"),
+                ):
+                    value = block[key]
+                    if value is None or value == "" or value == []:
+                        self.issues.append(_issue(
+                            self.artifact, col_line, "section",
+                            f"story-block {block_id or '?'} 缺 {attr}",
+                            expected=attr, actual="缺失",
+                        ))
+                if block_id and self.block_evidence_cells.get(block_id, 0) == 0:
+                    self.issues.append(_issue(
+                        self.artifact, col_line, "section",
+                        f"story-block {block_id} 没有任何带非空 "
+                        "data-evidence-refs 的单元格",
+                        expected="每 block 至少一个可追溯证据列", actual="0",
+                    ))
 
 
 # ---------------------------------------------------------------------------
@@ -408,32 +541,12 @@ def _check_strict(
             if isinstance(entry, dict) and isinstance(entry.get("shotID"), str):
                 expected_shots[entry["shotID"]] = entry
 
-    page_ids = {shot_id for shot_id, _, _, _ in checker.shot_columns}
-    if page_ids != set(expected_shots):
-        issues.append(_issue(
-            artifact, html_line, "html",
-            "页面镜头列 shotID 集合与 raw/shots.json 不一致",
-            expected=sorted(expected_shots), actual=sorted(page_ids),
-        ))
-    for shot_id, start_ms, end_ms, col_line in checker.shot_columns:
-        entry = expected_shots.get(shot_id)
-        if entry is None:
-            continue
-        expected_start = _as_int(entry.get("finalStartMs"))
-        expected_end = _as_int(entry.get("finalEndMs"))
-        actual_start, actual_end = _as_int_safe(start_ms), _as_int_safe(end_ms)
-        if expected_start is not None and actual_start != expected_start:
-            issues.append(_issue(
-                artifact, col_line, "th",
-                f"镜头 {shot_id} 的 data-start-ms 与 finalStartMs 不一致",
-                expected=str(expected_start), actual=start_ms,
-            ))
-        if expected_end is not None and actual_end != expected_end:
-            issues.append(_issue(
-                artifact, col_line, "th",
-                f"镜头 {shot_id} 的 data-end-ms 与 finalEndMs 不一致",
-                expected=str(expected_end), actual=end_ms,
-            ))
+    doc_type = (checker.html_attrs or {}).get("data-document-type") or ""
+    if doc_type == "shotAnalysis":
+        _check_strict_shots(checker, expected_shots, issues)
+    elif doc_type == "storyAnalysis":
+        _check_strict_story_blocks(checker, expected_shots, root, issues)
+    _check_strict_html_evidence_refs(checker, root, issues)
 
     revision = media_doc.get("source", {}).get("revisionID")
     page_revision = (checker.html_attrs or {}).get("data-source-revision")
@@ -445,7 +558,6 @@ def _check_strict(
         ))
 
     # data-document-status 与 corrections 推导状态一致（docs/04 §8.4、docs/02 §6）。
-    doc_type = (checker.html_attrs or {}).get("data-document-type") or ""
     page_status = (checker.html_attrs or {}).get("data-document-status")
     if doc_type in DOCUMENT_TYPES and page_status in DOCUMENT_STATUSES:
         corr_path = root / "corrections" / f"{doc_type}.json"
@@ -463,6 +575,49 @@ def _check_strict(
                 revision if isinstance(revision, str) else "",
                 page_status, issues,
             )
+
+
+def _check_strict_html_evidence_refs(
+    checker: _Checker,
+    root: Path,
+    issues: list[ValidationIssue],
+) -> None:
+    """strict 模式：HTML data-evidence-refs 必须指向存在的文件/JSON 节点。"""
+    json_cache: dict[str, dict] = {}
+    for line, field, ref in checker.html_evidence_refs:
+        try:
+            parsed = parse_evidence_ref(ref)
+        except EvidenceRefError:
+            continue  # 基础格式检查已在 _check_cell 中报过。
+        target_path = root / parsed.file_path
+        if not target_path.exists():
+            issues.append(_issue(
+                checker.artifact, line, "td",
+                f"{field} 的 data-evidence-refs 指向不存在的文件",
+                expected=parsed.file_path, actual=ref,
+            ))
+            continue
+        if parsed.is_file_evidence:
+            continue
+        try:
+            if parsed.file_path not in json_cache:
+                json_cache[parsed.file_path] = read_json(target_path)
+            target = json_cache[parsed.file_path]
+        except ContractError as exc:
+            issues.append(_issue(
+                checker.artifact, line, "td",
+                f"{field} 的 data-evidence-refs 目标 JSON 不可读：{exc.actual}",
+                expected="可读 JSON", actual=ref,
+            ))
+            continue
+        try:
+            resolve_json_pointer(target, parsed.json_pointer)
+        except EvidenceRefError as exc:
+            issues.append(_issue(
+                checker.artifact, line, "td",
+                f"{field} 的 data-evidence-refs 指针不可解析：{exc.reason}",
+                expected="可解析 JSON 指针", actual=ref,
+            ))
 
 
 def _check_corrections_status(
@@ -521,6 +676,128 @@ def _as_int_safe(value: str) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _check_strict_shots(
+    checker: _Checker,
+    expected_shots: dict[str, dict],
+    issues: list[ValidationIssue],
+) -> None:
+    """strict 模式 shotAnalysis 页面的镜头列与 raw/shots.json 对齐检查。"""
+    artifact, html_line = checker.artifact, checker.html_line
+    page_ids = {shot_id for shot_id, _, _, _ in checker.shot_columns}
+    if page_ids != set(expected_shots):
+        issues.append(_issue(
+            artifact, html_line, "html",
+            "页面镜头列 shotID 集合与 raw/shots.json 不一致",
+            expected=sorted(expected_shots), actual=sorted(page_ids),
+        ))
+    for shot_id, start_ms, end_ms, col_line in checker.shot_columns:
+        entry = expected_shots.get(shot_id)
+        if entry is None:
+            continue
+        expected_start = _as_int(entry.get("finalStartMs"))
+        expected_end = _as_int(entry.get("finalEndMs"))
+        actual_start, actual_end = _as_int_safe(start_ms), _as_int_safe(end_ms)
+        if expected_start is not None and actual_start != expected_start:
+            issues.append(_issue(
+                artifact, col_line, "th",
+                f"镜头 {shot_id} 的 data-start-ms 与 finalStartMs 不一致",
+                expected=str(expected_start), actual=start_ms,
+            ))
+        if expected_end is not None and actual_end != expected_end:
+            issues.append(_issue(
+                artifact, col_line, "th",
+                f"镜头 {shot_id} 的 data-end-ms 与 finalEndMs 不一致",
+                expected=str(expected_end), actual=end_ms,
+            ))
+        # raw 标记 needsReview=true 时页面列头必须同样置 true
+        # （resolver 理由可独立置 true，反向不要求）。
+        if entry.get("needsReview") is True:
+            review = checker.shot_review.get(shot_id, {})
+            if review.get("needs_review") != "true":
+                issues.append(_issue(
+                    artifact, col_line, "th",
+                    f"镜头 {shot_id} 在 raw/shots.json 标记 needsReview，"
+                    "页面 data-needs-review 必须为 true",
+                    expected='data-needs-review="true"',
+                    actual=str(review.get("needs_review") or "缺失"),
+                ))
+
+
+def _check_strict_story_blocks(
+    checker: _Checker,
+    expected_shots: dict[str, dict],
+    root: Path,
+    issues: list[ValidationIssue],
+) -> None:
+    """strict 模式 storyAnalysis 页面的 story-block 与 raw/story-blocks.json 对齐。
+
+    校验：页面 block ID 集合与 raw 一致；每个 block 的 data-shot-ids /
+    data-start-ms / data-end-ms 与 raw shotIDs / startMs / endMs 一致；
+    block 引用的 shotID 必须存在于 shots.json。
+    """
+    artifact, html_line = checker.artifact, checker.html_line
+    raw_blocks: dict[str, dict] = {}
+    try:
+        story_doc = read_json(root / "raw" / "story-blocks.json")
+    except ContractError:
+        issues.append(_issue(
+            artifact, html_line, "html",
+            "strict 模式需要可读的 raw/story-blocks.json",
+            expected="raw/story-blocks.json", actual="missing/unreadable",
+        ))
+        return
+    blocks = story_doc.get("blocks")
+    if isinstance(blocks, list):
+        for entry in blocks:
+            if isinstance(entry, dict) and isinstance(entry.get("storyBlockID"), str):
+                raw_blocks[entry["storyBlockID"]] = entry
+
+    page_blocks = {b["block_id"]: b for b in checker.story_blocks if b["block_id"]}
+    if set(page_blocks) != set(raw_blocks):
+        issues.append(_issue(
+            artifact, html_line, "html",
+            "页面 story-block ID 集合与 raw/story-blocks.json 不一致",
+            expected=sorted(raw_blocks), actual=sorted(page_blocks),
+        ))
+    for block_id, info in page_blocks.items():
+        raw = raw_blocks.get(block_id)
+        if raw is None:
+            continue
+        col_line = int(info["line"])
+        shot_ids = info["shot_ids"]
+        raw_ids = raw.get("shotIDs")
+        if isinstance(raw_ids, list) and shot_ids != raw_ids:
+            issues.append(_issue(
+                artifact, col_line, "section",
+                f"story-block {block_id} 的 data-shot-ids 与 shotIDs 不一致",
+                expected=raw_ids, actual=shot_ids,
+            ))
+        raw_start = _as_int(raw.get("startMs"))
+        raw_end = _as_int(raw.get("endMs"))
+        actual_start = _as_int_safe(str(info["start_ms"])) if info["start_ms"] is not None else None
+        actual_end = _as_int_safe(str(info["end_ms"])) if info["end_ms"] is not None else None
+        if raw_start is not None and actual_start != raw_start:
+            issues.append(_issue(
+                artifact, col_line, "section",
+                f"story-block {block_id} 的 data-start-ms 与 startMs 不一致",
+                expected=str(raw_start), actual=str(info["start_ms"]),
+            ))
+        if raw_end is not None and actual_end != raw_end:
+            issues.append(_issue(
+                artifact, col_line, "section",
+                f"story-block {block_id} 的 data-end-ms 与 endMs 不一致",
+                expected=str(raw_end), actual=str(info["end_ms"]),
+            ))
+        unknown_shots = [sid for sid in shot_ids if sid not in expected_shots]
+        if unknown_shots:
+            issues.append(_issue(
+                artifact, col_line, "section",
+                f"story-block {block_id} 引用未知镜头：{unknown_shots}",
+                expected=f"存在于 shots.json（{sorted(expected_shots)}）",
+                actual="、".join(sorted(unknown_shots)),
+            ))
 
 
 def validate_html(

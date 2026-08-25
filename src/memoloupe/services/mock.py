@@ -13,12 +13,14 @@ from typing import Callable, Sequence
 
 from memoloupe.services.asr import ASRRequest, ASRResult
 from memoloupe.services.base import SERVICE_PROTOCOL_VERSION
+from memoloupe.services.text_model import TextModelRequest
 from memoloupe.services.unified_media import AnalysisGroup, ModelClip
 
 __all__ = [
     "SERVICE_PROTOCOL_VERSION",
     "GROUP_OWNED_SECTIONS",
     "MockASRService",
+    "MockTextModelService",
     "MockUnifiedMediaService",
     "default_mock_unified",
 ]
@@ -121,6 +123,33 @@ class MockUnifiedMediaService:
                 f"mock 未编排的调用: group={group.name} shots={shot_ids} "
                 f"call_index={call_index}"
             )
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class MockTextModelService:
+    """可编程文本模型 mock（story/profile 编排测试用）。
+
+    ``script`` 键为调用序号（从 0 开始）；值为 ``str`` 时原样返回（成功 JSON /
+    fence 包裹 / 非法 JSON / 漏 block / 未知 block 都由此构造），值为
+    ``Exception`` 时抛出（TransientServiceError / PermanentServiceError）。
+    传入 callable 时签名为 ``(request: TextModelRequest) -> str``，可读取
+    prompt 动态构造响应（如 CLI ``--mock-text-model`` 需要按块 ID 回填）。
+    """
+
+    def __init__(self, script: dict[int, str | Exception] | Callable[[TextModelRequest], str]) -> None:
+        self._script = script
+        self.calls: list[TextModelRequest] = []
+
+    def generate(self, request: TextModelRequest) -> str:
+        call_index = len(self.calls)
+        self.calls.append(request)
+        if callable(self._script):
+            return self._script(request)
+        if call_index not in self._script:
+            raise KeyError(f"mock 未编排的调用: call_index={call_index}")
+        outcome = self._script[call_index]
         if isinstance(outcome, Exception):
             raise outcome
         return outcome

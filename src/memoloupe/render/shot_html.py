@@ -232,7 +232,14 @@ def _column_header_html(
     end_ms = shot.get("finalEndMs")
     duration_ms = shot.get("durationMs")
     # needsReview：合并 shots.json 标记与 resolver 报告的 review 理由（D-005）。
-    needs_review = bool(shot.get("needsReview")) or bool(review_reasons)
+    # data-review-reasons 稳定机器语义：JSON 字符串数组，resolver 理由在前，
+    # shots.json needsReview=true 时追加标记理由；data-needs-review="true"
+    # 当且仅当该数组非空（html_contract 校验此不变量）。
+    merged_reasons = list(review_reasons)
+    if shot.get("needsReview"):
+        merged_reasons.append("shots.json 标记 needsReview")
+    needs_review = bool(merged_reasons)
+    reasons_attr = html.escape(json.dumps(merged_reasons, ensure_ascii=False))
     esc_id = html.escape(shot_id)
 
     title_attr = ""
@@ -244,6 +251,7 @@ def _column_header_html(
     lines = [
         f'<th scope="col" data-shot-id="{esc_id}" data-start-ms="{start_ms}" '
         f'data-end-ms="{end_ms}" data-needs-review="{"true" if needs_review else "false"}"'
+        f' data-review-reasons="{reasons_attr}"'
         f"{title_attr}>",
         '<div class="shot-head">',
         f'<span class="shot-id">{esc_id}</span>',

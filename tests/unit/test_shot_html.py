@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import html as html_lib
 import json
+import re
 import shutil
 import sys
 import types
@@ -342,6 +344,67 @@ class TestReviewReasonsAndBoundary:
         assert 'data-needs-review="true"' in header
         assert "title=" in header
         assert "不一致" in header
+
+    @staticmethod
+    def _column_reasons(html: str, shot_id: str) -> list[str]:
+        """提取镜头列头 data-review-reasons 并解析为字符串数组。"""
+        header = next(
+            line for line in html.splitlines()
+            if f'scope="col" data-shot-id="{shot_id}"' in line
+        )
+        match = re.search(r'data-review-reasons="([^"]*)"', header)
+        assert match, f"{shot_id} 镜头列头必须带 data-review-reasons 机器可读属性"
+        reasons = json.loads(html_lib.unescape(match.group(1)))
+        assert isinstance(reasons, list)
+        assert all(isinstance(r, str) for r in reasons)
+        return reasons
+
+    def test_review_reasons_machine_readable_attribute(self, tmp_path):
+        # 稳定 HTML 语义：data-review-reasons 为 JSON 字符串数组，
+        # SH0002（resolver 冲突）包含冲突理由且 needs-review=true。
+        work = _copy_fixture(tmp_path)
+        html = render_shot_html(work).read_text(encoding="utf-8")
+        reasons = self._column_reasons(html, "SH0002")
+        assert any("不一致" in r for r in reasons)
+
+    def test_shots_json_flag_merged_into_reasons(self, tmp_path):
+        # SH0001 在 shots.json 中 needsReview=true：标记理由合并进
+        # data-review-reasons，与 resolver 理由同一语义通道。
+        work = _copy_fixture(tmp_path)
+        html = render_shot_html(work).read_text(encoding="utf-8")
+        reasons = self._column_reasons(html, "SH0001")
+        assert any("needsReview" in r for r in reasons)
+
+    def test_clean_shots_have_empty_reasons_and_no_badge(self, tmp_path):
+        # 无冲突且无 needsReview 标记：needs-review=false、reasons=[]、
+        # 不渲染空 warning badge（roadmap 03-01 验收：无冲突不显示空容器）。
+        work = _copy_fixture(tmp_path)
+        shots_path = work / "raw" / "shots.json"
+        doc = json.loads(shots_path.read_text(encoding="utf-8"))
+        for shot in doc["shots"]:
+            shot["needsReview"] = False
+        shots_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+        (work / "raw" / "camera-motion.json").unlink()
+        html = render_shot_html(work).read_text(encoding="utf-8")
+        assert 'data-needs-review="true"' not in html
+        assert '<span class="needs-review-badge">' not in html
+        for shot_id in ("SH0001", "SH0002", "SH0003"):
+            assert self._column_reasons(html, shot_id) == []
+
+    def test_needs_review_consistent_with_reasons(self, tmp_path):
+        # 不变量：data-needs-review="true" 当且仅当 data-review-reasons 非空。
+        work = _copy_fixture(tmp_path)
+        html = render_shot_html(work).read_text(encoding="utf-8")
+        for shot_id in ("SH0001", "SH0002", "SH0003"):
+            header = next(
+                line for line in html.splitlines()
+                if f'scope="col" data-shot-id="{shot_id}"' in line
+            )
+            reasons = self._column_reasons(html, shot_id)
+            if reasons:
+                assert 'data-needs-review="true"' in header
+            else:
+                assert 'data-needs-review="false"' in header
 
     def test_boundary_form_present_per_column(self, tmp_path):
         work = _copy_fixture(tmp_path)

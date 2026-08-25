@@ -952,7 +952,7 @@
 |---|---|
 | divisionAxis | `主题/话题`、`行动/任务`、`场景/时空`、`情绪/语气`、`人物/主体`、`unknown` |
 | primaryRole | `hook`、`context`、`promise`、`problem`、`development`、`proof`、`turn`、`payoff`、`resolution`、`custom`、`unknown` |
-| informationRole | `建立背景`、`推进新信息`、`解释原因`、`演示步骤`、`得出结论`、`重复强调`、`转移话题`，可多选 |
+| informationRole | `建立背景`、`推进新信息`、`解释原因`、`演示步骤`、`得出结论`、`重复强调`、`转移话题`，可多选；`unknown` 仅作 scaffold/模型失败占位，不参与多选组合 |
 | narrativeDensity | `高`、`中`、`低`、`unknown` |
 | audienceReaction | `好奇/想看下去`、`共鸣/代入`、`意外/反转`、`娱乐/好笑`、`获得信息/学到东西`、`建立信任/认同`、`无强烈反应（信息过场）`、`unknown` |
 | visualIndependence | `静音也能看懂`、`需要声音辅助`、`没有声音完全看不懂`、`unknown` |

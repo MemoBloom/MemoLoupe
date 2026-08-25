@@ -6,6 +6,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from memoloupe.cli.main import (
     EXIT_INPUT,
     EXIT_OK,
@@ -63,7 +65,16 @@ class TestUnimplementedCommands:
         assert main(["shot", "input.mp4", "--output-dir", "out"]) == EXIT_INPUT
         assert "不存在" in capsys.readouterr().err
 
-    def test_story_and_profile_report_not_implemented(self, capsys):
-        for command in ("story", "profile"):
-            assert main([command]) == EXIT_STAGE_FAILED
-            assert "尚未实现" in capsys.readouterr().err
+    def test_story_command_missing_output_dir_is_usage_error(self, capsys):
+        # story 已实现：缺 --output-dir 是参数错误（退出码 2）。
+        with pytest.raises(SystemExit) as exc_info:
+            main(["story"])
+        assert exc_info.value.code == 2
+
+    def test_story_command_missing_dir_is_input_error(self, tmp_path, capsys):
+        assert main(["story", "--output-dir", str(tmp_path / "nonexistent")]) == EXIT_INPUT
+        assert "不存在" in capsys.readouterr().err
+
+    def test_profile_reports_not_implemented(self, capsys):
+        assert main(["profile"]) == EXIT_STAGE_FAILED
+        assert "尚未实现" in capsys.readouterr().err

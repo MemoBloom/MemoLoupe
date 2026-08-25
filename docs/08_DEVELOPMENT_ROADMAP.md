@@ -4,7 +4,6 @@
 更新日期：2026-08-25  
 基线提交：`eb8b8e2`（M2：音频与智能分析）  
 适用对象：开发型 AI、GSD planner/executor、人工开发者
-
 ## 1. 使用说明
 
 本文档是 M2 之后的当前路线，覆盖 `docs/05_TESTING_AND_ACCEPTANCE.md` 早期版本中的 M3–M5 命名。稳定字段和系统不变量仍按 `AGENTS.md` 的规范优先级执行。
@@ -26,9 +25,11 @@
 
 - M0+M1 已交付：可执行契约、ArtifactStore、校验器、确定性 Phase 1、shot HTML。
 - M2 已交付：音频六特征、BGM、ASR、Apple Vision、三组 UnifiedMLLM、checkpoint 和降级路径。
-- 全量测试：`749 passed in 38.35s`。
-- Git 工作区在路线制定时为 clean。
-- `memoloupe story` 和 `memoloupe profile` 尚未实现。
+- M3 已交付：人工校对闭环（corrections overlay、review server、import-corrections）。
+- Phase 03 已交付（03-01~03-04）：review reason 机器语义、确定性 story scaffold、
+  文本模型编排、story HTML/CLI/校验闭环。
+- 全量测试：`968 passed in 48.28s`。
+- `memoloupe profile` 尚未实现。
 
 已关闭的路线分歧：
 
@@ -40,7 +41,7 @@
 
 | Phase | 目标 | 前置 | 完成状态 |
 |---|---|---|---|
-| 03 | Phase 1 收尾并交付完整故事分析 | M2 | 待开发；03-01 中一项已提前完成 |
+| 03 | Phase 1 收尾并交付完整故事分析 | M2 | ✅ 已完成（03-01~03-04） |
 | 04 | 交付 schema v2 风格档案 | Phase 03 | 待开发 |
 | 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 待开发，可并行准备 |
 
@@ -64,16 +65,16 @@
 
 类型：refactor/test  
 依赖：无  
-状态：部分完成
+状态：已完成（2026-08-25，871 tests 全绿）
 
 必须实现：
 
-- [ ] `render/shot_html.py` 改用 `build_observations_with_review()`。
-- [ ] 将 review reasons 与 `shots.json.needsReview` 合并为镜头级展示状态。
-- [ ] 镜头列显示可读冲突理由；模型内容必须 HTML escape。
-- [ ] 为 `data-review-reasons` 或等价机器属性定义稳定 HTML 语义。
-- [ ] 扩展 HTML 校验器，验证 needs-review 与 reasons 的一致性。
-- [ ] 增加 resolver→render→validate 回归测试。
+- [x] `render/shot_html.py` 改用 `build_observations_with_review()`。
+- [x] 将 review reasons 与 `shots.json.needsReview` 合并为镜头级展示状态。
+- [x] 镜头列显示可读冲突理由；模型内容必须 HTML escape。
+- [x] 为 `data-review-reasons` 或等价机器属性定义稳定 HTML 语义。
+- [x] 扩展 HTML 校验器，验证 needs-review 与 reasons 的一致性。
+- [x] 增加 resolver→render→validate 回归测试。
 - [x] detect_shots 同时接受 base/aligned 指纹。
 - [x] aligned shots 第二次运行全部复用且不重复移动 final 边界。
 
@@ -94,23 +95,24 @@
 
 ### 03-02：确定性 Story Scaffold
 
-类型：feature/test  
+类型：feature/test
 依赖：03-01 可并行，但 Phase 结束前必须完成
+状态：已完成（2026-08-25，`analysis/story_pipeline.py`，905 tests 全绿）
 
 新增 `analysis/story_pipeline.py`，先实现不依赖文本模型的故事脚手架。
 
 必须实现：
 
-- [ ] 读取并校验 `media.json`、`shots.json`、`asr.json`、`unified-media.json`。
-- [ ] 构造镜头文本摘要：shotID、时间、visual.content、subjects/actions/setting、ASR speech、文字、转场和必要确定性信号。
-- [ ] 摘要对象不得包含 clip、帧 Data URI、源视频二进制或模型代理路径。
-- [ ] ASR segments 按时间排序，按 `gapMs`（默认 1200）创建停顿段。
-- [ ] 实现 `segment_of(start_ms, end_ms)`；首镜头必须强制创建首 block。
-- [ ] 遍历镜头，停顿段变化时创建新 block。
-- [ ] block 的 start/end 从首尾镜头 final 边界派生。
-- [ ] 无 ASR 时采用保守单块 scaffold，不自行猜测视觉故事边界。
-- [ ] scaffold 填充合法 unknown/default 叙事字段，状态为 `scaffold`、boundarySource 为 `asr-gap`。
-- [ ] checkpoint 指纹包含 shots、ASR、gapMs、实现版本。
+- [x] 读取并校验 `media.json`、`shots.json`、`asr.json`、`unified-media.json`。
+- [x] 构造镜头文本摘要：shotID、时间、visual.content、subjects/actions/setting、ASR speech、文字、转场和必要确定性信号。
+- [x] 摘要对象不得包含 clip、帧 Data URI、源视频二进制或模型代理路径。
+- [x] ASR segments 按时间排序，按 `gapMs`（默认 1200）创建停顿段。
+- [x] 实现 `segment_of(start_ms, end_ms)`；首镜头必须强制创建首 block。
+- [x] 遍历镜头，停顿段变化时创建新 block。
+- [x] block 的 start/end 从首尾镜头 final 边界派生。
+- [x] 无 ASR 时采用保守单块 scaffold，不自行猜测视觉故事边界。
+- [x] scaffold 填充合法 unknown/default 叙事字段，状态为 `scaffold`、boundarySource 为 `asr-gap`。
+- [x] checkpoint 指纹包含 shots、ASR、gapMs、实现版本。
 
 建议接口：
 
@@ -139,8 +141,9 @@ class StoryAnalysisPipeline:
 
 ### 03-03：Story 文本模型编排
 
-类型：feature/test  
+类型：feature/test
 依赖：03-02
+状态：已完成（2026-08-25，`services/text_model.py` + `analysis/story_prompts.py` + `analysis/story_pipeline.py` 编排，923 tests 全绿）
 
 新增通用文本模型端口和 Mock/OpenAI-compatible 实现，服务于 story 和后续 profile 蒸馏。
 
@@ -151,16 +154,18 @@ class StoryAnalysisPipeline:
 
 必须实现：
 
-- [ ] `TextModelService` 协议接受结构化请求、返回原始 JSON 文本。
-- [ ] Mock 支持成功、非法 JSON、漏 block、未知 block、暂时失败和永久失败。
-- [ ] OpenAI-compatible 复用 `services/base.py` 的 HTTP、鉴权和脱敏逻辑。
-- [ ] story prompt 只含文本摘要；测试断言 payload 不含视频/Data URI。
-- [ ] 返回字段覆盖 block title、division、role、content、information role、density、reaction、visual independence、relation。
-- [ ] slot 返回 slotType、title、blockIDs、rationale。
-- [ ] Schema 校验、受控词表归一化、ID 集合闭合。
-- [ ] 模型不得新增、删除或重排 shot；默认不得修改确定性 block 边界。
-- [ ] 模型不可用或返回不合规时保留 scaffold，不能丢失候选 blocks。
-- [ ] 每次成功请求后 checkpoint；失败重跑只补缺失项。
+- [x] `TextModelService` 协议接受结构化请求、返回原始 JSON 文本。
+- [x] Mock 支持成功、非法 JSON、漏 block、未知 block、暂时失败和永久失败（`MockTextModelService` 按调用序号编排 str/Exception）。
+- [x] OpenAI-compatible 复用 `services/base.py` 的 HTTP、鉴权和脱敏逻辑（`OpenAICompatibleTextModel` → `/chat/completions`）。
+- [x] story prompt 只含文本摘要；测试断言 payload 不含视频/Data URI。
+- [x] 返回字段覆盖 block title、division、role、content、information role、density、reaction、visual independence、relation。
+- [x] slot 返回 slotType、title、blockIDs、rationale。
+- [x] Schema 校验、受控词表归一化、ID 集合闭合（`parse_model_result` + 合并后 `validate_artifact`；词表常量单一事实源在 `story_prompts`）。
+- [x] 模型不得新增、删除或重排 shot；默认不得修改确定性 block 边界（模型返回 shotIDs/startMs/endMs 不一致即整体判不合规；合并只复制叙事白名单字段）。
+- [x] 模型不可用或返回不合规时保留 scaffold，不能丢失候选 blocks。
+- [x] 每次成功请求后 checkpoint（`checkpoints/story-blocks-model.json`）；失败重跑只补缺失项（指纹命中跳过请求）。
+
+附带契约收紧：`schemas/story-blocks.json` 增加 `blockTitle.maxLength=12`、`slotTitle.maxLength=15`（docs/03 §3.3 要求 schema 与后处理双重检查）。
 
 状态规则：
 
@@ -170,8 +175,9 @@ class StoryAnalysisPipeline:
 
 ### 03-04：Story HTML、CLI 与校验闭环
 
-类型：feature/test  
+类型：feature/test
 依赖：03-02、03-03
+状态：已完成（2026-08-25，968 tests 全绿）
 
 新增：
 
@@ -181,17 +187,37 @@ class StoryAnalysisPipeline:
 
 必须实现：
 
-- [ ] Story 时间线、block、slot、镜头覆盖和关系视图。
-- [ ] 复用 Phase 1 的五态、confidence、evidenceRefs、verified 语义。
-- [ ] story-block DOM 只出现在 storyAnalysis 文档。
-- [ ] 资源离线、路径相对、无外链脚本。
-- [ ] `memoloupe story --output-dir DIR` 替换 `_cmd_not_implemented`。
-- [ ] 默认要求 shot analysis 可用；`--allow-draft` 显式允许未确认输入。
-- [ ] validate 命令同时检查 story JSON 和 story HTML。
-- [ ] 跨文件校验 block→shot、slot→block、relation→block。
-- [ ] 生成最小样例和完整 Mock 样例。
+- [x] Story 时间线、block、slot、镜头覆盖和关系视图。
+- [x] 复用 Phase 1 的五态、confidence、evidenceRefs、verified 语义。
+- [x] story-block DOM 只出现在 storyAnalysis 文档。
+- [x] 资源离线、路径相对、无外链脚本。
+- [x] `memoloupe story --output-dir DIR` 替换 `_cmd_not_implemented`。
+- [x] 默认要求 shot analysis 可用；`--allow-draft` 显式允许未确认输入。
+- [x] validate 命令同时检查 story JSON 和 story HTML。
+- [x] 跨文件校验 block→shot、slot→block、relation→block。
+- [x] 生成最小样例和完整 Mock 样例。
 
-Phase 03 E2E：
+实现要点（决策记录见 docs/06 D-033）：
+
+- story HTML 的叙事字段以五态单元格呈现：scaffold 占位（枚举 unknown、
+  自由文本空串）统一为 `state=unknown`，模型填充值为 `state=value`、
+  source=`textModel`、evidenceRefs 指向 `raw/story-blocks.json#blocks[N].field`；
+- 人工校对复用 corrections overlay：entityID 取 storyBlockID/slotID，
+  文档状态由 `corrections/storyAnalysis.json` 推导（outdated 优先）；
+- `html_contract` 对 storyAnalysis 增加结构检查（至少一个 story-block、
+  块头必带 data-story-block-id/data-shot-ids/data-start-ms/data-end-ms、
+  每 block 至少一个可追溯证据单元格）与 strict 数据一致性检查
+  （block ID 集合、shotIDs、起止时间与 raw/story-blocks.json 对齐）；
+- CLI 草稿门禁：默认要求 shots.json+media.json 合法（退出码 3）；
+  2026-08-25 验收修复后收紧为还要求 `shotAnalysis` corrections 显式
+  `confirmed`；`--allow-draft` 是开发/调试绕过；`--mock-text-model`
+  提供 callable mock 文本模型（按 prompt 块 ID 回填，供演示/测试）。
+- story HTML strict 校验会解析 `data-evidence-refs` 到实际文件/JSON 节点；
+  complete story 必须让每个 block 至少属于一个 slot。
+- story 重写会把既有 `style-profile.json` 归档到 `checkpoints/outdated/`，
+  避免陈旧 Phase 3 产物污染当前 strict 校验。
+
+Phase 03 E2E（`tests/e2e/test_phase2_e2e.py`）：
 
 ```text
 Phase 1 fixture/output
@@ -419,4 +445,7 @@ Phase 1 fixture/output
 
 ## 10. 下一步
 
-首个可执行 plan 是 `03-01`。它范围小、风险低，并能清理 M2 遗留后再进入 Phase 2。完成 03-01 后按顺序执行 03-02、03-03、03-04。
+Phase 03（故事分析纵向链路）已完成。下一个可执行 plan 是 `04-01`
+（确定性 Profile Aggregate）：它不依赖模型，可先完成 `profile_aggregate.py`
+的纯函数聚合与测试，再按顺序执行 04-02、04-03。05-01/05-02 可在 Phase 04
+期间并行准备适配层与词表。

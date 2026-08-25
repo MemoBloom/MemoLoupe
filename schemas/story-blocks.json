@@ -64,7 +64,7 @@
               "label": { "type": "string" }
             }
           },
-          "blockTitle": { "type": "string" },
+          "blockTitle": { "type": "string", "maxLength": 12 },
           "divisionAxis": {
             "type": "string",
             "enum": [
@@ -96,7 +96,7 @@
           "coreContent": { "type": "string" },
           "informationRole": {
             "type": "string",
-            "pattern": "^(建立背景|推进新信息|解释原因|演示步骤|得出结论|重复强调|转移话题)(、(建立背景|推进新信息|解释原因|演示步骤|得出结论|重复强调|转移话题))*$"
+            "pattern": "^(unknown|(建立背景|推进新信息|解释原因|演示步骤|得出结论|重复强调|转移话题)(、(建立背景|推进新信息|解释原因|演示步骤|得出结论|重复强调|转移话题))*)$"
           },
           "narrativeDensity": {
             "type": "string",
@@ -150,7 +150,7 @@
             "type": "string",
             "pattern": "^(开场引入|背景铺垫|行动展开|冲突转折|深度剖析|高潮兑现|总结升华|结尾收束|custom)(、(开场引入|背景铺垫|行动展开|冲突转折|深度剖析|高潮兑现|总结升华|结尾收束|custom))*$"
           },
-          "slotTitle": { "type": "string" },
+          "slotTitle": { "type": "string", "maxLength": 15 },
           "blockIDs": {
             "type": "array",
             "minItems": 1,

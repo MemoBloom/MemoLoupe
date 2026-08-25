@@ -134,13 +134,13 @@
 
 ### D-023：模型服务适配与编排（M2）
 
-决策：OpenAI-compatible 适配器（urllib，不加 httpx）；编排器重试语义为"首发 + 3 次重试"指数退避；PermanentServiceError 不重试直接回退单镜头；最终 batches[] 输出三组合并视图（部分失败拆成单镜头记录，failed 批次无 response 不伪造）；fallback 模型切换当前只在服务层记录 fallbackAttempted，真正换模型重发需服务层支持（待办）。  
+决策：OpenAI-compatible 适配器（urllib，不加 httpx）；编排器重试语义为"首发 + 3 次重试"指数退避；PermanentServiceError 不重试直接回退单镜头；最终 batches[] 输出三组合并视图（部分失败拆成单镜头记录，failed 批次无 response 不伪造）；fallback 模型切换当前只在服务层记录 fallbackAttempted，真正换模型重发需服务层支持（待办）。
 理由：docs/03 §2.12 重试与合并规则；服务端口职责划分（docs/01 §7.2）。
 
 ### D-024：校验器 partial 修复与遗留（M2）
 
-决策：cross_artifact 校验器已修复——failed 且无 response 的批次不再报"集合不一致"（partial 允许成败并存）。  
-遗留：resolver 层的 needsReview 冲突理由（`build_observations_with_review`）尚未接入渲染层镜头列（render 改动留给 M3）。
+决策：cross_artifact 校验器已修复——failed 且无 response 的批次不再报"集合不一致"（partial 允许成败并存）。
+已关闭：resolver 层的 needsReview 冲突理由已完整接入渲染层镜头列（M3 完成展示，03-01 补齐 `data-review-reasons` 机器语义与校验，见 D-030）。
 已关闭：aligned shots 以派生指纹 `alignedWith` 重写后，detect_shots 复用判定同时接受 base/aligned 指纹；`test_aligned_run_is_fully_reusable_on_second_run` 已覆盖二次运行全部复用和不重复移动 final 边界。
 
 ### D-025：BGM 存在性字段归属确认（M3 路线确认）
@@ -155,18 +155,87 @@
 
 ### D-027：corrections 追加语义与状态机（M3）
 
-决策：corrections 文件（`corrections/<documentType>.json`，schema 见 `schemas/corrections.json`）采用纯追加语义，同 entityID+field 的多次修正全部保留、apply 时取最后一条；`document_status` 中 outdated 优先于一切（sourceRevision 不匹配），confirmed 只看显式 `confirmedAt`，绝不由 verified 全选推导。corrections 不是 raw artifact，不进 ArtifactName。  
+决策：corrections 文件（`corrections/<documentType>.json`，schema 见 `schemas/corrections.json`）采用纯追加语义，同 entityID+field 的多次修正全部保留、apply 时取最后一条；`document_status` 中 outdated 优先于一切（sourceRevision 不匹配），confirmed 只看显式 `confirmedAt`，绝不由 verified 全选推导。corrections 不是 raw artifact，不进 ArtifactName。
 理由：docs/02 §6 overlay 原则 + docs/04 §2"确认必须显式"。
 
 ### D-028：verified 取消核实与 confirm 三道闸门（M3）
 
-决策：correction change 允许 `verified=false`（取消核实），apply 时 verified 按 change 取值而非强制 true。`confirm_document` 前置三道闸门：completion 规则通过 + `validate_output_dir --strict` 无 error + `validate_html --strict` 无 error；outdated 状态拒绝确认。  
+决策：correction change 允许 `verified=false`（取消核实），apply 时 verified 按 change 取值而非强制 true。`confirm_document` 前置三道闸门：completion 规则通过 + `validate_output_dir --strict` 无 error + `validate_html --strict` 无 error；outdated 状态拒绝确认。
 理由：docs/04 §5.2 允许取消核实；§9 确认前必须通过严格校验。
 
 ### D-029：双模式保存与 review server（M3）
 
-决策：离线导出（Blob 下载）与 localhost review server（仅 127.0.0.1，`POST /api/corrections` / `/api/confirm`）产出同一 corrections schema；server 每次 GET 页面时以 server_mode 重渲染保证最新状态；`memoloupe import-corrections` 导入时 revision 不匹配直接拒绝；导入文件的 confirmedAt 以导入时刻落盘（幂等）。  
+决策：离线导出（Blob 下载）与 localhost review server（仅 127.0.0.1，`POST /api/corrections` / `/api/confirm`）产出同一 corrections schema；server 每次 GET 页面时以 server_mode 重渲染保证最新状态；`memoloupe import-corrections` 导入时 revision 不匹配直接拒绝；导入文件的 confirmedAt 以导入时刻落盘（幂等）。
 理由：docs/04 §5.1 双模式等价；静态 HTML 无权写本地文件。
+
+### D-030：needsReview 机器可读 HTML 语义（03-01 收尾）
+
+决策：镜头列头固定携带 `data-needs-review ∈ {true,false}` 与 `data-review-reasons`（JSON 字符串数组）。数组合并两个来源：resolver 冲突理由（D-005）在前，`shots.json` `needsReview=true` 时追加 `"shots.json 标记 needsReview"`；不变量为 needs-review="true" 当且仅当 reasons 非空。`title` 仅作人类可读 tooltip，机器消费走 `data-review-reasons`。`html_contract` 校验属性存在性、JSON 数组合法性与一致性，strict 模式额外交叉核对 raw shots.json 的 needsReview 标记（raw 标 true ⇒ 页面必须 true，单向）。
+理由：roadmap 03-01 要求稳定机器语义与校验闭环；单向交叉核对是因为 resolver 理由不持久化进 shots.json，无法反向推导。
+
+### D-031：story scaffold 默认值与 informationRole unknown（03-02）
+
+决策：确定性 scaffold 的叙事字段占位规则——枚举字段（divisionAxis/primaryRole/narrativeDensity/audienceReaction/visualIndependence）落 `unknown`，自由文本字段（divisionRationale/coreContent/blockRelation/relationReason）落空字符串，`slots=[]`。`informationRole` 受控集合无 `unknown`，而 docs/03 §3.3 要求 scaffold 语义字段 "unknown 或空"、pattern 又不允许空串——属契约缺口，故将 `schemas/story-blocks.json` 的 informationRole pattern 放宽为允许 `unknown` 单值（不参与多选组合），docs/07 受控集合同步。这是向后兼容的 widening（story-blocks 尚无下游消费者），无需迁移。segment_of 零重叠规则：尾部静默镜头归入上一 run，片头静默镜头并入首块；无 ASR 一律保守单块。
+理由：docs/06 §8"无法确定语义时输出 unknown，不自行创造确定结论"；widening 保持旧文档合法。
+
+### D-032：story 模型填充的合并与归一化（03-03）
+
+决策：模型响应对 scaffold 是"叙事字段白名单合并"——确定性字段（storyBlockID/shotIDs/startMs/endMs/boundary）结构上只从 scaffold 复制；模型返回 shotIDs 或边界不一致即整体判不合规。归一化是确定性映射：枚举去空白、表外值落 `unknown`；多值字段（informationRole/slotType）按顿号/逗号切分、保序去重、滤掉表外值，informationRole 滤空后落 `unknown`，slotType 无合法值则整体不合规。标题超长（blockTitle>12、slotTitle>15）不合规；schema 同步加 maxLength。checkpoint `checkpoints/story-blocks-model.json` 记录指纹+generatedAt+已解析 result，重跑指纹命中不重发请求，artifact generatedAt 保持稳定。
+理由：docs/03 §3.3 约束 + "不得静默吞掉"；整体回退保证候选 blocks 绝不因模型失败丢失。
+
+### D-033：story HTML 渲染语义与 CLI 草稿门禁（03-04）
+
+决策：
+
+1. **叙事字段五态呈现**：story HTML 的每个 block/slot 叙事字段构造为五态
+   Observation——非空且非 `unknown` 的文本为 `value`（source=`textModel`、
+   confidence=high），scaffold 占位（枚举 unknown、自由文本空串）统一为
+   `unknown`；evidenceRefs 固定指向 `raw/story-blocks.json#blocks[N].field`
+   （或 `#slots[N].field`），保证"每个呈现值可追溯"不变量。
+2. **校对复用 corrections overlay**：entityID 取 storyBlockID/slotID，
+   与 shot 页面同一套 corrections schema、apply 与 document_status 语义
+   （outdated 优先、confirmed 仅显式）；block/slot 字段同样禁止非确定性
+   来源改 absent。
+3. **story-block 机器语义**：块根元素 `class="story-block"` 且必带
+   `data-story-block-id`/`data-shot-ids`/`data-start-ms`/`data-end-ms`；
+   `html_contract` 只收集该 class 的块根（时间线等辅助元素虽也带
+   `data-story-block-id`，不构成 story-block DOM）；strict 模式核对页面
+   block 集合、shotIDs、起止时间与 raw/story-blocks.json 对齐。
+4. **CLI 草稿门禁**：`memoloupe story` 默认要求 `raw/shots.json` 与
+   `raw/media.json` 存在且通过 schema 校验，并且
+   `corrections/shotAnalysis.json` 推导状态为 `confirmed`；否则退出码 3。
+   `--allow-draft` 是显式开发/调试绕过，用于未确认输入的纵向测试。
+   该规则按 `docs/00` 的高优先级产品不变量执行，覆盖早期"只要求 JSON
+   可用"的临时实现选择。
+5. **mock 文本模型 callable 化**：`MockTextModelService` 的 script 值允许
+   `Callable[[TextModelRequest], str]`，使 CLI `--mock-text-model` 可按
+   prompt 中出现的块 ID 动态回填合法响应（与 scaffold 块集合闭合）。
+
+理由：docs/04 §4 story 页面要求（五态/证据/校对语义）+ roadmap 03-04 门禁
+要求 + 保持与 shot 页面一致的机器语义与校验闭环。
+
+### D-034：Phase 03 验收修复（证据引用、slot 覆盖、下游失效）
+
+决策：
+
+1. story HTML 的 slot 字段 evidenceRef 必须指向
+   `raw/story-blocks.json#slots[N].field`；block 字段只能指向
+   `#blocks[N].field`。`html_contract` strict 模式除格式解析外，还必须读取
+   目标文件并解析 JSON 指针，防止格式合法但节点不存在的伪追溯。
+2. 文本模型返回 `status=complete` 的前提是所有 scaffold block 至少归入一个
+   slot。模型漏分配任一 block 时整体回退 scaffold；跨文件校验也对
+   complete story 执行同一约束。`status=scaffold` 仍允许 `slots=[]`。
+3. `StoryAnalysisPipeline` 重写 `raw/story-blocks.json` 后，根目录已有的
+   `style-profile.json` 视为下游陈旧产物，移动到
+   `checkpoints/outdated/style-profile.<content-revision>.json`；未重写但检测到
+   profile slot 集合与 story slot 集合不一致时也执行同样归档。归档保留原文件，
+   但移出 active contract 路径，确保后续 `memoloupe validate --strict` 不把
+   旧 Phase 3 产物误当作当前 story 的有效结果。
+
+理由：docs/00 §4.4 全链路追溯、docs/02 §4.11 每个 complete block 至少属于
+一个 slot、docs/03 §5.1 story 变化必须失效 profile。该修复关闭 Phase 03
+验收中发现的三类假阳性：slot evidenceRef 错位、complete story 无 slot 覆盖、
+以及重跑 story 后遗留陈旧 profile。
 
 ## 3. 推荐技术默认值
 

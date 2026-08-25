@@ -171,6 +171,24 @@ class TestDerivedBreakage:
             for i in _errors(issues)
         )
 
+    def test_complete_story_block_must_belong_to_slot(self, tmp_path: Path) -> None:
+        data = load_fixture("output_full", "raw/story-blocks.json")
+        data["status"] = "complete"
+        data["slots"] = [
+            {
+                "slotID": "S001",
+                "slotType": "开场引入",
+                "slotTitle": "开场",
+                "blockIDs": [data["blocks"][0]["storyBlockID"]],
+                "slotRationale": "只覆盖第一块。",
+            }
+        ]
+        issues = self._run(tmp_path, "raw/story-blocks.json", data)
+        assert any(
+            i.artifact == "story-blocks" and "至少属于一个 slot" in i.message
+            for i in _errors(issues)
+        )
+
     def test_duration_share_sum_broken(self, tmp_path: Path) -> None:
         data = load_fixture("output_full", "style-profile.json")
         broken = mutate(data, "structure.slots[0].L1.durationShare", 0.5)

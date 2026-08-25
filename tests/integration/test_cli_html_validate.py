@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import html as html_lib
+import json
+import re
 import shutil
 from pathlib import Path
 
@@ -48,3 +51,39 @@ class TestValidateWithShotHtml:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         assert main(["validate", str(work)]) == EXIT_OK
+
+
+class TestReviewReasonsRegression:
+    """resolver→render→validate 回归（roadmap 03-01）：
+
+    resolver 产生的 needsReview 理由经渲染进入 data-review-reasons，
+    严格校验必须全程通过；人为破坏一致性必须被捕获。
+    """
+
+    def test_resolver_reasons_survive_render_and_strict_validate(self, tmp_path):
+        work = _rendered_dir(tmp_path)
+        assert main(["validate", str(work), "--strict"]) == EXIT_OK
+        html_text = (work / "shot-analysis.html").read_text(encoding="utf-8")
+        header = next(
+            line for line in html_text.splitlines()
+            if 'scope="col" data-shot-id="SH0002"' in line
+        )
+        # SH0002：camera-motion 与模型语义冲突，理由须机器可读地保留到页面。
+        assert 'data-needs-review="true"' in header
+        match = re.search(r'data-review-reasons="([^"]*)"', header)
+        assert match
+        reasons = json.loads(html_lib.unescape(match.group(1)))
+        assert any("不一致" in r for r in reasons)
+
+    def test_tampered_needs_review_fails_strict(self, tmp_path):
+        work = _rendered_dir(tmp_path)
+        html_path = work / "shot-analysis.html"
+        text = html_path.read_text(encoding="utf-8")
+        header = next(
+            line for line in text.splitlines()
+            if 'scope="col" data-shot-id="SH0002"' in line
+        )
+        tampered = header.replace('data-needs-review="true"', 'data-needs-review="false"')
+        assert tampered != header
+        html_path.write_text(text.replace(header, tampered), encoding="utf-8")
+        assert main(["validate", str(work), "--strict"]) == EXIT_VALIDATION_FAILED

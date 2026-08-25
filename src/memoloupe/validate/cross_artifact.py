@@ -625,6 +625,21 @@ def _check_story_blocks(docs: dict[str, dict], issues: list[ValidationIssue]) ->
                     "slot 引用的 blockID 不存在",
                     expected=sorted(x for x in block_ids if x), actual=bid,
                 ))
+    if doc.get("status") == "complete":
+        slot_membership = Counter()
+        for slot in doc.get("slots", []):
+            if not isinstance(slot, dict):
+                continue
+            for bid in slot.get("blockIDs", []):
+                if isinstance(bid, str) and bid in block_ids:
+                    slot_membership[bid] += 1
+        for bid in sorted(b for b in block_ids if isinstance(b, str)):
+            if slot_membership.get(bid, 0) == 0:
+                issues.append(_issue(
+                    name, "$.slots",
+                    "complete story 中每个 block 至少属于一个 slot",
+                    expected="至少一个 slot.blockIDs 引用", actual=bid,
+                ))
 
 
 def _check_style_profile(docs: dict[str, dict], issues: list[ValidationIssue]) -> None:

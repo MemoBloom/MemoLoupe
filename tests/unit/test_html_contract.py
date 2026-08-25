@@ -25,7 +25,7 @@ VALID_DOC = """<!DOCTYPE html>
   <thead>
     <tr>
       <th scope="col">字段</th>
-      <th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>
+      <th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>
     </tr>
   </thead>
   <tbody>
@@ -54,6 +54,32 @@ def _errors(issues):
 
 def _messages(issues) -> str:
     return "\n".join(i.message for i in issues)
+
+
+def _write_html_ref_targets(root: Path) -> None:
+    raw = root / "raw"
+    raw.mkdir(exist_ok=True)
+    (raw / "unified-media.json").write_text(
+        json.dumps(
+            {
+                "batches": [
+                    {
+                        "response": {
+                            "shots": [
+                                {"visual": {"framing": "全景"}},
+                            ]
+                        }
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (raw / "audio-energy.json").write_text(
+        json.dumps({"shots": [{}, {}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 class TestValidDocument:
@@ -135,17 +161,135 @@ class TestStructure:
     def test_story_block_allowed_in_story_analysis(self, tmp_path):
         doc = VALID_DOC.replace("shotAnalysis", "storyAnalysis").replace(
             "</body>",
-            '<section class="story-block" data-story-block-id="B0001"></section>\n</body>',
+            '<section class="story-block" data-story-block-id="B0001" '
+            'data-shot-ids="SH0001" data-start-ms="0" data-end-ms="3203">'
+            '<table><tbody><tr>'
+            '<td data-field="primaryRole" data-block-id="B0001" '
+            'data-value-state="value" data-confidence="high" '
+            'data-source="textModel" data-verified="false" '
+            'data-evidence-refs="raw/story-blocks.json#blocks[0].primaryRole">hook</td>'
+            "</tr></tbody></table></section>\n</body>",
         )
         assert _errors(_validate(tmp_path, doc)) == []
 
     def test_shot_analysis_requires_shot_column(self, tmp_path):
         doc = VALID_DOC.replace(
-            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>',
+            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>',
             "<th scope=\"col\">SH0001</th>",
         )
         issues = _errors(_validate(tmp_path, doc))
         assert "镜头列" in _messages(issues)
+
+
+class TestReviewReasonsSemantics:
+    """data-review-reasons 机器可读语义（roadmap 03-01）：
+
+    镜头列头必须携带 data-needs-review ∈ {true,false} 与
+    data-review-reasons（JSON 字符串数组），且二者一致：
+    needs-review="true" 当且仅当 reasons 非空。
+    """
+
+    COL = (
+        '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203"'
+        ' data-needs-review="false" data-review-reasons="[]">SH0001</th>'
+    )
+
+    def _variant(self, tmp_path, old: str, new: str):
+        return _errors(_validate(tmp_path, VALID_DOC.replace(old, new)))
+
+    def test_valid_true_with_reasons_passes(self, tmp_path):
+        doc = VALID_DOC.replace(
+            'data-needs-review="false" data-review-reasons="[]"',
+            'data-needs-review="true" data-review-reasons="[&quot;运镜冲突&quot;]"',
+        )
+        assert _errors(_validate(tmp_path, doc)) == []
+
+    def test_missing_needs_review_attribute(self, tmp_path):
+        issues = self._variant(tmp_path, ' data-needs-review="false"', "")
+        assert "data-needs-review" in _messages(issues)
+
+    def test_invalid_needs_review_value(self, tmp_path):
+        issues = self._variant(
+            tmp_path, 'data-needs-review="false"', 'data-needs-review="maybe"'
+        )
+        assert "data-needs-review" in _messages(issues)
+
+    def test_missing_review_reasons_attribute(self, tmp_path):
+        issues = self._variant(tmp_path, ' data-review-reasons="[]"', "")
+        assert "data-review-reasons" in _messages(issues)
+
+    def test_reasons_must_be_json_array(self, tmp_path):
+        issues = self._variant(
+            tmp_path, 'data-review-reasons="[]"', 'data-review-reasons="not-json"'
+        )
+        assert "data-review-reasons" in _messages(issues)
+
+    def test_reasons_must_be_string_array(self, tmp_path):
+        issues = self._variant(
+            tmp_path, 'data-review-reasons="[]"', 'data-review-reasons="[1]"'
+        )
+        assert "data-review-reasons" in _messages(issues)
+
+    def test_true_with_empty_reasons_is_inconsistent(self, tmp_path):
+        issues = self._variant(
+            tmp_path, 'data-needs-review="false"', 'data-needs-review="true"'
+        )
+        assert any(
+            "data-review-reasons" in i.message and "data-needs-review" in i.message
+            for i in issues
+        )
+
+    def test_false_with_nonempty_reasons_is_inconsistent(self, tmp_path):
+        issues = self._variant(
+            tmp_path, 'data-review-reasons="[]"', 'data-review-reasons="[&quot;x&quot;]"'
+        )
+        assert any(
+            "data-review-reasons" in i.message and "data-needs-review" in i.message
+            for i in issues
+        )
+
+
+class TestStrictReviewReasonsCrossCheck:
+    """strict 模式：raw/shots.json 的 needsReview 标记与页面列头交叉核对。"""
+
+    def _make_root(self, tmp_path: Path, *, needs_review: bool) -> Path:
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        (raw / "shots.json").write_text(
+            json.dumps({"shots": [
+                {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 3203,
+                 "needsReview": needs_review},
+            ]}),
+            encoding="utf-8",
+        )
+        (raw / "media.json").write_text(
+            json.dumps({"source": {"revisionID": "a1b2c3d4e5f6"}}), encoding="utf-8"
+        )
+        _write_html_ref_targets(tmp_path)
+        return tmp_path
+
+    def test_raw_flag_true_requires_page_true(self, tmp_path):
+        root = self._make_root(tmp_path, needs_review=True)
+        issues = _errors(_validate(tmp_path, VALID_DOC, root=root, strict=True))
+        assert "needsReview" in _messages(issues)
+
+    def test_raw_flag_true_with_page_true_passes(self, tmp_path):
+        root = self._make_root(tmp_path, needs_review=True)
+        doc = VALID_DOC.replace(
+            'data-needs-review="false" data-review-reasons="[]"',
+            'data-needs-review="true" '
+            'data-review-reasons="[&quot;shots.json 标记 needsReview&quot;]"',
+        )
+        assert _errors(_validate(tmp_path, doc, root=root, strict=True)) == []
+
+    def test_page_true_without_raw_flag_passes(self, tmp_path):
+        # resolver 冲突理由可独立置 true，不要求 raw 有标记。
+        root = self._make_root(tmp_path, needs_review=False)
+        doc = VALID_DOC.replace(
+            'data-needs-review="false" data-review-reasons="[]"',
+            'data-needs-review="true" data-review-reasons="[&quot;运镜冲突&quot;]"',
+        )
+        assert _errors(_validate(tmp_path, doc, root=root, strict=True)) == []
 
 
 class TestCells:
@@ -240,15 +384,16 @@ class TestStrictConsistency:
         (raw / "media.json").write_text(
             json.dumps({"source": {"revisionID": "a1b2c3d4e5f6"}}), encoding="utf-8"
         )
+        _write_html_ref_targets(tmp_path)
         return tmp_path
 
     def test_strict_consistent_doc_passes(self, tmp_path):
         root = self._make_root(tmp_path)
         # 页面只展示 SH0001 不行——必须与 shots.json 集合一致。
         doc = VALID_DOC.replace(
-            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>',
-            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>'
-            '<th scope="col" data-shot-id="SH0002" data-start-ms="3203" data-end-ms="6400">SH0002</th>',
+            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>',
+            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>'
+            '<th scope="col" data-shot-id="SH0002" data-start-ms="3203" data-end-ms="6400" data-needs-review="false" data-review-reasons="[]">SH0002</th>',
         )
         issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
         # SH0002 列缺少可追溯证据单元格 -> 仍报错；补上单元格后应为零。
@@ -270,9 +415,9 @@ class TestStrictConsistency:
     def test_strict_time_boundary_mismatch(self, tmp_path):
         root = self._make_root(tmp_path)
         doc = VALID_DOC.replace(
-            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>',
-            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203">SH0001</th>'
-            '<th scope="col" data-shot-id="SH0002" data-start-ms="3203" data-end-ms="9999">SH0002</th>',
+            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>',
+            '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>'
+            '<th scope="col" data-shot-id="SH0002" data-start-ms="3203" data-end-ms="9999" data-needs-review="false" data-review-reasons="[]">SH0002</th>',
         )
         issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
         assert "finalEndMs" in _messages(issues) or "data-end-ms" in _messages(issues)
@@ -322,6 +467,167 @@ class TestEditingControlsAllowed:
         assert _errors(_validate(tmp_path, doc)) == []
 
 
+class TestStoryAnalysisDocument:
+    """storyAnalysis 文档结构（docs/04 §4、roadmap 03-04）。
+
+    story-block DOM 只允许出现在 storyAnalysis；storyAnalysis 必须包含
+    至少一个 story-block，且块头携带 data-story-block-id/data-shot-ids/
+    data-start-ms/data-end-ms；每 block 至少一个可追溯证据单元格。
+    """
+
+    STORY_DOC = """<!DOCTYPE html>
+<html data-document-type="storyAnalysis" data-document-status="draft"
+      data-contract-version="1.0" data-source-revision="a1b2c3d4e5f6">
+<head><meta charset="utf-8"><title>story</title></head>
+<body>
+<button type="button" id="confirm-document">确认文档</button>
+<section class="story-block" data-story-block-id="B0001" data-shot-ids="SH0001"
+         data-start-ms="0" data-end-ms="3203">
+  <table><tbody><tr>
+    <td data-field="primaryRole" data-block-id="B0001" data-value-state="value"
+        data-confidence="high" data-source="textModel" data-verified="false"
+        data-evidence-refs="raw/story-blocks.json#blocks[0].primaryRole">hook</td>
+  </tr></tbody></table>
+</section>
+</body>
+</html>
+"""
+
+    def test_valid_story_doc_has_no_error(self, tmp_path):
+        issues = _errors(_validate(tmp_path, self.STORY_DOC))
+        assert issues == []
+
+    def test_story_analysis_requires_story_block(self, tmp_path):
+        doc = self.STORY_DOC.replace(
+            '<section class="story-block" data-story-block-id="B0001" data-shot-ids="SH0001"\n'
+            '         data-start-ms="0" data-end-ms="3203">',
+            "<section>",
+        )
+        issues = _errors(_validate(tmp_path, doc))
+        assert "story-block" in _messages(issues)
+
+    def test_story_block_missing_required_attrs(self, tmp_path):
+        doc = self.STORY_DOC.replace(' data-shot-ids="SH0001"', "")
+        issues = _errors(_validate(tmp_path, doc))
+        assert "data-shot-ids" in _messages(issues)
+
+    def test_story_block_missing_start_end(self, tmp_path):
+        doc = self.STORY_DOC.replace(" data-start-ms=\"0\" data-end-ms=\"3203\"", "")
+        issues = _errors(_validate(tmp_path, doc))
+        assert "data-start-ms" in _messages(issues)
+        assert "data-end-ms" in _messages(issues)
+
+    def test_story_block_requires_traceable_cell(self, tmp_path):
+        doc = self.STORY_DOC.replace(
+            ' data-evidence-refs="raw/story-blocks.json#blocks[0].primaryRole"', ""
+        )
+        issues = _errors(_validate(tmp_path, doc))
+        assert "data-evidence-refs" in _messages(issues)
+
+    def test_story_block_cell_without_block_id_is_ignored_for_coverage(self, tmp_path):
+        doc = self.STORY_DOC.replace(" data-block-id=\"B0001\"", "")
+        issues = _errors(_validate(tmp_path, doc))
+        assert "data-evidence-refs" in _messages(issues)
+
+    def test_empty_shot_ids_rejected(self, tmp_path):
+        doc = self.STORY_DOC.replace('data-shot-ids="SH0001"', 'data-shot-ids=""')
+        issues = _errors(_validate(tmp_path, doc))
+        assert "data-shot-ids" in _messages(issues)
+
+
+class TestStoryStrictConsistency:
+    """strict：storyAnalysis 页面 story-block 与 raw/story-blocks.json 对齐。"""
+
+    STORY_BLOCKS = {
+        "status": "complete",
+        "boundarySource": "asr-gap",
+        "gapMs": 1200,
+        "generatedAt": "2026-08-25T00:00:00Z",
+        "blocks": [
+            {"storyBlockID": "B0001", "shotIDs": ["SH0001"],
+             "startMs": 0, "endMs": 3203, "primaryRole": "hook"},
+        ],
+        "slots": [],
+    }
+
+    def _make_root(self, tmp_path: Path) -> Path:
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        (raw / "shots.json").write_text(
+            json.dumps({"shots": [
+                {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 3203},
+            ]}),
+            encoding="utf-8",
+        )
+        (raw / "media.json").write_text(
+            json.dumps({"source": {"revisionID": "a1b2c3d4e5f6"}}), encoding="utf-8"
+        )
+        (raw / "story-blocks.json").write_text(
+            json.dumps(self.STORY_BLOCKS, ensure_ascii=False), encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_consistent_story_doc_passes_strict(self, tmp_path):
+        root = self._make_root(tmp_path)
+        assert _errors(_validate(tmp_path, TestStoryAnalysisDocument.STORY_DOC,
+                                 root=root, strict=True)) == []
+
+    def test_block_id_set_mismatch(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            'data-story-block-id="B0001"', 'data-story-block-id="B9999"'
+        )
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "story-block ID 集合" in _messages(issues)
+
+    def test_block_shot_ids_mismatch(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            'data-shot-ids="SH0001"', 'data-shot-ids="SH0001 SH0002"'
+        )
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "data-shot-ids" in _messages(issues)
+
+    def test_block_time_mismatch(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            'data-end-ms="3203"', 'data-end-ms="9999"'
+        )
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "data-end-ms" in _messages(issues)
+
+    def test_block_unknown_shot_reference(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            'data-shot-ids="SH0001"', 'data-shot-ids="SH0001 SH9999"'
+        )
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "SH9999" in _messages(issues)
+
+    def test_html_evidence_ref_pointer_must_resolve_strict(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            "raw/story-blocks.json#blocks[0].primaryRole",
+            "raw/story-blocks.json#blocks[0].slotType",
+        )
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "data-evidence-refs 指针不可解析" in _messages(issues)
+
+    def test_missing_story_blocks_json(self, tmp_path):
+        root = self._make_root(tmp_path)
+        (root / "raw" / "story-blocks.json").unlink()
+        issues = _errors(_validate(tmp_path, TestStoryAnalysisDocument.STORY_DOC,
+                                   root=root, strict=True))
+        assert "story-blocks.json" in _messages(issues)
+
+    def test_non_strict_skips_story_consistency(self, tmp_path):
+        root = self._make_root(tmp_path)
+        doc = TestStoryAnalysisDocument.STORY_DOC.replace(
+            'data-source-revision="a1b2c3d4e5f6"', 'data-source-revision="deadbeef"'
+        )
+        assert _errors(_validate(tmp_path, doc, root=root, strict=False)) == []
+
+
 class TestConfirmButton:
     """页面必须有带可访问名称的确认按钮（docs/04 §2：确认必须显式）。"""
 
@@ -363,6 +669,7 @@ class TestStrictCorrectionsStatus:
         (raw / "media.json").write_text(
             json.dumps({"source": {"revisionID": "a1b2c3d4e5f6"}}), encoding="utf-8"
         )
+        _write_html_ref_targets(tmp_path)
         if with_corrections:
             corr_dir = tmp_path / "corrections"
             corr_dir.mkdir()
