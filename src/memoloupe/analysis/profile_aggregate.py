@@ -38,7 +38,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-from memoloupe.analysis.vocabulary import load_vocabulary
+from memoloupe.analysis.vocabulary import Vocabulary, load_vocabulary
 
 PROFILE_AGGREGATE_VERSION = "profile-aggregate.v1"
 SCHEMA_VERSION = 2
@@ -65,9 +65,6 @@ _DISTRIBUTION_FIELDS: dict[str, tuple[str, str]] = {
 }
 
 _BLOCK_RELATION_REF_RE = re.compile(r"^\s*(.+?)\s*→\s*(B\d{4})\s*$")
-
-_VOCAB = load_vocabulary()
-
 
 def _as_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
@@ -484,6 +481,7 @@ def _style_distribution(
     section: str,
     field: str,
     vocab_field: str,
+    vocabulary: Vocabulary,
 ) -> dict:
     """unified 模型字段经受控词表归一化的分布（按镜头数计权）。
 
@@ -497,7 +495,7 @@ def _style_distribution(
         model = model_shots.get(str(shot["shotID"]), {})
         section_data = model.get(section)
         raw = section_data.get(field) if isinstance(section_data, dict) else None
-        key = _VOCAB.canonical_key(vocab_field, raw) if raw is not None else None
+        key = vocabulary.canonical_key(vocab_field, raw) if raw is not None else None
         if key:
             counts[key] += 1
     if not counts:
@@ -703,10 +701,13 @@ def _style(
     shots: list[dict],
     total_ms: int,
     analyzed_range: tuple[int, int] | None,
+    vocabulary: Vocabulary,
 ) -> dict:
     style: dict[str, dict | float] = {}
     for key, (section, field, vocab_field) in _DISTRIBUTION_FIELDS.items():
-        style[key] = _style_distribution(unified, shots, section, field, vocab_field)
+        style[key] = _style_distribution(
+            unified, shots, section, field, vocab_field, vocabulary
+        )
     style["cameraMovement"] = _camera_distribution(camera)
     style["textOverlay"] = _text_overlay_coverage(unified, shots, total_ms, analyzed_range)
     style["bgm"] = _bgm_coverage(music, shots, total_ms, analyzed_range)
@@ -780,6 +781,7 @@ def build_profile_aggregate(
     raws: Mapping[str, Mapping | None],
     *,
     generated_at: str | None = None,
+    vocabulary: Vocabulary | None = None,
 ) -> dict:
     """从稳定 JSON 构造 style-profile 确定性聚合文档（纯函数，不写盘）。
 
@@ -792,6 +794,7 @@ def build_profile_aggregate(
     media = raws.get("media")
     shots_doc = raws.get("shots")
     story = raws.get("story-blocks")
+    vocabulary = vocabulary or load_vocabulary()
     if not shots_doc or not story:
         raise ValueError("profile 聚合需要可用的 raw/shots.json 与 raw/story-blocks.json")
     if media is None:
@@ -839,6 +842,7 @@ def build_profile_aggregate(
         "style": _style(
             raws.get("unified-media"), raws.get("camera-motion"),
             raws.get("music-flags"), raws.get("asr"), shots, total_ms, analyzed,
+            vocabulary,
         ),
         "structureRequirements": [],
         "adoptionHints": None,

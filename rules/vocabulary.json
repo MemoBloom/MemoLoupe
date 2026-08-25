@@ -1,200 +1,515 @@
 {
-  "version": 1,
   "fields": {
-    "visual.framing": {
-      "values": ["远景", "全景", "中景", "近景", "特写"],
-      "aliases": {
-        "wide shot": "全景",
-        "long shot": "远景",
-        "medium shot": "中景",
-        "close-up": "特写",
-        "close up": "特写"
-      },
-      "allowTransitions": true,
-      "multiValueSeparator": "、"
-    },
-    "visual.subjectCoverage": {
-      "values": ["全身", "半身", "头部以上", "局部", "群体"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.cameraAngle": {
-      "values": ["平视", "俯拍", "仰拍", "顶拍", "倾斜"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.composition": {
-      "values": ["居中", "三分法", "对称", "框架式", "留白"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.perspective": {
-      "values": ["第一人称", "第三人称观察", "主观视角"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.lensFeel": {
-      "values": ["广角感", "标准感", "长焦压缩感", "鱼眼"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.cameraMovement": {
-      "values": ["固定", "推", "拉", "摇", "移", "跟", "升降", "手持"],
-      "aliases": {
-        "static": "固定",
-        "zoom in": "推",
-        "zoom out": "拉",
-        "handheld": "手持"
-      },
-      "allowTransitions": true,
-      "multiValueSeparator": "、"
-    },
-    "visual.movementIntensity": {
-      "values": ["static", "low", "medium", "high", "unknown"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.brightness": {
-      "values": ["明亮", "正常", "昏暗"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.contrast": {
-      "values": ["低", "中", "高"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.lightingType": {
-      "values": ["自然光", "人工光", "混合光", "低照度"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.colorTemperature": {
-      "values": ["冷", "中性", "暖"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.saturation": {
-      "values": ["低", "中", "高"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.depthOfField": {
-      "values": ["深景深", "浅景深"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visual.texture": {
-      "values": ["清晰", "柔和", "颗粒感", "胶片感"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "function.sourceMedium": {
-      "values": ["实拍素材", "动画", "图片轮播", "屏幕录制", "混合"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "function.subjectEmotion": {
-      "values": ["平静", "愉悦", "期待", "紧张", "悲伤", "中性"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "function.shotTone": {
-      "values": ["轻快", "沉稳", "紧张", "抒情", "幽默", "严肃"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "components.texts.textType": {
-      "values": ["标题", "字幕", "标签", "水印", "花字"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "components.texts.textAnimation": {
-      "values": ["无", "淡入", "淡入淡出", "弹出", "打字机", "滚动"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "editing.transition": {
-      "values": ["硬切", "淡入淡出", "叠化", "无"],
-      "aliases": {
-        "cut": "硬切",
-        "fade": "淡入淡出",
-        "dissolve": "叠化"
-      },
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "editing.continuity": {
-      "values": ["动作连续", "场景连续", "跳跃", "不连续"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "divisionAxis": {
-      "values": ["主题/话题", "行动/任务", "场景/时空", "情绪/语气", "人物/主体", "unknown"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "primaryRole": {
-      "values": ["hook", "context", "promise", "problem", "development", "proof", "turn", "payoff", "resolution", "custom", "unknown"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "informationRole": {
-      "values": ["建立背景", "推进新信息", "解释原因", "演示步骤", "得出结论", "重复强调", "转移话题"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "narrativeDensity": {
-      "values": ["高", "中", "低", "unknown"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
     "audienceReaction": {
-      "values": ["好奇/想看下去", "共鸣/代入", "意外/反转", "娱乐/好笑", "获得信息/学到东西", "建立信任/认同", "无强烈反应（信息过场）", "unknown"],
       "aliases": {},
       "allowTransitions": false,
-      "multiValueSeparator": "、"
-    },
-    "visualIndependence": {
-      "values": ["静音也能看懂", "需要声音辅助", "没有声音完全看不懂", "unknown"],
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、"
+      "multiValueSeparator": "、",
+      "values": [
+        "好奇/想看下去",
+        "共鸣/代入",
+        "意外/反转",
+        "娱乐/好笑",
+        "获得信息/学到东西",
+        "建立信任/认同",
+        "无强烈反应（信息过场）",
+        "unknown"
+      ]
     },
     "blockRelation": {
-      "values": ["铺垫", "延续", "对比", "转折", "兑现", "解决", "闪回", "预叙", "平行", "嵌套", "循环"],
       "aliases": {},
       "allowTransitions": false,
-      "multiValueSeparator": "、"
+      "multiValueSeparator": "、",
+      "values": [
+        "铺垫",
+        "延续",
+        "对比",
+        "转折",
+        "兑现",
+        "解决",
+        "闪回",
+        "预叙",
+        "平行",
+        "嵌套",
+        "循环"
+      ]
+    },
+    "components.texts.textAnimation": {
+      "aliases": {
+        "crossfade": "淡入淡出",
+        "fade": "淡入淡出",
+        "fade in": "淡入",
+        "none": "无",
+        "pop": "弹出",
+        "scroll": "滚动",
+        "typewriter": "打字机"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "无",
+        "淡入",
+        "淡入淡出",
+        "弹出",
+        "打字机",
+        "滚动"
+      ]
+    },
+    "components.texts.textType": {
+      "aliases": {
+        "decorative": "花字",
+        "label": "标签",
+        "subtitle": "字幕",
+        "title": "标题",
+        "watermark": "水印"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "标题",
+        "字幕",
+        "标签",
+        "水印",
+        "花字"
+      ]
+    },
+    "divisionAxis": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "主题/话题",
+        "行动/任务",
+        "场景/时空",
+        "情绪/语气",
+        "人物/主体",
+        "unknown"
+      ]
+    },
+    "editing.continuity": {
+      "aliases": {
+        "continuous action": "动作连续",
+        "continuous scene": "场景连续",
+        "discontinuous": "不连续",
+        "jump cut": "跳跃"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "动作连续",
+        "场景连续",
+        "跳跃",
+        "不连续"
+      ]
+    },
+    "editing.transition": {
+      "aliases": {
+        "crossfade": "叠化",
+        "cut": "硬切",
+        "cut to": "硬切",
+        "dissolve": "叠化",
+        "fade": "淡入淡出",
+        "fade out": "淡入淡出",
+        "hard cut": "硬切"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "硬切",
+        "淡入淡出",
+        "叠化",
+        "无"
+      ]
+    },
+    "function.shotTone": {
+      "aliases": {
+        "humorous": "幽默",
+        "light": "轻快",
+        "lyrical": "抒情",
+        "serious": "严肃",
+        "steady": "沉稳",
+        "tense": "紧张"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "轻快",
+        "沉稳",
+        "紧张",
+        "抒情",
+        "幽默",
+        "严肃"
+      ]
+    },
+    "function.sourceMedium": {
+      "aliases": {
+        "animation": "动画",
+        "live action": "实拍素材",
+        "live-action": "实拍素材",
+        "mixed": "混合",
+        "photo slideshow": "图片轮播",
+        "screen recording": "屏幕录制"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "实拍素材",
+        "动画",
+        "图片轮播",
+        "屏幕录制",
+        "混合"
+      ]
+    },
+    "function.subjectEmotion": {
+      "aliases": {
+        "calm": "平静",
+        "excited": "期待",
+        "joyful": "愉悦",
+        "nervous": "紧张",
+        "neutral": "中性",
+        "sad": "悲伤"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "平静",
+        "愉悦",
+        "期待",
+        "紧张",
+        "悲伤",
+        "中性"
+      ]
+    },
+    "informationRole": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "建立背景",
+        "推进新信息",
+        "解释原因",
+        "演示步骤",
+        "得出结论",
+        "重复强调",
+        "转移话题"
+      ]
+    },
+    "narrativeDensity": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "高",
+        "中",
+        "低",
+        "unknown"
+      ]
+    },
+    "primaryRole": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "hook",
+        "context",
+        "promise",
+        "problem",
+        "development",
+        "proof",
+        "turn",
+        "payoff",
+        "resolution",
+        "custom",
+        "unknown"
+      ]
     },
     "slotType": {
-      "values": ["开场引入", "背景铺垫", "行动展开", "冲突转折", "深度剖析", "高潮兑现", "总结升华", "结尾收束", "custom"],
       "aliases": {},
       "allowTransitions": false,
-      "multiValueSeparator": "、"
+      "multiValueSeparator": "、",
+      "values": [
+        "开场引入",
+        "背景铺垫",
+        "行动展开",
+        "冲突转折",
+        "深度剖析",
+        "高潮兑现",
+        "总结升华",
+        "结尾收束",
+        "custom"
+      ]
+    },
+    "visual.brightness": {
+      "aliases": {
+        "bright": "明亮",
+        "dark": "昏暗",
+        "dim": "昏暗",
+        "normal": "正常"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "明亮",
+        "正常",
+        "昏暗"
+      ]
+    },
+    "visual.cameraAngle": {
+      "aliases": {
+        "aerial": "顶拍",
+        "dutch angle": "倾斜",
+        "high angle": "俯拍",
+        "low angle": "仰拍",
+        "overhead": "顶拍",
+        "top-down": "顶拍"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "平视",
+        "俯拍",
+        "仰拍",
+        "顶拍",
+        "倾斜"
+      ]
+    },
+    "visual.cameraMovement": {
+      "aliases": {
+        "crane": "升降",
+        "dolly in": "推",
+        "dolly out": "拉",
+        "follow": "跟",
+        "handheld": "手持",
+        "jib": "升降",
+        "pan": "摇",
+        "pan left": "摇",
+        "pan right": "摇",
+        "pull back": "拉",
+        "push in": "推",
+        "static": "固定",
+        "tilt": "升降",
+        "tracking": "移",
+        "truck": "移",
+        "zoom in": "推",
+        "zoom out": "拉"
+      },
+      "allowTransitions": true,
+      "multiValueSeparator": "、",
+      "values": [
+        "固定",
+        "推",
+        "拉",
+        "摇",
+        "移",
+        "跟",
+        "升降",
+        "手持"
+      ]
+    },
+    "visual.colorTemperature": {
+      "aliases": {
+        "cool": "冷",
+        "neutral": "中性",
+        "warm": "暖"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "冷",
+        "中性",
+        "暖"
+      ]
+    },
+    "visual.composition": {
+      "aliases": {
+        "centered": "居中",
+        "framed": "框架式",
+        "negative space": "留白",
+        "rule of thirds": "三分法",
+        "symmetrical": "对称"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "居中",
+        "三分法",
+        "对称",
+        "框架式",
+        "留白"
+      ]
+    },
+    "visual.contrast": {
+      "aliases": {
+        "high": "高",
+        "low": "低",
+        "medium": "中"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "低",
+        "中",
+        "高"
+      ]
+    },
+    "visual.depthOfField": {
+      "aliases": {
+        "deep": "深景深",
+        "shallow": "浅景深"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "深景深",
+        "浅景深"
+      ]
+    },
+    "visual.framing": {
+      "aliases": {
+        "close shot": "近景",
+        "close up": "特写",
+        "close-up": "特写",
+        "establishing shot": "远景",
+        "extreme close-up": "特写",
+        "full shot": "全景",
+        "long shot": "远景",
+        "medium close-up": "近景",
+        "medium shot": "中景",
+        "tight shot": "近景",
+        "wide shot": "全景"
+      },
+      "allowTransitions": true,
+      "multiValueSeparator": "、",
+      "values": [
+        "远景",
+        "全景",
+        "中景",
+        "近景",
+        "特写"
+      ]
+    },
+    "visual.lensFeel": {
+      "aliases": {
+        "fisheye": "鱼眼",
+        "long lens": "长焦压缩感",
+        "standard": "标准感",
+        "telephoto": "长焦压缩感",
+        "wide angle": "广角感"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "广角感",
+        "标准感",
+        "长焦压缩感",
+        "鱼眼"
+      ]
+    },
+    "visual.lightingType": {
+      "aliases": {
+        "artificial": "人工光",
+        "low light": "低照度",
+        "low-light": "低照度",
+        "mixed": "混合光",
+        "natural": "自然光"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "自然光",
+        "人工光",
+        "混合光",
+        "低照度"
+      ]
+    },
+    "visual.movementIntensity": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "static",
+        "low",
+        "medium",
+        "high",
+        "unknown"
+      ]
+    },
+    "visual.perspective": {
+      "aliases": {
+        "first person": "第一人称",
+        "pov": "主观视角",
+        "subjective": "主观视角",
+        "third person": "第三人称观察"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "第一人称",
+        "第三人称观察",
+        "主观视角"
+      ]
+    },
+    "visual.saturation": {
+      "aliases": {
+        "desaturated": "低",
+        "high": "高",
+        "low": "低",
+        "medium": "中",
+        "vivid": "高"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "低",
+        "中",
+        "高"
+      ]
+    },
+    "visual.subjectCoverage": {
+      "aliases": {
+        "full body": "全身",
+        "group shot": "群体",
+        "half body": "半身",
+        "head and shoulders": "头部以上",
+        "headshot": "头部以上",
+        "part": "局部"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "全身",
+        "半身",
+        "头部以上",
+        "局部",
+        "群体"
+      ]
+    },
+    "visual.texture": {
+      "aliases": {
+        "filmic": "胶片感",
+        "grainy": "颗粒感",
+        "sharp": "清晰",
+        "soft": "柔和"
+      },
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "清晰",
+        "柔和",
+        "颗粒感",
+        "胶片感"
+      ]
+    },
+    "visualIndependence": {
+      "aliases": {},
+      "allowTransitions": false,
+      "multiValueSeparator": "、",
+      "values": [
+        "静音也能看懂",
+        "需要声音辅助",
+        "没有声音完全看不懂",
+        "unknown"
+      ]
     }
-  }
+  },
+  "version": 2
 }

@@ -21,6 +21,7 @@ from memoloupe.analysis.profile_aggregate import (
     _expectation_chains,
     _music_alignment,
 )
+from memoloupe.analysis.vocabulary import FieldRule, Vocabulary
 from memoloupe.artifacts.schemas import ArtifactName, validate_artifact
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "output_full" / "raw"
@@ -245,6 +246,28 @@ class TestStyle:
         unified["batches"][0]["response"]["shots"][0]["editing"]["transition"] = "硬切"
         doc = _aggregate(**{"unified-media": unified})
         assert doc["style"]["transitions"] == {"硬切": 1.0}
+
+    def test_distribution_uses_supplied_vocabulary(self):
+        unified = _fixture_raws("unified-media")["unified-media"]
+        for batch in unified["batches"]:
+            for shot in batch["response"]["shots"]:
+                shot["visual"]["framing"] = "wide shot"
+        custom = Vocabulary(
+            version=999,
+            fields={
+                "visual.framing": FieldRule(
+                    values=("远景", "全景"),
+                    aliases={"wide shot": "远景"},
+                ),
+                "editing.transition": FieldRule(values=("硬切",), aliases={}),
+                "visual.lightingType": FieldRule(values=("自然光",), aliases={}),
+            },
+        )
+        doc = build_profile_aggregate(
+            {**_full_raws(), "unified-media": unified},
+            vocabulary=custom,
+        )
+        assert doc["style"]["framing"] == {"远景": 1.0}
 
 
 class TestStructureExtras:

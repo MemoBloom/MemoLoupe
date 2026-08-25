@@ -29,7 +29,8 @@
 - Phase 03 已交付（03-01~03-04）：review reason 机器语义、确定性 story scaffold、
   文本模型编排、story HTML/CLI/校验闭环。
 - Phase 04 已交付（04-01~04-03）：确定性 profile 聚合、模型蒸馏、CLI 与校验闭环。
-- 全量测试：`1041 passed in 48.10s`。
+- Phase 05-02 已交付：完整受控词表、版本化缓存失效、迁移护栏。
+- 全量测试：`1072 passed in 48.48s`。
 
 已关闭的路线分歧：
 
@@ -43,7 +44,7 @@
 |---|---|---|---|
 | 03 | Phase 1 收尾并交付完整故事分析 | M2 | ✅ 已完成（03-01~03-04） |
 | 04 | 交付 schema v2 风格档案 | Phase 03 | ✅ 已完成（04-01~04-03） |
-| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 待开发，可并行准备 |
+| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 05-02 已完成；05-01/05-03/05-04 待开发 |
 
 ## 4. Phase 03：渲染收尾与故事分析
 
@@ -366,12 +367,23 @@ Phase 1 fixture/output
 
 类型：data/test  
 依赖：可与 05-01 并行
+状态：已完成（2026-08-25，1072 tests 全绿；决策记录见 docs/06 D-040）
 
-- [ ] 扩展 `rules/vocabulary.json` 到完整闭集。
-- [ ] 为别名、箭头变化、多选、unknown/unmapped 增加契约测试。
-- [ ] 词表版本进入模型 group 和 story/profile prompt 指纹。
-- [ ] 词表升级使相关缓存正确失效。
-- [ ] 对历史 unmapped 提供显式重算或迁移路径。
+- [x] 扩展 `rules/vocabulary.json` 到完整闭集。
+- [x] 为别名、箭头变化、多选、unknown/unmapped 增加契约测试。
+- [x] 词表版本进入模型 group 和 story/profile prompt 指纹。
+- [x] 词表升级使相关缓存正确失效。
+- [x] 对历史 unmapped 提供显式重算或迁移路径。
+
+实现要点：
+
+- 闭集 = docs/07 全部受控字段（modelShot 22 + story 8），契约测试锁定；
+- 词表升 v2：补充 121 个英文/口语别名；`tests/contract/test_vocabulary_contract.py`
+  锁定闭集清单、story_prompts 一致性、别名合法性（目标存在/单跳/casefold 唯一）、
+  版本递增；
+- `vocabVersion` 进入 story model_fill 与 profile aggregate/distill 指纹
+  （unified group 指纹已有），词表升级自动失效全部相关缓存；
+- unmapped 不持久化：词表升级后重跑阶段/重渲染即完成迁移。
 
 ### 05-03：黄金视频与参数校准
 
@@ -464,8 +476,9 @@ Phase 1 fixture/output
 
 ## 10. 下一步
 
-Phase 03 与 Phase 04（故事分析与风格档案纵向链路）均已完成。下一个可执行
-plan 是 `05-01`（真实服务联调）与 `05-02`（完整受控词表）：两者不依赖
-外部黄金样例，可先补齐供应商适配与词表契约测试；05-03（黄金视频校准）与
-05-04（HTML 体验/性能/发布）需要外部输入（真实视频、端点、视觉原型），
-可在适配层完成后并行推进。
+Phase 03、Phase 04 与 05-02（完整受控词表）已完成。下一个可执行 plan 是
+`05-01`（真实服务联调）：其中不依赖端点的部分（fallback 真正换模型重发、
+ASR multipart 适配器扩展点、真实服务测试的 opt-in 框架与脱敏 fixture 录制）
+可先行实现；供应商端点/鉴权/限制等仍需外部输入。05-03（黄金视频校准）与
+05-04（HTML 体验/性能/发布）依赖真实视频与视觉原型，可在适配层完成后
+并行推进。

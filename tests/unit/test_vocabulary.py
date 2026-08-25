@@ -21,7 +21,7 @@ def vocab() -> Vocabulary:
 class TestLoad:
     def test_default_load_reads_repo_rules(self):
         vocab = load_vocabulary()
-        assert vocab.version == 1
+        assert vocab.version >= 2
         assert "visual.framing" in vocab.fields
 
     def test_explicit_path_load(self, vocab):

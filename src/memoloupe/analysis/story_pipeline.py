@@ -57,6 +57,7 @@ from memoloupe.analysis.story_prompts import (
     VISUAL_INDEPENDENCES,
     build_story_prompt,
 )
+from memoloupe.analysis.vocabulary import load_vocabulary
 from memoloupe.artifacts.schemas import ArtifactName, validate_artifact
 from memoloupe.artifacts.store import ArtifactStore, WriteMetadata
 from memoloupe.core.atomic_io import read_json, write_json_atomic
@@ -763,12 +764,13 @@ class StoryAnalysisPipeline:
                     "version": STORY_SCAFFOLD_VERSION,
                 }
             )
-            # 模型填充指纹：scaffold 指纹 + prompt 版本 + 服务标记。
+            # 模型填充指纹：scaffold 指纹 + prompt 版本 + 词表版本 + 服务标记。
             model_fp = fingerprint(
                 {
                     "artifact": "story-blocks-model",
                     "scaffold": fp,
                     "promptVersion": STORY_PROMPT_VERSION,
+                    "vocabVersion": load_vocabulary().version,
                     "service": "injected" if request.text_service is not None else "none",
                     "version": STORY_MODEL_FILL_VERSION,
                 }

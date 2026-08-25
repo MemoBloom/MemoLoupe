@@ -392,3 +392,47 @@ class TestPipeline:
         assert report.status == "partial"
         profile = json.loads((work / "style-profile.json").read_text(encoding="utf-8"))
         assert profile["distillStatus"] == "skipped"
+
+
+class TestVocabularyVersionInvalidatesProfileCache(TestPipeline):
+    """roadmap 05-02：词表版本进入聚合/蒸馏指纹，词表升级使缓存失效。"""
+
+    def _aggregate_inputs(self, work: Path) -> dict:
+        return {
+            "media": json.loads((work / "raw" / "media.json").read_text(encoding="utf-8")),
+            "shots": json.loads((work / "raw" / "shots.json").read_text(encoding="utf-8")),
+            "story-blocks": json.loads((work / "raw" / "story-blocks.json").read_text(encoding="utf-8")),
+            "asr": None, "audio-cuts": None, "music-flags": None,
+            "camera-motion": None, "unified-media": None,
+        }
+
+    def test_vocab_upgrade_forces_aggregate_rebuild(self, tmp_path, monkeypatch):
+        from memoloupe.analysis.profile_pipeline import ProfileBuildPipeline as P
+        from memoloupe.analysis.profile_aggregate import build_profile_aggregate
+        from memoloupe.analysis.vocabulary import Vocabulary
+
+        work = self._setup(tmp_path)
+        aggregate = build_profile_aggregate(self._aggregate_inputs(work))
+        service = MockTextModelService({0: self._response_for(aggregate)})
+        request = ProfileBuildRequest(output_dir=work, text_service=service)
+        assert P().run(request).status == "complete"
+        first_created = json.loads(
+            (work / "style-profile.json").read_text(encoding="utf-8")
+        )["createdAt"]
+
+        import memoloupe.analysis.profile_pipeline as pp
+        real = pp.load_vocabulary()
+        monkeypatch.setattr(
+            pp, "load_vocabulary",
+            lambda: Vocabulary(version=real.version + 1, fields=real.fields),
+        )
+        fresh = MockTextModelService({0: self._response_for(aggregate)})
+        assert P().run(
+            ProfileBuildRequest(output_dir=work, text_service=fresh)
+        ).status == "complete"
+        assert len(fresh.calls) == 1  # 聚合指纹变化 → 蒸馏 checkpoint 失效
+        assert len(service.calls) == 1  # 旧 mock 未再被调用
+        second_created = json.loads(
+            (work / "style-profile.json").read_text(encoding="utf-8")
+        )["createdAt"]
+        assert second_created != first_created

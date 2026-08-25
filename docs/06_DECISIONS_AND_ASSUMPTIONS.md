@@ -311,7 +311,6 @@ intendedReaction 允许 null 一致。
 ### D-039：Phase 03 验收修复（证据引用、slot 覆盖、下游失效）
 
 决策：
-
 1. story HTML 的 slot 字段 evidenceRef 必须指向
    `raw/story-blocks.json#slots[N].field`；block 字段只能指向
    `#blocks[N].field`。`html_contract` strict 模式除格式解析外，还必须读取
@@ -330,6 +329,50 @@ intendedReaction 允许 null 一致。
 一个 slot、docs/03 §5.1 story 变化必须失效 profile。该修复关闭 Phase 03
 验收中发现的三类假阳性：slot evidenceRef 错位、complete story 无 slot 覆盖、
 以及重跑 story 后遗留陈旧 profile。
+
+### D-040：完整受控词表与版本化失效（05-02）
+
+决策：
+
+1. **闭集定义**：`rules/vocabulary.json` 的完整闭集 = docs/07 声明的全部
+   受控字段——modelShot 语义字段 22 个（visual.framing/subjectCoverage/
+   cameraAngle/composition/perspective/lensFeel/cameraMovement/
+   movementIntensity/brightness/contrast/lightingType/colorTemperature/
+   saturation/depthOfField/texture、function.sourceMedium/subjectEmotion/
+   shotTone、components.texts.textType/textAnimation、editing.transition/
+   continuity）+ story-blocks 受控集合 8 个（divisionAxis/primaryRole/
+   informationRole/narrativeDensity/audienceReaction/visualIndependence/
+   blockRelation/slotType）。契约测试 `test_vocabulary_contract.py` 锁定该
+   清单，防止未来删减。
+2. **词表升 v2**：补充 121 个英文/口语别名（如 close shot→近景、
+   pan→摇、natural→自然光）；`visual.framing` 的 `multiValueSeparator`
+   保留（docs/02 §3.3 示例如此，顿号多值与 `→` 转换并存是既有行为）。
+3. **单一事实源一致性**：story_prompts 的受控词表常量与 vocabulary.json
+   对应字段（排除 unknown 占位）由契约测试逐字段断言一致，防止两份词表
+   漂移；story 归一化仍以 story_prompts 常量为准（D-031/D-032 已记录）。
+4. **词表版本进入全部相关指纹**：unified 三组 group fingerprint（既有，
+   media_groups.build_groups）＋ story model_fill 指纹与 profile
+   aggregate/distill 指纹（本次新增，`vocabVersion` 字段）。契约测试强制
+   词表内容变化必须递增 version——因此词表升级自动使 story/profile
+   checkpoint 与 unified 复用失效（docs/03 §5.1 失效矩阵"词表"行）。
+5. **历史 unmapped 迁移路径**：unmapped 是运行时归一化结果、不持久化
+   （Observation 每次渲染/编排从 raw 重建），因此词表升级后重跑相关阶段
+   （或仅重渲染 HTML）即完成迁移，无需数据迁移或显式重算工具。契约测试
+   用临时词表验证"升级前 unmapped → 升级后 value"。
+
+理由：docs/08 05-02 要求（完整闭集、契约测试、指纹失效、迁移路径）；
+别名不改变归一化语义（逐项仍须命中词表），仅提高模型输出宽容度。
+
+### D-041：Phase 05 review 修复（profile 词表对象与指纹一致）
+
+决策：`profile_aggregate` 不再在模块 import 时冻结 `rules/vocabulary.json`。
+`ProfileBuildPipeline` 在构造 `style-profile` aggregate 指纹前加载一次
+Vocabulary，将同一个对象的 `version` 写入 fingerprint，并把同一个对象传入
+`build_profile_aggregate` 执行分布归一化。
+
+理由：05-02 的缓存失效语义依赖 `vocabVersion`。如果指纹读取的是新版本，
+但聚合使用 import 时的旧词表，重跑会发生但历史 unmapped/别名迁移不会真正
+生效。显式注入词表对象可保证"缓存键"与"实际归一化规则"一致。
 
 ## 3. 推荐技术默认值
 

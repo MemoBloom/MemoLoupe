@@ -1,7 +1,7 @@
 # MemoLoupe 后续开发任务清单
 
 > 依据：`comparison-memoclip-lapian-vs-MemoLoupe.md` 的差距分析 + MemoLoupe `docs/` 规格与 `docs/06` 决策记录。
-> 现状基线（2026-08-25 实测）：M0+M1 + M2 + M3 + Phase 03 + Phase 04 已交付，**1041 测试全过**（`uv run pytest -q`，48.10s）。
+> 现状基线（2026-08-25 实测）：M0+M1 + M2 + M3 + Phase 03 + Phase 04 + Phase 05-02 已交付，**1072 测试全过**（`uv run pytest -q`，48.48s）。
 > 当前提交：`30093c3`（Phase 03: 故事分析纵向链路）。Phase 04 产物待提交。
 > 目标：补全 Phase 3 / Phase 4 剩余体验与真实服务适配，达到与 memoclip-lapian 功能等价。
 >
@@ -21,7 +21,7 @@
 | M3 | 人工校对（corrections overlay + review server + 导入导出） | ✅ 已交付 |
 | Phase 03 | 渲染收尾 + Phase 2 故事分析 | ✅ 已交付（03-01~03-04） |
 | Phase 04 | Phase 3 风格档案（schema v2） | ✅ 已交付（04-01~04-03） |
-| Phase 05 | 真实服务、完整词表、真实样例校准与体验收尾 | ⬜ 待开发，可并行准备 |
+| Phase 05 | 真实服务、完整词表、真实样例校准与体验收尾 | 进行中：05-02 已交付 |
 
 ---
 
@@ -123,11 +123,15 @@
 
 ---
 
-## 四、真实服务适配与校准（roadmap Phase 05，可与 03/04 并行准备）
+## 四、真实服务适配与校准（roadmap Phase 05）
 
 - [ ] **T5.1 真实 UnifiedMLLM 适配**：真实端点/鉴权/最终 prompt（docs/06 §5 尚缺信息）；fallback 真正换模型重发需服务层支持（D-023 待办）。
 - [ ] **T5.2 ASR / 文本模型真实服务**：端点、鉴权、供应商扩展字段。
-- [ ] **T5.3 完整 `rules/vocabulary.json`**（当前小词表实现）。
+- [x] **T5.3 完整 `rules/vocabulary.json`** ✅（2026-08-25，1072 tests 全绿）
+  - 闭集 = docs/07 全部受控字段（modelShot 22 + story 8），契约测试锁定；
+  - 词表升 v2（121 个英文/口语别名）；`vocabVersion` 进入 unified/story/profile
+    全部相关指纹，词表升级自动失效缓存；unmapped 不持久化、重跑即迁移
+    （决策 D-040）。
 - [ ] **T5.4 待校准参数标定**（docs/06 §4，用真实视频黄金样例）：A-001 视觉切镜、A-002 音频切点、A-003 BGM、A-004 质量、A-005 Apple Vision、A-006 故事聚块、A-007 Profile 统计。
 - [ ] **T5.5 HTML 视觉品牌与交互原型**（docs/06 §5 尚缺）。
 
@@ -139,7 +143,9 @@
 2. ~~T1.1~~（03-01 已收官）。
 3. ~~T2.x（Phase 03）~~（已完成：03-02 scaffold → 03-03 文本模型 → 03-04 HTML/CLI/校验）。
 4. ~~T3.x（Phase 04）~~（已完成：04-01 确定性聚合 → 04-02 蒸馏与输出 → 04-03 CLI/校验闭环）。
-5. **T5.x（Phase 05）** —— 真实服务联调（05-01）与完整词表（05-02）不依赖黄金样例，可先行；05-03/05-04 等外部输入（真实视频、端点、视觉原型）。
+5. **T5.x（Phase 05）** —— T5.3 完整词表 ✅；下一步 T5.1/T5.2 真实服务适配
+   （fallback 换模型重发、multipart 扩展点可先行，端点/鉴权待外部输入）；
+   T5.4/T5.5 等黄金视频与视觉原型。
 
 每个里程碑完成后：跑全量 `uv run pytest -q`、生成样例产物过 `memoloupe validate <dir> --strict`、更新 `docs/06_DECISIONS_AND_ASSUMPTIONS.md`。
 

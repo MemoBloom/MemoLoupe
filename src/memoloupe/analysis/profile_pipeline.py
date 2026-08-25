@@ -39,6 +39,7 @@ from memoloupe.analysis.profile_prompts import (
     PROFILE_PROMPT_VERSION,
     build_profile_distill_prompt,
 )
+from memoloupe.analysis.vocabulary import load_vocabulary
 from memoloupe.analysis.shot_pipeline import (  # noqa: F401
     PipelineReport,
     StepRecord,
@@ -527,6 +528,7 @@ class ProfileBuildPipeline:
 
             # 2. profile_aggregate：指纹复用或重建。
             step_start = time.monotonic()
+            vocabulary = load_vocabulary()
             agg_fp = fingerprint(
                 {
                     "artifact": "style-profile",
@@ -538,6 +540,7 @@ class ProfileBuildPipeline:
                     "musicFlags": _file_revision(store, ArtifactName.MUSIC_FLAGS),
                     "cameraMotion": _file_revision(store, ArtifactName.CAMERA_MOTION),
                     "unifiedMedia": _file_revision(store, ArtifactName.UNIFIED_MEDIA),
+                    "vocabVersion": vocabulary.version,
                     "version": PROFILE_AGGREGATE_VERSION,
                 }
             )
@@ -564,7 +567,7 @@ class ProfileBuildPipeline:
                 return report("complete")
 
             try:
-                aggregate = build_profile_aggregate(raws)
+                aggregate = build_profile_aggregate(raws, vocabulary=vocabulary)
                 if agg_cacheable and store.is_reusable(ArtifactName.STYLE_PROFILE, agg_fp):
                     record("profile_aggregate", "reused", _elapsed(step_start),
                            detail=f"fingerprint={agg_fp}")

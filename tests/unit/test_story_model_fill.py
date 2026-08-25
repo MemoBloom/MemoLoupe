@@ -315,3 +315,30 @@ class TestControlledVocabularyNormalization:
         assert blocks[0]["informationRole"] == "建立背景、推进新信息"
         # 过滤后为空 → unknown 占位（schema 允许的单值）。
         assert blocks[1]["informationRole"] == "unknown"
+
+
+class TestVocabularyVersionInvalidatesCache:
+    """roadmap 05-02：词表版本进入模型填充指纹，词表升级使 checkpoint 失效。"""
+
+    def test_vocab_upgrade_reforwards_model_request(self, tmp_path, monkeypatch):
+        work = _setup(tmp_path)
+        service = MockTextModelService({0: _model_response(["B0001", "B0002"])})
+        first = _run(work, service)
+        assert first.status == "complete"
+        assert len(service.calls) == 1
+
+        # 词表版本升级（内容变化 → version+1）：指纹变化 → 重发请求。
+        import memoloupe.analysis.story_pipeline as sp
+        from memoloupe.analysis.vocabulary import Vocabulary
+
+        real = sp.load_vocabulary()
+        monkeypatch.setattr(
+            sp, "load_vocabulary",
+            lambda: Vocabulary(version=real.version + 1, fields=real.fields),
+        )
+        fresh = MockTextModelService({0: _model_response(["B0001", "B0002"])})
+        second = _run(work, fresh)
+        assert second.status == "complete"
+        assert len(service.calls) == 1  # 旧 mock 未被第二次请求调用
+        assert len(fresh.calls) == 1  # 新 mock 收到一次请求：checkpoint 失效。
+        assert (work / "checkpoints" / "story-blocks-model.json").is_file()
