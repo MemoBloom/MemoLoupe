@@ -117,6 +117,31 @@
 决策：clips 不是独立契约 artifact，其复用状态记录在 output-dir 根的 `.memoloupe-pipeline.json`（实现元数据，与 manifest 同类）；`--force STEP` 只跳过该步骤的复用判定，下游指纹未变则仍 reused；render/validate 仅在"本次无任何产物步骤执行且状态指纹匹配"时 reused。  
 理由：clips[] 嵌在 unified-media.json 中，无独立 manifest 条目可挂；force 语义保持最小惊讶。
 
+### D-020：音频切点六特征定义（M2，CALIBRATION）
+
+决策：rmsDb=20·log10(rms/32768)（地板 -99）；roughness=帧内 4 子窗 RMS 包络变异系数；amplitudeShape=峰均比；autocorrelation1ms/4ms=16/64 采样滞后归一化自相关（@16kHz）；novelty 局部尺度取 ±1s 窗 |Δ| 中位数与 MINIMUM_SCALES 的 max；峰值阈值 8.0 + 局部最大 + 关联窗一半最小间隔。  
+理由：docs/03 §2.4 明确六特征精确定义为 CALIBRATION；实测 440→880Hz 切换 novelty>50 远超阈值。
+
+### D-021：BGM 检测参数（M2，CALIBRATION）
+
+决策：STFT Hann 窗 2048/hop 512 @22050Hz；bassEnergy=归一化采样（1/32768）低频带（≤250Hz）幅值和；texture event 阈值 |Δflatness|≥0.1、250ms 抑制；镜头裁定重叠比例 ≥0.5；ASR 不可用时降级为全片纹理分析且 confidence 降一档。  
+理由：与 docs/07 示例阈值（musicBassEnergy 150）兼容；降级矩阵要求 ASR 失败时 music 降级而非失败。
+
+### D-022：Apple Vision helper 策略（M2）
+
+决策：单文件 Swift helper（helpers/apple-vision/main.swift），stdin JSON/stdout JSON/stderr 日志；swiftc 编译产物按 源码+swiftc版本+实现版本 哈希缓存；非 macOS/编译失败/运行失败一律 capabilityStatus=unavailable。追踪请求为 macOS 14+ 有状态 API；helper 输出取逆矩阵使 shiftX/Y 表示画面内容位移（shiftX<0 ↔ pan_right，与 docs/07 示例一致）。Vision 幅值实测低估 2-3 倍，分类只依赖方向一致性/单调性/相对幅值。  
+理由：docs/01 §7.4 协议；D-005 认识论区分。
+
+### D-023：模型服务适配与编排（M2）
+
+决策：OpenAI-compatible 适配器（urllib，不加 httpx）；编排器重试语义为"首发 + 3 次重试"指数退避；PermanentServiceError 不重试直接回退单镜头；最终 batches[] 输出三组合并视图（部分失败拆成单镜头记录，failed 批次无 response 不伪造）；fallback 模型切换当前只在服务层记录 fallbackAttempted，真正换模型重发需服务层支持（待办）。  
+理由：docs/03 §2.12 重试与合并规则；服务端口职责划分（docs/01 §7.2）。
+
+### D-024：校验器 partial 修复与遗留（M2）
+
+决策：cross_artifact 校验器已修复——failed 且无 response 的批次不再报"集合不一致"（partial 允许成败并存）。  
+遗留：resolver 层的 needsReview 冲突理由（`build_observations_with_review`）尚未接入渲染层镜头列（render 改动留给 M3）；aligned shots 以派生指纹 `alignedWith` 重写，detect_shots 复用判定同时接受 base/aligned 指纹。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

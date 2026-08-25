@@ -80,12 +80,22 @@ class TestPhase1E2E:
         camera = json.loads(
             (out_dir / "raw" / "camera-motion.json").read_text(encoding="utf-8")
         )
-        assert camera["analysis"]["capabilityStatus"] == "unavailable"
+        # 本机有 swiftc 时 Apple Vision 真实可用；否则显式降级
+        assert camera["analysis"]["capabilityStatus"] in ("complete", "unavailable")
         unified = json.loads(
             (out_dir / "raw" / "unified-media.json").read_text(encoding="utf-8")
         )
         assert unified["status"] == "skipped"
         assert len(unified["clips"]) == 3
+        # M2 起音频切点/BGM 是真实检测（有音轨 → complete）
+        audio_cuts = json.loads(
+            (out_dir / "raw" / "audio-cuts.json").read_text(encoding="utf-8")
+        )
+        assert audio_cuts["status"] == "complete"
+        music = json.loads(
+            (out_dir / "raw" / "music-flags.json").read_text(encoding="utf-8")
+        )
+        assert music["status"] == "complete"
 
         # 严格校验：0 错误（直接调校验器，等价于 memoloupe validate --strict）
         issues = validate_output_dir(out_dir, strict=True)
@@ -127,18 +137,22 @@ class TestPhase1E2E:
         assert report.status == "complete"
         # probe 不依赖 shots 配置 → 复用
         assert _step(report, "probe_media").status == "reused"
-        # detect_shots 及镜头级下游全部重跑
+        # detect_shots 及镜头级下游全部重跑（run_asr 只链 media，不受影响）
         for name in (
             "detect_shots",
+            "detect_audio_cuts",
+            "detect_music",
             "extract_frames",
             "build_clips",
             "detect_audio_energy",
             "detect_quality",
-            "stub_unavailable",
+            "unified_media_analysis",
+            "analyze_camera_motion",
             "render_shot_html",
             "validate",
         ):
             assert _step(report, name).status != "reused", name
+        assert _step(report, "run_asr").status == "reused"
         # 新参数下仍能检出 2 个边界
         shots = json.loads((out_dir / "raw" / "shots.json").read_text(encoding="utf-8"))
         assert len(shots["shots"]) == 3
@@ -197,10 +211,14 @@ class TestPhase1E2E:
         for name in (
             "probe_media",
             "detect_shots",
+            "detect_audio_cuts",
+            "run_asr",
+            "detect_music",
             "extract_frames",
             "build_clips",
             "detect_audio_energy",
-            "stub_unavailable",
+            "unified_media_analysis",
+            "analyze_camera_motion",
         ):
             assert _step(report, name).status == "reused", name
         # 只补齐缺失步骤及之后的 render/validate

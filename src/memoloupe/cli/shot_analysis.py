@@ -53,6 +53,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-cache", action="store_true", help="忽略全部缓存复用")
     parser.add_argument(
+        "--mock-services",
+        action="store_true",
+        help="ASR 与 UnifiedMLLM 使用可编程 mock 服务（演示/测试用，不发起网络请求）",
+    )
+    parser.add_argument(
+        "--align-shot-boundaries-to-audio",
+        action="store_true",
+        help="把高置信音画同步切的 final 镜头边界对齐到音频切点（detected 边界不变）",
+    )
+    parser.add_argument(
         "--json-report", action="store_true", help="输出机器可读 JSON 报告"
     )
     return parser
@@ -117,6 +127,8 @@ def run_shot_analysis(argv: Sequence[str]) -> int:
         force_steps=frozenset(args.force),
         no_cache=args.no_cache,
         config=config,
+        align_boundaries=args.align_shot_boundaries_to_audio,
+        mock_services=args.mock_services,
     )
     report = ShotAnalysisPipeline().run(request)
 

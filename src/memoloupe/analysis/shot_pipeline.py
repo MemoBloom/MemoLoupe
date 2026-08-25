@@ -2,7 +2,7 @@
 
 执行模型：
 
-- 串行执行固定步骤序列（顺序即 DAG）；每步先算语义指纹，
+- 串行执行固定步骤序列（顺序即 DAG，docs/03 §2.1）；每步先算语义指纹，
   :meth:`ArtifactStore.is_reusable` 命中且未被 ``--force``/``--no-cache``
   覆盖时复用，否则执行并经 ArtifactStore 原子写入。
 - 指纹组成：源 revision + analyzedRange + 上游指纹 + 相关配置分组 +
@@ -10,11 +10,19 @@
 - 并发安全：output-dir 下的锁文件（``runtime.lockFileName``）记录
   pid/host/runID/startedAt；活锁（进程仍存在）直接失败且不写任何产物，
   陈旧锁接管，finally 释放。
-- 降级：M1 未接 ASR / BGM / 音频切点 / Apple Vision / UnifiedMLLM，
-  ``stub_unavailable`` 步骤写入 5 个显式降级产物（schema 合法、
-  状态 skipped/unavailable），HTML 与校验照常进行（docs/03 §7）。
+- 能力降级（docs/03 §7）：ASR/UnifiedMLLM 未配置时写显式 skipped 产物；
+  无音轨时音频检测写 unavailable；Apple Vision 不可用由
+  analyze_camera_motion 内部降级为 capabilityStatus=unavailable。
+  降级不致命，HTML 与校验照常进行。
+- unified-media / asr 的产物状态为 partial/failed 时 manifest 不记
+  complete，下次运行自动重跑（unified 经 checkpoints/ 断点续跑）。
+- ``--align-shot-boundaries-to-audio``：detect_audio_cuts 排在
+  extract_frames 之前；仅 synchronizedCut 且高置信的移动被采纳时才重写
+  shots.json 的 final 边界并重算 durationMs（detected 边界永不修改），
+  重写后 shots 指纹变化，下游镜头级步骤自然失效。
 - 必需步骤（probe/shots/frames/clips/validate）失败立即终止并标 failed；
-  其余步骤失败记 failed 继续，最终 status=partial。
+  其余步骤异常记 failed 继续，最终 status=partial；产物内嵌的
+  skipped/unavailable/partial 降级状态不算步骤异常。
 - 渲染后必须先校验再把阶段标为完成（docs/03 §2.13）。
 
 非 artifact 步骤（build_clips 的 clip 列表、render、validate）的复用状态
@@ -24,6 +32,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import socket
@@ -34,13 +43,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from memoloupe.analysis.asr_stage import ASR_STAGE_VERSION, run_asr_stage
+from memoloupe.analysis.media_orchestrator import (
+    UNIFIED_MEDIA_VERSION,
+    build_skipped_unified_media,
+    run_unified_media_analysis,
+)
+from memoloupe.analysis.vocabulary import load_vocabulary
 from memoloupe.artifacts.schemas import ArtifactName
 from memoloupe.artifacts.store import ArtifactStore, WriteMetadata
 from memoloupe.core.atomic_io import write_json_atomic
 from memoloupe.core.config import config_fingerprint, load_config
 from memoloupe.core.hashing import content_revision_id, fingerprint
 from memoloupe.core.logging import get_logger, log_step
+from memoloupe.media.audio_cuts import AUDIO_CUTS_VERSION, detect_audio_cuts
 from memoloupe.media.audio_energy import AUDIO_ENERGY_VERSION, detect_audio_energy
+from memoloupe.media.audio_music import AUDIO_MUSIC_VERSION, detect_music
 from memoloupe.media.clips import CLIP_BUILD_VERSION, build_clips
 from memoloupe.media.concurrency import FFmpegPool
 from memoloupe.media.frames import FRAME_EXTRACTION_VERSION, extract_frames
@@ -48,11 +66,15 @@ from memoloupe.media.probe import probe_media
 from memoloupe.media.quality import QUALITY_DETECTION_VERSION, detect_quality
 from memoloupe.media.shots import SHOT_DETECTION_VERSION, detect_shots
 from memoloupe.render.shot_html import SHOT_RENDER_VERSION, render_shot_html
+from memoloupe.services.asr import OpenAICompatibleASR
+from memoloupe.services.mock import MockASRService, default_mock_unified
+from memoloupe.services.unified_media import OpenAICompatibleUnifiedMedia
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
-
-#: M1 stub 产物实现版本：内容或文案变化时递增以触发重写。
-STUB_VERSION = "stub.v1"
+from memoloupe.vision.apple_vision import (
+    CAMERA_MOTION_VERSION,
+    analyze_camera_motion,
+)
 
 #: 非 artifact 步骤的复用状态文件名（output-dir 根，实现元数据）。
 PIPELINE_STATE_FILENAME = ".memoloupe-pipeline.json"
@@ -63,26 +85,23 @@ REQUIRED_STEPS = frozenset(
 )
 
 #: 步骤执行顺序（docs/03 §2.1 DAG 的串行化）。
+#: detect_audio_cuts 必须在 extract_frames 之前：--align 移动 final 边界后，
+#: 帧/clip/能量/质量等镜头级证据都按新边界生成。
 STEP_ORDER = (
     "acquire_lock",
     "probe_media",
     "detect_shots",
+    "detect_audio_cuts",
+    "run_asr",
+    "detect_music",
     "extract_frames",
     "build_clips",
     "detect_audio_energy",
     "detect_quality",
-    "stub_unavailable",
+    "unified_media_analysis",
+    "analyze_camera_motion",
     "render_shot_html",
     "validate",
-)
-
-#: 镜头级 stub 产物及其配置分组。
-_STUB_ARTIFACTS = (
-    ArtifactName.ASR,
-    ArtifactName.MUSIC_FLAGS,
-    ArtifactName.AUDIO_CUTS,
-    ArtifactName.CAMERA_MOTION,
-    ArtifactName.UNIFIED_MEDIA,
 )
 
 
@@ -119,6 +138,11 @@ class ShotAnalysisRequest:
     force_steps: frozenset[str] = frozenset()
     no_cache: bool = False
     config: dict | None = None  # None 时 load_config()
+    align_boundaries: bool = False  # --align-shot-boundaries-to-audio
+    mock_services: bool = False  # --mock-services：ASR/UnifiedMLLM 用可编程 mock
+    # 显式注入的服务实例（测试/嵌入用）；None 时按 mock_services/config 构造。
+    asr_service: Any = None
+    unified_service: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +341,102 @@ def build_unified_media_stub(clips: list[dict], media: dict, config: dict) -> di
 
 
 # ---------------------------------------------------------------------------
+# 服务构造与音频边界对齐
+# ---------------------------------------------------------------------------
+
+
+def _service_marker(injected: Any, mock_services: bool, service: Any) -> str:
+    """服务来源标记（进入指纹；不含密钥等敏感信息）。"""
+    if injected is not None:
+        return "injected"
+    if mock_services:
+        return "mock"
+    return "configured" if service is not None else "none"
+
+
+def _build_asr_service(config: dict, mock_services: bool) -> Any:
+    """按配置构造 ASR 服务；未配置时返回 None（调用方走 skipped 降级）。"""
+    if mock_services:
+        return MockASRService()
+    asr_cfg = config.get("asr", {})
+    if not asr_cfg.get("enabled", True):
+        return None
+    api_key = asr_cfg.get("apiKey")
+    base_url = asr_cfg.get("baseUrl")
+    model = asr_cfg.get("model")
+    if not (api_key and base_url and model):
+        return None
+    return OpenAICompatibleASR(
+        base_url=str(base_url),
+        api_key=str(api_key),
+        model=str(model),
+        timeout_sec=float(asr_cfg.get("timeoutSec", 120.0)),
+    )
+
+
+def _build_unified_service(
+    config: dict, mock_services: bool, shot_ids: list[str]
+) -> Any:
+    """按配置构造 UnifiedMLLM 服务；未配置时返回 None（skipped 降级）。"""
+    if mock_services:
+        return default_mock_unified(shot_ids)
+    model_cfg = config.get("unifiedModel", {})
+    api_key = model_cfg.get("apiKey")
+    base_url = model_cfg.get("baseUrl")
+    model = model_cfg.get("model")
+    if not (api_key and base_url and model):
+        return None
+    fallback = model_cfg.get("fallbackModel")
+    return OpenAICompatibleUnifiedMedia(
+        base_url=str(base_url),
+        api_key=str(api_key),
+        model=str(model),
+        fallback_model=str(fallback) if isinstance(fallback, str) and fallback else None,
+        timeout_sec=float(model_cfg.get("timeoutSec", 300.0)),
+    )
+
+
+def _apply_moved_boundaries(shots_doc: dict, moved: list[dict]) -> dict | None:
+    """把音频对齐移动计划应用到 shots.json 的 final 边界（docs/03 §2.4）。
+
+    - detected 边界永不修改；相邻镜头共享边界一起移动并重算 durationMs；
+    - 幂等守卫：所有待移动边界当前的 final 值必须仍等于 visualTimeMs，
+      否则（已应用过或数据不一致）返回 None，不重写。
+    """
+    shots = shots_doc.get("shots")
+    if not isinstance(shots, list):
+        return None
+    by_id = {s.get("shotID"): s for s in shots if isinstance(s, dict)}
+    for move in moved:
+        if not isinstance(move, dict):
+            return None
+        left = by_id.get(move.get("leftShotID"))
+        right = by_id.get(move.get("rightShotID"))
+        visual = move.get("visualTimeMs")
+        audio = move.get("audioTimeMs")
+        if not (
+            isinstance(left, dict)
+            and isinstance(right, dict)
+            and isinstance(visual, int)
+            and isinstance(audio, int)
+        ):
+            return None
+        if left.get("finalEndMs") != visual or right.get("finalStartMs") != visual:
+            return None
+    aligned = copy.deepcopy(shots_doc)
+    aligned_by_id = {s.get("shotID"): s for s in aligned["shots"] if isinstance(s, dict)}
+    for move in moved:
+        left = aligned_by_id[move["leftShotID"]]
+        right = aligned_by_id[move["rightShotID"]]
+        audio_time = int(move["audioTimeMs"])
+        left["finalEndMs"] = audio_time
+        left["durationMs"] = audio_time - int(left["finalStartMs"])
+        right["finalStartMs"] = audio_time
+        right["durationMs"] = int(right["finalEndMs"]) - audio_time
+    return aligned
+
+
+# ---------------------------------------------------------------------------
 # 锁与流水线状态文件
 # ---------------------------------------------------------------------------
 
@@ -466,8 +586,17 @@ class ShotAnalysisPipeline:
             artifact: ArtifactName,
             fp: str,
             fn: Callable[[], dict],
+            status_of: Callable[[dict], str | None] | None = None,
         ) -> dict | None:
-            """通用 artifact 步骤：复用判定 → 执行 → 原子写入。失败按必需性处理。"""
+            """通用 artifact 步骤：复用判定 → 执行 → 原子写入。失败按必需性处理。
+
+            ``status_of`` 从产物内嵌状态（如 unified-media.status、
+            camera-motion.analysis.capabilityStatus）提取步骤语义状态：
+            - partial/failed 时 manifest 不记 complete，下次运行自动重跑
+              （断点续跑），并记 warning、pipeline 落 partial；
+            - skipped/unavailable 是确定性降级，manifest 记 complete
+              （下次可直接复用），记 warning 但不影响整体 complete。
+            """
             nonlocal hard_failure, any_failed, any_produced
             step_start = time.monotonic()
             if cacheable(name) and store.is_reusable(artifact, fp):
@@ -475,7 +604,11 @@ class ShotAnalysisPipeline:
                 return store.read(artifact)
             try:
                 data = fn()
-                store.write(artifact, data, WriteMetadata(fingerprint=fp))
+                doc_status = status_of(data) if status_of is not None else None
+                manifest_status = (
+                    doc_status if doc_status in ("partial", "failed") else "complete"
+                )
+                store.write(artifact, data, WriteMetadata(fingerprint=fp, status=manifest_status))
             except Exception as exc:
                 elapsed = _elapsed(step_start)
                 record(name, "failed", elapsed, detail=str(exc))
@@ -486,7 +619,15 @@ class ShotAnalysisPipeline:
                     any_failed = True
                 return None
             any_produced = True
-            record(name, "complete", _elapsed(step_start))
+            if doc_status is None or doc_status == "complete":
+                record(name, "complete", _elapsed(step_start))
+            else:
+                record(name, doc_status, _elapsed(step_start))
+                if doc_status in ("partial", "failed"):
+                    any_failed = True
+                    warnings.append(f"步骤 {name} 未完成：产物状态 {doc_status}")
+                else:
+                    warnings.append(f"步骤 {name} 显式降级：产物状态 {doc_status}")
             return data
 
         try:
@@ -532,7 +673,7 @@ class ShotAnalysisPipeline:
             if hard_failure or media is None:
                 return self._report(steps, warnings, out_dir, started, "failed")
 
-            # 3. detect_shots -------------------------------------------------
+            # 3. detect_shots（--align 时已对齐的 shots.json 也算可复用）--------
             shots_fp = fingerprint(
                 {
                     "artifact": "shots",
@@ -541,22 +682,153 @@ class ShotAnalysisPipeline:
                     "version": SHOT_DETECTION_VERSION,
                 }
             )
-            shots_doc = run_artifact_step(
-                "detect_shots",
-                ArtifactName.SHOTS,
-                shots_fp,
-                lambda: detect_shots(source, media, config, pool=pool),
+            # audio-cuts 指纹预先计算：既用于该步骤本身，也用于对齐后
+            # shots.json 的派生指纹（内容可寻址，重跑时稳定）。
+            has_audio = bool(media["source"].get("audioTracks"))
+            audio_cuts_fp = fingerprint(
+                {
+                    "artifact": "audio-cuts",
+                    "shots": shots_fp,
+                    "hasAudio": has_audio,
+                    "align": request.align_boundaries,
+                    "config": config_fingerprint(config, ["audioCuts"]),
+                    "version": AUDIO_CUTS_VERSION,
+                }
             )
-            if hard_failure or shots_doc is None:
+            aligned_shots_fp = (
+                fingerprint(
+                    {
+                        "artifact": "shots",
+                        "base": shots_fp,
+                        "alignedWith": audio_cuts_fp,
+                    }
+                )
+                if request.align_boundaries
+                else None
+            )
+            shots_doc: dict | None = None
+            shots_fp_eff = shots_fp
+            step_start = time.monotonic()
+            reused_shots = False
+            if cacheable("detect_shots"):
+                if store.is_reusable(ArtifactName.SHOTS, shots_fp):
+                    reused_shots = True
+                elif aligned_shots_fp is not None and store.is_reusable(
+                    ArtifactName.SHOTS, aligned_shots_fp
+                ):
+                    reused_shots = True
+                    shots_fp_eff = aligned_shots_fp
+            if reused_shots:
+                record("detect_shots", "reused", _elapsed(step_start))
+                shots_doc = store.read(ArtifactName.SHOTS)
+            else:
+                try:
+                    shots_doc = detect_shots(source, media, config, pool=pool)
+                    store.write(
+                        ArtifactName.SHOTS, shots_doc, WriteMetadata(fingerprint=shots_fp)
+                    )
+                except Exception as exc:
+                    record("detect_shots", "failed", _elapsed(step_start), detail=str(exc))
+                    warnings.append(f"步骤 detect_shots 失败：{exc}")
+                    return self._report(steps, warnings, out_dir, started, "failed")
+                any_produced = True
+                record("detect_shots", "complete", _elapsed(step_start))
+            if shots_doc is None:
                 return self._report(steps, warnings, out_dir, started, "failed")
             shots: list[dict] = shots_doc["shots"]
-            has_audio = bool(media["source"].get("audioTracks"))
 
-            # 4. extract_frames -----------------------------------------------
+            # 4. detect_audio_cuts（必须在 extract_frames 之前：--align 可能改
+            #    final 边界，帧/clip/能量/质量都按新边界生成）--------------------
+            audio_cuts_doc = run_artifact_step(
+                "detect_audio_cuts",
+                ArtifactName.AUDIO_CUTS,
+                audio_cuts_fp,
+                lambda: detect_audio_cuts(
+                    source,
+                    shots_doc,
+                    media,
+                    config,
+                    pool=pool,
+                    align_boundaries=request.align_boundaries,
+                ),
+                status_of=lambda d: d.get("status"),
+            )
+
+            # 4a. --align：仅当检测给出移动计划且 shots 仍是检测原值时才重写
+            #     shots.json（幂等守卫在 _apply_moved_boundaries 内）。
+            if (
+                request.align_boundaries
+                and audio_cuts_doc is not None
+                and shots_fp_eff == shots_fp
+            ):
+                moved = audio_cuts_doc.get("movedBoundaries")
+                if isinstance(moved, list) and moved:
+                    aligned_doc = _apply_moved_boundaries(shots_doc, moved)
+                    if aligned_doc is not None:
+                        assert aligned_shots_fp is not None
+                        store.write(
+                            ArtifactName.SHOTS,
+                            aligned_doc,
+                            WriteMetadata(fingerprint=aligned_shots_fp),
+                        )
+                        shots_doc = aligned_doc
+                        shots = shots_doc["shots"]
+                        shots_fp_eff = aligned_shots_fp
+                        any_produced = True
+                        warnings.append(
+                            f"音频对齐：{len(moved)} 个 final 边界已移动到音频切点"
+                            "（detected 边界保持不变）"
+                        )
+
+            # 5. run_asr（链 media 指纹；服务不可用 → skipped 降级产物）---------
+            asr_service = request.asr_service
+            if asr_service is None:
+                asr_service = _build_asr_service(config, request.mock_services)
+            asr_marker = _service_marker(
+                request.asr_service, request.mock_services, asr_service
+            )
+            asr_fp = fingerprint(
+                {
+                    "artifact": "asr",
+                    "media": media_fp,
+                    "config": config_fingerprint(config, ["asr"]),
+                    "service": asr_marker,
+                    "version": ASR_STAGE_VERSION,
+                }
+            )
+            asr_doc = run_artifact_step(
+                "run_asr",
+                ArtifactName.ASR,
+                asr_fp,
+                lambda: run_asr_stage(source, media, config, service=asr_service),
+                status_of=lambda d: d.get("status"),
+            )
+
+            # 6. detect_music（链 asr 指纹；ASR 非 complete 时内部降级为
+            #    全片纹理分析）--------------------------------------------------
+            music_fp = fingerprint(
+                {
+                    "artifact": "music-flags",
+                    "shots": shots_fp_eff,
+                    "asr": asr_fp,
+                    "hasAudio": has_audio,
+                    "config": config_fingerprint(config, ["music"]),
+                    "version": AUDIO_MUSIC_VERSION,
+                }
+            )
+            run_artifact_step(
+                "detect_music",
+                ArtifactName.MUSIC_FLAGS,
+                music_fp,
+                lambda: detect_music(source, shots, asr_doc, media, config, pool=pool),
+                status_of=lambda d: d.get("status"),
+            )
+
+            # 7. extract_frames -----------------------------------------------
             frames_fp = fingerprint(
                 {
                     "artifact": "frame-evidence",
-                    "shots": shots_fp,
+                    "shots": shots_fp_eff,
                     "version": FRAME_EXTRACTION_VERSION,
                 }
             )
@@ -569,11 +841,11 @@ class ShotAnalysisPipeline:
             if hard_failure:
                 return self._report(steps, warnings, out_dir, started, "failed")
 
-            # 5. build_clips ---------------------------------------------------
+            # 8. build_clips ---------------------------------------------------
             clips_fp = fingerprint(
                 {
                     "artifact": "clips",
-                    "shots": shots_fp,
+                    "shots": shots_fp_eff,
                     "hasAudio": has_audio,
                     "version": CLIP_BUILD_VERSION,
                 }
@@ -596,11 +868,11 @@ class ShotAnalysisPipeline:
             if steps[-1].status == "complete":
                 any_produced = True
 
-            # 6. detect_audio_energy -------------------------------------------
+            # 9. detect_audio_energy -------------------------------------------
             energy_fp = fingerprint(
                 {
                     "artifact": "audio-energy",
-                    "shots": shots_fp,
+                    "shots": shots_fp_eff,
                     "hasAudio": has_audio,
                     "config": config_fingerprint(config, ["audioEnergy"]),
                     "version": AUDIO_ENERGY_VERSION,
@@ -613,11 +885,11 @@ class ShotAnalysisPipeline:
                 lambda: detect_audio_energy(source, shots, has_audio, config, pool=pool),
             )
 
-            # 7. detect_quality -------------------------------------------------
+            # 10. detect_quality ------------------------------------------------
             quality_fp = fingerprint(
                 {
                     "artifact": "quality-flags",
-                    "shots": shots_fp,
+                    "shots": shots_fp_eff,
                     "hasAudio": has_audio,
                     "config": config_fingerprint(config, ["quality"]),
                     "version": QUALITY_DETECTION_VERSION,
@@ -630,33 +902,78 @@ class ShotAnalysisPipeline:
                 lambda: detect_quality(source, shots, has_audio, config, pool=pool),
             )
 
-            # 8. stub_unavailable ----------------------------------------------
-            stub_status = self._stub_step(
-                request=request,
-                store=store,
-                shots=shots,
-                media=media,
-                clips=clips,
-                config=config,
-                shots_fp=shots_fp,
-                clips_fp=clips_fp,
-                cacheable=cacheable("stub_unavailable"),
-                record=record,
-                warnings=warnings,
+            # 11. unified_media_analysis（链 clips 指纹 + 词表版本；服务未配置
+            #     → skipped 降级产物；partial/failed 下次自动断点续跑）----------
+            vocab = load_vocabulary()
+            unified_service = request.unified_service
+            if unified_service is None:
+                unified_service = _build_unified_service(
+                    config, request.mock_services, [str(s["shotID"]) for s in shots]
+                )
+            unified_marker = _service_marker(
+                request.unified_service, request.mock_services, unified_service
             )
-            if stub_status == "failed":
-                any_failed = True
-            elif stub_status in ("complete", "unavailable"):
-                any_produced = True
+            unified_fp = fingerprint(
+                {
+                    "artifact": "unified-media",
+                    "clips": clips_fp,
+                    "config": config_fingerprint(config, ["unifiedModel"]),
+                    "service": unified_marker,
+                    "version": UNIFIED_MEDIA_VERSION,
+                    "vocab": vocab.version,
+                }
+            )
+
+            def produce_unified() -> dict:
+                if unified_service is None:
+                    return build_skipped_unified_media(clips, config, revision_id)
+                return run_unified_media_analysis(
+                    store,
+                    clips,
+                    unified_service,
+                    config=config,
+                    vocab=vocab,
+                    source_revision=revision_id,
+                )
+
+            run_artifact_step(
+                "unified_media_analysis",
+                ArtifactName.UNIFIED_MEDIA,
+                unified_fp,
+                produce_unified,
+                status_of=lambda d: d.get("status"),
+            )
+
+            # 12. analyze_camera_motion（链 shots 指纹；helper 不可用由适配器
+            #     内部降级为 capabilityStatus=unavailable）----------------------
+            camera_fp = fingerprint(
+                {
+                    "artifact": "camera-motion",
+                    "shots": shots_fp_eff,
+                    "config": config_fingerprint(config, ["vision"]),
+                    "version": CAMERA_MOTION_VERSION,
+                }
+            )
+            run_artifact_step(
+                "analyze_camera_motion",
+                ArtifactName.CAMERA_MOTION,
+                camera_fp,
+                lambda: analyze_camera_motion(source, shots, media, config, pool=pool),
+                status_of=lambda d: (d.get("analysis") or {}).get("capabilityStatus"),
+            )
 
             artifact_fps = {
                 "media": media_fp,
-                "shots": shots_fp,
+                "shots": shots_fp_eff,
+                "audio-cuts": audio_cuts_fp,
+                "asr": asr_fp,
+                "music-flags": music_fp,
                 "frame-evidence": frames_fp,
                 "clips": clips_fp,
                 "audio-energy": energy_fp,
                 "quality-flags": quality_fp,
-                "stubs": self._stub_fingerprints(shots_fp, clips_fp, config),
+                "unified-media": unified_fp,
+                "camera-motion": camera_fp,
             }
 
             # 9. render_shot_html -----------------------------------------------
@@ -790,111 +1107,6 @@ class ShotAnalysisPipeline:
         _write_pipeline_state(out_dir, state)
         record("build_clips", "complete", _elapsed(step_start), detail=f"{len(clips)} clips")
         return clips
-
-    def _stub_fingerprints(
-        self, shots_fp: str, clips_fp: str, config: dict
-    ) -> dict[str, str]:
-        return {
-            ArtifactName.ASR.value: fingerprint(
-                {
-                    "artifact": "asr",
-                    "version": STUB_VERSION,
-                    "config": config_fingerprint(config, ["asr"]),
-                }
-            ),
-            ArtifactName.MUSIC_FLAGS.value: fingerprint(
-                {
-                    "artifact": "music-flags",
-                    "shots": shots_fp,
-                    "version": STUB_VERSION,
-                    "config": config_fingerprint(config, ["music"]),
-                }
-            ),
-            ArtifactName.AUDIO_CUTS.value: fingerprint(
-                {
-                    "artifact": "audio-cuts",
-                    "shots": shots_fp,
-                    "version": STUB_VERSION,
-                    "config": config_fingerprint(config, ["audioCuts"]),
-                }
-            ),
-            ArtifactName.CAMERA_MOTION.value: fingerprint(
-                {
-                    "artifact": "camera-motion",
-                    "shots": shots_fp,
-                    "version": STUB_VERSION,
-                    "config": config_fingerprint(config, ["vision"]),
-                }
-            ),
-            ArtifactName.UNIFIED_MEDIA.value: fingerprint(
-                {
-                    "artifact": "unified-media",
-                    "clips": clips_fp,
-                    "version": STUB_VERSION,
-                    "config": config_fingerprint(config, ["unifiedModel"]),
-                }
-            ),
-        }
-
-    def _stub_step(
-        self,
-        *,
-        request: ShotAnalysisRequest,
-        store: ArtifactStore,
-        shots: list[dict],
-        media: dict,
-        clips: list[dict],
-        config: dict,
-        shots_fp: str,
-        clips_fp: str,
-        cacheable: bool,
-        record: Callable[..., None],
-        warnings: list[str],
-    ) -> str:
-        """写 5 个 M1 显式降级产物（幂等；逐产物独立复用判定）。"""
-        builders: dict[ArtifactName, Callable[[], dict]] = {
-            ArtifactName.ASR: build_asr_stub,
-            ArtifactName.MUSIC_FLAGS: lambda: build_music_flags_stub(shots, config),
-            ArtifactName.AUDIO_CUTS: lambda: build_audio_cuts_stub(shots, config),
-            ArtifactName.CAMERA_MOTION: lambda: build_camera_motion_stub(
-                shots, media, config
-            ),
-            ArtifactName.UNIFIED_MEDIA: lambda: build_unified_media_stub(
-                clips, media, config
-            ),
-        }
-        fps = self._stub_fingerprints(shots_fp, clips_fp, config)
-
-        step_start = time.monotonic()
-        written: list[str] = []
-        reused: list[str] = []
-        try:
-            for artifact in _STUB_ARTIFACTS:
-                fp = fps[artifact.value]
-                if cacheable and store.is_reusable(artifact, fp):
-                    reused.append(artifact.value)
-                    continue
-                store.write(artifact, builders[artifact](), WriteMetadata(fingerprint=fp))
-                written.append(artifact.value)
-        except Exception as exc:
-            record("stub_unavailable", "failed", _elapsed(step_start), detail=str(exc))
-            warnings.append(f"步骤 stub_unavailable 失败：{exc}")
-            return "failed"
-
-        if not written:
-            record("stub_unavailable", "reused", _elapsed(step_start))
-            return "reused"
-        warnings.append(
-            "M1 显式降级产物：ASR 未配置、BGM/音频切点检测未运行、"
-            "Apple Vision 与 UnifiedMLLM 未接入（status=skipped/unavailable）"
-        )
-        record(
-            "stub_unavailable",
-            "unavailable",
-            _elapsed(step_start),
-            detail=f"写入 {len(written)} 个降级产物，复用 {len(reused)} 个",
-        )
-        return "unavailable"
 
     # ------------------------------------------------------------------
 

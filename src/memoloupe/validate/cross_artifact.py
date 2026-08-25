@@ -468,6 +468,11 @@ def _check_unified_media(docs: dict[str, dict], issues: list[ValidationIssue]) -
                     for s in response.get("shots", [])
                     if isinstance(s, dict) and isinstance(s.get("shotID"), str)
                 ]
+            # response 为条件必填：failed 批次允许无 response（docs/07 batch 字段表、
+            # docs/02 §4.7 partial 允许成功与永久失败并存）。
+            batch_status = batch.get("status")
+            if batch_status == "failed" and response is None:
+                continue
             if set(shot_ids) != set(response_ids):
                 issues.append(_issue(
                     name, f"$.batches[{i}]",

@@ -59,6 +59,10 @@ DEFAULT_CONFIG: dict = {
     },
     "music": {
         "enabled": True,
+        "sampleRate": 22050,
+        "musicLevelDb": -18.0,
+        "musicBassEnergy": 150.0,
+        "silentLevelDb": -22.0,
     },
     "quality": {
         "videoSampleFps": 2.0,

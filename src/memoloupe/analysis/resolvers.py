@@ -11,19 +11,27 @@ docs/02 §3（五态状态机）与 docs/00 §4.2-4.4：
   evidence_refs 可为空 —— docs/00 §4.4 唯一豁免）。
 - unified-media 的 response 数组按 shotID 查找，绝不按下标对齐
   （docs/04 §8.5 回归护栏）。
+- ``audio.speech`` 优先级：ASR complete（shot_speech 交集归属）>
+  unifiedModel 弱替代 > unknown（docs/03 §2.7）。
+- ``visual.cameraMovement``（D-005）：Apple Vision 分类为主值，模型语义
+  并存；矛盾时双 evidence_refs 保留并向 ``ShotEvidenceContext.review_reasons``
+  收集 needsReview 理由，不静默覆盖。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Mapping, Protocol
 
+from memoloupe.analysis.asr_stage import shot_speech_segments
 from memoloupe.analysis.observations import (
     Confidence,
     Observation,
     Source,
+    ValueState,
     deterministic_absent_observation,
+    is_absence_claim,
     model_absent_observation,
     model_observation_from_raw,
     model_value_observation,
@@ -39,10 +47,15 @@ class ShotEvidenceContext:
 
     ``raws`` 键为逻辑名（``"asr"``、``"music-flags"``……），
     值为已解析的 raw 文件 dict；文件缺失或不可读时为 None。
+
+    ``review_reasons`` 是 resolver 的收集槽（D-005）：确定性证据与模型
+    语义冲突时追加人类可读理由，由 :func:`build_observations_with_review`
+    返回给上层；resolver 不静默覆盖任何一方。
     """
 
     shot_id: str
     raws: Mapping[str, dict | None]
+    review_reasons: list[str] = field(default_factory=list)
 
 
 class FieldResolver(Protocol):
@@ -108,10 +121,15 @@ def _shot_final_range(context: ShotEvidenceContext) -> tuple[int, int] | None:
 
 
 class SpeechResolver:
-    """audio.speech：asr.json complete 时取与该镜头 final 区间相交的 segment 拼文本。
+    """audio.speech：ASR > 模型的优先级解析（docs/01 §8、docs/03 §2.7）。
 
-    ASR 不在授权确定性检测器之列，因此“无重叠 segment”只能是 unknown，
-    绝不能落 absent。
+    - ASR complete：用 :func:`shot_speech_segments` 取与镜头 final 区间
+      归属的 segments 拼文本（source=asr，refs 指具体 segment）。
+      ASR 不在授权确定性检测器之列，“无归属 segment”只能是 unknown，
+      绝不能落 absent。
+    - ASR 非 complete：退回 unified-media 的 ``audio.speech`` 模型值
+      （source=unifiedModel，置信度不升格；“无” → absent-claimed）。
+    - 都没有：unknown（能力未运行，evidence_refs 豁免为空）。
     """
 
     field_name = "audio.speech"
@@ -120,6 +138,9 @@ class SpeechResolver:
         field, shot_id = self.field_name, context.shot_id
         doc = context.raws.get("asr")
         if not _status_complete(doc):
+            model_obs = ModelFieldResolver(field).resolve(context)
+            if model_obs.state != ValueState.UNKNOWN:
+                return model_obs
             return _not_run(field, shot_id)
         assert doc is not None
         shot_range = _shot_final_range(context)
@@ -129,21 +150,7 @@ class SpeechResolver:
         segments = doc.get("transcript", {}).get("segments")
         if not isinstance(segments, list):
             return _not_run(field, shot_id)
-        hits: list[tuple[int, str]] = []
-        for index, segment in enumerate(segments):
-            if not isinstance(segment, dict):
-                continue
-            seg_start, seg_end = segment.get("startMs"), segment.get("endMs")
-            text = segment.get("text")
-            if not (
-                isinstance(seg_start, int)
-                and isinstance(seg_end, int)
-                and isinstance(text, str)
-                and text.strip()
-            ):
-                continue
-            if seg_start < end and seg_end > start:
-                hits.append((index, text.strip()))
+        hits = shot_speech_segments(segments, start, end)
         if not hits:
             return unknown_observation(
                 field, shot_id, source=Source.ASR,
@@ -153,7 +160,7 @@ class SpeechResolver:
         return model_value_observation(
             field,
             shot_id,
-            " ".join(text for _, text in hits),
+            " ".join(str(seg["text"]).strip() for _, seg in hits),
             confidence=Confidence.HIGH,
             evidence_refs=refs,
             source=Source.ASR,
@@ -266,11 +273,53 @@ class QualityFlagsResolver:
         )
 
 
-class CameraMovementResolver:
-    """visual.cameraMovement：camera-motion.json（Apple Vision）确定性结果。
+#: CALIBRATION（D-005）：Vision 运镜标签 → 可接受的模型规范值集合。
+#: Vision 测图像运动、模型给摄影语义，两者认识论不同；只有明确的语义
+#: 矛盾才触发 needsReview。未登记的标签（discontinuity/roll/unknown）
+#: 不做比较——没有可靠映射时不臆造冲突。
+_VISION_MODEL_COMPATIBLE: dict[str, frozenset[str]] = {
+    "static": frozenset({"固定"}),
+    "zoom_in": frozenset({"推"}),
+    "zoom_out": frozenset({"拉"}),
+    "pan_left": frozenset({"摇", "移"}),
+    "pan_right": frozenset({"摇", "移"}),
+    "tilt_up": frozenset({"摇", "升降"}),
+    "tilt_down": frozenset({"摇", "升降"}),
+    "handheld": frozenset({"手持"}),
+}
 
-    仅 capabilityStatus=complete 且该镜头有值时产 value，保留检测器原文；
-    其余情况 unknown。
+
+def _camera_movement_conflict(vision_value: str, model_obs: Observation) -> bool:
+    """判断模型语义标签是否与 Vision 分类矛盾（D-005）。
+
+    只比较模型的 value（词表归一化后的规范值，可为 " → "/"、" 复合）与
+    absent-claimed（"无"）；unmapped/unknown 不参与（本身已可见）。
+    """
+    compatible = _VISION_MODEL_COMPATIBLE.get(vision_value)
+    if compatible is None:
+        return False
+    if model_obs.state == ValueState.ABSENT_CLAIMED:
+        # 模型声称"无运镜"而 Vision 测到非 static 运动 → 矛盾。
+        return vision_value != "static"
+    if model_obs.state != ValueState.VALUE or not isinstance(model_obs.value, str):
+        return False
+    parts = [
+        part.strip()
+        for part in model_obs.value.replace("、", " → ").split(" → ")
+        if part.strip()
+    ]
+    return bool(parts) and any(part not in compatible for part in parts)
+
+
+class CameraMovementResolver:
+    """visual.cameraMovement：Vision 运动证据优先，模型语义并存（D-005）。
+
+    - camera-motion capabilityStatus=complete 且该镜头有具体分类 → 主值取
+      Vision 分类（source=appleVision）；若模型也有该字段值且语义矛盾，
+      把双方 evidence_refs 都保留并向 context.review_reasons 追加
+      needsReview 理由，不静默覆盖任一方。
+    - Vision 不可用/该镜头无值 → 退回模型值（source=unifiedModel）。
+    - 都没有 → unknown。
     """
 
     field_name = "visual.cameraMovement"
@@ -278,29 +327,54 @@ class CameraMovementResolver:
     def resolve(self, context: ShotEvidenceContext) -> Observation:
         field, shot_id = self.field_name, context.shot_id
         doc = context.raws.get("camera-motion")
-        if not isinstance(doc, dict):
-            return _not_run(field, shot_id)
-        analysis = doc.get("analysis")
-        if not isinstance(analysis, dict) or analysis.get("capabilityStatus") != "complete":
-            return _not_run(field, shot_id)
-        found = _shot_entry(doc, shot_id)
-        if found is None:
-            return _not_run(field, shot_id)
-        index, entry = found
-        value = entry.get("cameraMovement")
-        ref = f"raw/camera-motion.json#shots[{index}]"
-        confidence = _to_confidence(entry.get("confidence"))
-        if not isinstance(value, str) or not value.strip():
-            return unknown_observation(
-                field, shot_id, confidence=confidence,
-                evidence_refs=(ref,), source=Source.APPLE_VISION,
-                original_value=value,
+        vision_value: str | None = None
+        vision_ref: str | None = None
+        vision_confidence = Confidence.UNKNOWN
+        vision_ran = False
+        if isinstance(doc, dict):
+            analysis = doc.get("analysis")
+            vision_ran = (
+                isinstance(analysis, dict)
+                and analysis.get("capabilityStatus") == "complete"
             )
-        return model_value_observation(
-            field, shot_id, value.strip(),
-            confidence=confidence, evidence_refs=(ref,),
-            source=Source.APPLE_VISION,
-        )
+            if vision_ran:
+                found = _shot_entry(doc, shot_id)
+                if found is not None:
+                    index, entry = found
+                    vision_ref = f"raw/camera-motion.json#shots[{index}]"
+                    vision_confidence = _to_confidence(entry.get("confidence"))
+                    raw_value = entry.get("cameraMovement")
+                    if (
+                        isinstance(raw_value, str)
+                        and raw_value.strip()
+                        and raw_value.strip() != "unknown"
+                    ):
+                        vision_value = raw_value.strip()
+
+        model_obs = ModelFieldResolver(field).resolve(context)
+
+        if vision_value is not None:
+            refs = [vision_ref] if vision_ref else []
+            if _camera_movement_conflict(vision_value, model_obs):
+                refs.extend(model_obs.evidence_refs)
+                context.review_reasons.append(
+                    f"{field}：Apple Vision={vision_value} 与模型语义"
+                    f"（{model_obs.original_value or model_obs.value}）不一致，需人工复核"
+                )
+            return model_value_observation(
+                field, shot_id, vision_value,
+                confidence=vision_confidence, evidence_refs=tuple(refs),
+                source=Source.APPLE_VISION,
+            )
+        if model_obs.state != ValueState.UNKNOWN:
+            return model_obs
+        if vision_ran and vision_ref is not None:
+            # Vision 跑了但该镜头信号不足（unknown）：保留证据引用。
+            return unknown_observation(
+                field, shot_id, confidence=vision_confidence,
+                evidence_refs=(vision_ref,), source=Source.APPLE_VISION,
+            )
+        return _not_run(field, shot_id)
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +426,14 @@ class ModelFieldResolver:
             raw_value = raw_value[part]
         ref = f"{base_ref}.{self.path}"
         confidence = self._confidence(shot)
+        # “无/没有”类声称优先于词表归一化：任何模型字段都只能 absent-claimed，
+        # 不得因词表未命中而落 unmapped（docs/00 §4.2-4.3）。
+        if is_absence_claim(raw_value):
+            return model_absent_observation(
+                field, shot_id, raw_value,
+                confidence=confidence, evidence_refs=(ref,),
+                source=Source.UNIFIED_MODEL,
+            )
         vocabulary = _default_vocabulary()
         if field in vocabulary.fields:
             result = vocabulary.normalize(field, raw_value)
@@ -449,11 +531,22 @@ DEFAULT_RESOLVERS: tuple[FieldResolver, ...] = (
 )
 
 
+def build_observations_with_review(
+    shot_id: str,
+    raws: Mapping[str, dict | None],
+    resolvers: tuple[FieldResolver, ...] | list[FieldResolver],
+) -> tuple[list[Observation], tuple[str, ...]]:
+    """产 Observations 并收集 resolver 报告的 needsReview 理由（D-005）。"""
+    context = ShotEvidenceContext(shot_id=shot_id, raws=raws)
+    observations = [resolver.resolve(context) for resolver in resolvers]
+    return observations, tuple(context.review_reasons)
+
+
 def build_observations(
     shot_id: str,
     raws: Mapping[str, dict | None],
     resolvers: tuple[FieldResolver, ...] | list[FieldResolver],
 ) -> list[Observation]:
     """对每个 resolver 产一个 Observation；顺序与 resolvers 一致。"""
-    context = ShotEvidenceContext(shot_id=shot_id, raws=raws)
-    return [resolver.resolve(context) for resolver in resolvers]
+    observations, _ = build_observations_with_review(shot_id, raws, resolvers)
+    return observations

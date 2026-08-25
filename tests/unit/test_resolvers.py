@@ -18,6 +18,7 @@ from memoloupe.analysis.resolvers import (
     ShotEvidenceContext,
     SpeechResolver,
     build_observations,
+    build_observations_with_review,
 )
 
 TWO_SHOTS = {
@@ -81,6 +82,56 @@ class TestSpeechResolver:
         obs = SpeechResolver().resolve(_ctx({"shots": TWO_SHOTS, "asr": asr}))
         # ASR 不是授权确定性检测器，"没识别到语音" 只能是 unknown。
         assert obs.state == ValueState.UNKNOWN
+
+    def test_boundary_segment_attribution_uses_overlap_ratio(self):
+        """CALIBRATION：边界重叠句按交集比例 >= 0.5 归属（shot_speech 规则）。"""
+        asr = _asr()
+        # SH0001 [0,3203)：segment [3000,4000) 交集 203/1000 < 0.5 → 不归属
+        asr["transcript"]["segments"] = [
+            {"startMs": 3000, "endMs": 4000, "text": "跨界句。"}
+        ]
+        obs1 = SpeechResolver().resolve(_ctx({"shots": TWO_SHOTS, "asr": asr}))
+        assert obs1.state == ValueState.UNKNOWN
+        # SH0002 [3203,6400)：交集 797/1000 >= 0.5 → 归属
+        obs2 = SpeechResolver().resolve(
+            _ctx({"shots": TWO_SHOTS, "asr": asr}, "SH0002")
+        )
+        assert obs2.state == ValueState.VALUE
+        assert obs2.value == "跨界句。"
+
+    def test_asr_non_complete_falls_back_to_model_value(self):
+        unified = _unified_media({"audio.speech": "模型听到的解说词"})
+        obs = SpeechResolver().resolve(
+            _ctx({"shots": TWO_SHOTS, "asr": _asr("skipped"), "unified-media": unified})
+        )
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "模型听到的解说词"
+        assert obs.source == Source.UNIFIED_MODEL
+
+    def test_asr_non_complete_model_absence_claim(self):
+        unified = _unified_media({"audio.speech": "无"})
+        obs = SpeechResolver().resolve(
+            _ctx({"shots": TWO_SHOTS, "asr": _asr("failed"), "unified-media": unified})
+        )
+        assert obs.state == ValueState.ABSENT_CLAIMED
+        assert obs.original_value == "无"
+        assert obs.source == Source.UNIFIED_MODEL
+
+    def test_asr_complete_wins_over_model(self):
+        unified = _unified_media({"audio.speech": "模型解说"})
+        obs = SpeechResolver().resolve(
+            _ctx({"shots": TWO_SHOTS, "asr": _asr(), "unified-media": unified})
+        )
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "今天我们从机场出发。"
+        assert obs.source == Source.ASR
+
+    def test_asr_and_model_both_missing_is_unknown(self):
+        obs = SpeechResolver().resolve(
+            _ctx({"shots": TWO_SHOTS, "asr": None, "unified-media": None})
+        )
+        assert obs.state == ValueState.UNKNOWN
+        assert obs.evidence_refs == ()
 
 
 def _music_flags(state: str, status: str = "complete", confidence: str = "high") -> dict:
@@ -214,6 +265,112 @@ class TestCameraMovementResolver:
         assert obs.state == ValueState.UNKNOWN
 
 
+def _camera_motion(value: str, *, capability: str = "complete", confidence: str = "medium") -> dict:
+    return {
+        "analysis": {"capabilityStatus": capability},
+        "shots": [
+            {
+                "shotID": "SH0001",
+                "cameraMovement": value,
+                "cameraMovementCandidates": [value],
+                "confidence": confidence,
+            }
+        ],
+    }
+
+
+class TestCameraMovementResolverMerge:
+    """D-005：Vision 与模型运镜并存；冲突进 review_reasons，不静默覆盖。"""
+
+    def test_vision_wins_and_no_conflict_when_consistent(self):
+        raws = {
+            "camera-motion": _camera_motion("pan_right"),
+            "unified-media": _unified_media({"visual.cameraMovement": "摇"}),
+        }
+        ctx = _ctx(raws)
+        obs = CameraMovementResolver().resolve(ctx)
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "pan_right"
+        assert obs.source == Source.APPLE_VISION
+        assert ctx.review_reasons == []
+
+    def test_conflict_keeps_both_refs_and_collects_review_reason(self):
+        raws = {
+            "camera-motion": _camera_motion("pan_right"),
+            "unified-media": _unified_media({"visual.cameraMovement": "推"}),
+        }
+        ctx = _ctx(raws)
+        obs = CameraMovementResolver().resolve(ctx)
+        # 主值仍是 Vision 分类，不被模型覆盖
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "pan_right"
+        assert obs.source == Source.APPLE_VISION
+        # 双方证据都保留
+        assert obs.evidence_refs == (
+            "raw/camera-motion.json#shots[0]",
+            "raw/unified-media.json#batches[0].response.shots[0].visual.cameraMovement",
+        )
+        assert len(ctx.review_reasons) == 1
+        assert "pan_right" in ctx.review_reasons[0]
+
+    def test_model_absence_claim_conflicts_with_detected_motion(self):
+        raws = {
+            "camera-motion": _camera_motion("zoom_in"),
+            "unified-media": _unified_media({"visual.cameraMovement": "无"}),
+        }
+        ctx = _ctx(raws)
+        obs = CameraMovementResolver().resolve(ctx)
+        assert obs.value == "zoom_in"
+        assert len(ctx.review_reasons) == 1
+
+    def test_static_vision_and_model_absence_claim_is_not_conflict(self):
+        raws = {
+            "camera-motion": _camera_motion("static"),
+            "unified-media": _unified_media({"visual.cameraMovement": "无"}),
+        }
+        ctx = _ctx(raws)
+        obs = CameraMovementResolver().resolve(ctx)
+        assert obs.value == "static"
+        assert ctx.review_reasons == []
+
+    def test_unmapped_model_value_does_not_conflict(self):
+        raws = {
+            "camera-motion": _camera_motion("pan_left"),
+            "unified-media": _unified_media({"visual.cameraMovement": "螺旋环绕"}),
+        }
+        ctx = _ctx(raws)
+        obs = CameraMovementResolver().resolve(ctx)
+        assert obs.value == "pan_left"
+        assert ctx.review_reasons == []  # unmapped 本身已可见，不重复报警
+
+    def test_vision_unavailable_falls_back_to_model(self):
+        raws = {
+            "camera-motion": _camera_motion("pan_right", capability="unavailable"),
+            "unified-media": _unified_media({"visual.cameraMovement": "摇"}),
+        }
+        obs = CameraMovementResolver().resolve(_ctx(raws))
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "摇"  # 词表归一化
+        assert obs.source == Source.UNIFIED_MODEL
+
+    def test_vision_unknown_value_falls_back_to_model(self):
+        raws = {
+            "camera-motion": _camera_motion("unknown"),
+            "unified-media": _unified_media({"visual.cameraMovement": "固定"}),
+        }
+        obs = CameraMovementResolver().resolve(_ctx(raws))
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "固定"
+        assert obs.source == Source.UNIFIED_MODEL
+
+    def test_vision_unknown_value_without_model_keeps_vision_ref(self):
+        raws = {"camera-motion": _camera_motion("unknown", confidence="unknown")}
+        obs = CameraMovementResolver().resolve(_ctx(raws))
+        assert obs.state == ValueState.UNKNOWN
+        assert obs.evidence_refs == ("raw/camera-motion.json#shots[0]",)
+        assert obs.source == Source.APPLE_VISION
+
+
 def _unified_media(
     shot_fields: dict, *, shot_status: str = "succeeded", shot_id: str = "SH0001"
 ) -> dict:
@@ -266,6 +423,13 @@ class TestModelFieldResolver:
         assert obs.original_value == "无"
         assert obs.value is None
 
+    def test_vocabulary_field_absence_claim_is_absent_claimed_not_unmapped(self):
+        """词表字段的“无”同样是缺席声称，不得落 unmapped（docs/00 §4.2）。"""
+        raw = _unified_media({"visual.framing": "无"})
+        obs = ModelFieldResolver("visual.framing").resolve(_ctx({"unified-media": raw}))
+        assert obs.state == ValueState.ABSENT_CLAIMED
+        assert obs.original_value == "无"
+
     def test_model_unknown_text_is_unknown(self):
         raw = _unified_media({"visual.content": "unknown"})
         obs = ModelFieldResolver("visual.content").resolve(_ctx({"unified-media": raw}))
@@ -316,3 +480,17 @@ class TestBuildObservations:
         # 确定性来源优先：visual.cameraMovement 不得由模型 resolver 重复提供。
         assert fields.count("visual.cameraMovement") == 1
         assert len(fields) == len(set(fields))
+
+    def test_build_observations_with_review_collects_reasons(self):
+        raws = {
+            "camera-motion": _camera_motion("pan_right"),
+            "unified-media": _unified_media({"visual.cameraMovement": "推"}),
+        }
+        observations, review_reasons = build_observations_with_review(
+            "SH0001", raws, [CameraMovementResolver()]
+        )
+        assert len(observations) == 1
+        assert observations[0].value == "pan_right"
+        assert len(review_reasons) == 1
+        # 便捷包装保持原签名语义
+        assert build_observations("SH0001", raws, [CameraMovementResolver()]) == observations

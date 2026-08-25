@@ -140,6 +140,25 @@ def _fake_energy(source, shots, has_audio, config, *, pool) -> dict:
     }
 
 
+def _fake_audio_cuts(source, shots, media, config, *, pool=None, align_boundaries=False) -> dict:
+    """shots 参数是 shots.json 文档 dict（与真实 detect_audio_cuts 签名一致）。"""
+    doc = build_audio_cuts_stub(shots.get("shots", []), config)
+    doc["movedBoundaries"] = []
+    return doc
+
+
+def _fake_music(source, shots, asr, media, config, *, pool=None) -> dict:
+    return build_music_flags_stub(shots, config)
+
+
+def _fake_asr_stage(source, media, config, service=None) -> dict:
+    return build_asr_stub()
+
+
+def _fake_camera_motion(source, shots, media, config, *, pool=None) -> dict:
+    return build_camera_motion_stub(shots, media, config)
+
+
 def _fake_quality(source, shots, has_audio, config, *, pool) -> dict:
     return {
         "status": "complete",
@@ -208,6 +227,22 @@ def patched(monkeypatch):
     monkeypatch.setattr(
         shot_pipeline, "detect_quality", counted("detect_quality", _fake_quality)
     )
+    monkeypatch.setattr(
+        shot_pipeline,
+        "detect_audio_cuts",
+        counted("detect_audio_cuts", _fake_audio_cuts),
+    )
+    monkeypatch.setattr(
+        shot_pipeline, "detect_music", counted("detect_music", _fake_music)
+    )
+    monkeypatch.setattr(
+        shot_pipeline, "run_asr_stage", counted("run_asr_stage", _fake_asr_stage)
+    )
+    monkeypatch.setattr(
+        shot_pipeline,
+        "analyze_camera_motion",
+        counted("analyze_camera_motion", _fake_camera_motion),
+    )
     monkeypatch.setattr(shot_pipeline, "render_shot_html", _fake_render)
     monkeypatch.setattr(shot_pipeline, "validate_output_dir", lambda root, *, strict=False: [])
     monkeypatch.setattr(shot_pipeline, "validate_html", lambda path, *, root=None, strict=False: [])
@@ -240,21 +275,38 @@ class TestHappyPath:
             "acquire_lock",
             "probe_media",
             "detect_shots",
+            "detect_audio_cuts",
+            "run_asr",
+            "detect_music",
             "extract_frames",
             "build_clips",
             "detect_audio_energy",
             "detect_quality",
-            "stub_unavailable",
+            "unified_media_analysis",
+            "analyze_camera_motion",
             "render_shot_html",
             "validate",
         ]
         assert _step(report, "acquire_lock").status == "complete"
         assert all(
             _step(report, n).status == "complete"
-            for n in names
-            if n not in ("acquire_lock", "stub_unavailable")
+            for n in (
+                "probe_media",
+                "detect_shots",
+                "extract_frames",
+                "build_clips",
+                "detect_audio_energy",
+                "detect_quality",
+                "render_shot_html",
+                "validate",
+            )
         )
-        assert _step(report, "stub_unavailable").status == "unavailable"
+        # 显式降级步骤：状态来自产物内嵌状态，整体仍 complete
+        assert _step(report, "detect_audio_cuts").status == "unavailable"
+        assert _step(report, "run_asr").status == "skipped"
+        assert _step(report, "detect_music").status == "skipped"
+        assert _step(report, "unified_media_analysis").status == "skipped"
+        assert _step(report, "analyze_camera_motion").status == "unavailable"
         # 所有步骤计时非负
         assert all(s.elapsed_ms >= 0 for s in report.steps)
         # 产物落盘（raw/*.json + HTML + manifest）
@@ -334,8 +386,12 @@ class TestCacheReuse:
         report = pipeline.run(_request(source, out_dir, config=config))
         assert _step(report, "probe_media").status == "reused"
         assert _step(report, "detect_shots").status == "complete"
+        # shots 指纹变化 → 链 shots 的下游全部重跑；run_asr 只链 media → 复用
+        assert _step(report, "detect_audio_cuts").status == "unavailable"
+        assert _step(report, "run_asr").status == "reused"
+        assert _step(report, "detect_music").status == "skipped"
         assert _step(report, "extract_frames").status == "complete"
-        assert _step(report, "stub_unavailable").status == "unavailable"
+        assert _step(report, "analyze_camera_motion").status == "unavailable"
 
     def test_deleted_artifact_reruns_that_step_and_render(
         self, source, tmp_path, patched
@@ -349,7 +405,11 @@ class TestCacheReuse:
         assert report.status == "complete"
         assert _step(report, "probe_media").status == "reused"
         assert _step(report, "detect_shots").status == "reused"
-        assert _step(report, "stub_unavailable").status == "reused"
+        assert _step(report, "detect_audio_cuts").status == "reused"
+        assert _step(report, "run_asr").status == "reused"
+        assert _step(report, "detect_music").status == "reused"
+        assert _step(report, "unified_media_analysis").status == "reused"
+        assert _step(report, "analyze_camera_motion").status == "reused"
         assert _step(report, "detect_quality").status == "complete"
         assert _step(report, "render_shot_html").status == "complete"
         assert _step(report, "validate").status == "complete"
@@ -538,3 +598,233 @@ class TestStubBuilders:
         assert data["request"]["model"] == "unavailable-m1"
         assert data["request"]["externalFrameExtraction"] is False
         assert data["request"]["sourceRevisionID"] == "fakefakefake"
+
+
+class TestServiceWiring:
+    """服务构造与降级路径（docs/03 §7）。"""
+
+    def test_mock_services_run_asr_and_unified_for_real(
+        self, source, tmp_path, patched, monkeypatch
+    ):
+        from memoloupe.analysis.asr_stage import run_asr_stage as real_asr_stage
+
+        def media_with_audio(source, config, *, pool=None, analyzed_range=None):
+            doc = _fake_media(source, config, pool=pool, analyzed_range=analyzed_range)
+            doc["source"]["audioTracks"] = [
+                {
+                    "trackID": "A1",
+                    "language": "und",
+                    "channels": 1,
+                    "sampleRate": 44100,
+                    "hasSpeech": "unknown",
+                    "hasMusic": "unknown",
+                    "hasEffects": "unknown",
+                }
+            ]
+            return doc
+
+        monkeypatch.setattr(shot_pipeline, "probe_media", media_with_audio)
+        monkeypatch.setattr(shot_pipeline, "run_asr_stage", real_asr_stage)
+
+        out_dir = tmp_path / "out"
+        report = ShotAnalysisPipeline().run(
+            _request(source, out_dir, mock_services=True)
+        )
+        assert report.status == "complete"
+        unified = json.loads(
+            (out_dir / "raw" / "unified-media.json").read_text(encoding="utf-8")
+        )
+        assert unified["status"] == "complete"
+        assert unified["shotStatuses"] == {"SH0001": "succeeded"}
+        asr = json.loads((out_dir / "raw" / "asr.json").read_text(encoding="utf-8"))
+        assert asr["status"] == "complete"
+        assert _step(report, "run_asr").status == "complete"
+        assert _step(report, "unified_media_analysis").status == "complete"
+
+    def test_config_builds_openai_asr_service(self, source, tmp_path, patched, monkeypatch):
+        from memoloupe.services.asr import OpenAICompatibleASR
+
+        captured: dict = {}
+
+        def capture(source, media, config, service=None):
+            captured["service"] = service
+            return build_asr_stub()
+
+        monkeypatch.setattr(shot_pipeline, "run_asr_stage", capture)
+        config = load_config(
+            {"asr": {"apiKey": "sk-x", "baseUrl": "http://127.0.0.1:9", "model": "whisper"}},
+            env={},
+        )
+        ShotAnalysisPipeline().run(_request(source, tmp_path / "out", config=config))
+        assert isinstance(captured["service"], OpenAICompatibleASR)
+
+        # 去掉配置后 service marker 变化 → asr 步骤重跑且 service=None（skipped）
+        report = ShotAnalysisPipeline().run(
+            _request(source, tmp_path / "out", config=load_config(env={}))
+        )
+        assert captured["service"] is None
+        assert _step(report, "run_asr").status == "skipped"
+
+    def test_unified_permanent_failure_marks_partial_and_reruns(
+        self, source, tmp_path, patched
+    ):
+        from memoloupe.services.base import TransientServiceError
+        from memoloupe.services.mock import MockUnifiedMediaService
+
+        def always_fail(clips, group, call_index):
+            raise TransientServiceError("HTTP 429: slow down")
+
+        config = load_config({"unifiedModel": {"maxRetries": 0}}, env={})
+        out_dir = tmp_path / "out"
+        first = ShotAnalysisPipeline().run(
+            _request(
+                source,
+                out_dir,
+                config=config,
+                unified_service=MockUnifiedMediaService(always_fail),
+            )
+        )
+        assert first.status == "partial"
+        assert _step(first, "unified_media_analysis").status == "failed"
+        unified = json.loads(
+            (out_dir / "raw" / "unified-media.json").read_text(encoding="utf-8")
+        )
+        assert unified["status"] == "failed"
+        assert unified["shotStatuses"] == {"SH0001": "permanent_failure"}
+
+        # manifest 不记 complete → 第二次运行 unified 步骤自动重跑（断点续跑）
+        second_mock = MockUnifiedMediaService(always_fail)
+        second = ShotAnalysisPipeline().run(
+            _request(source, out_dir, config=config, unified_service=second_mock)
+        )
+        assert second.status == "partial"
+        assert second_mock.calls  # 确实重新请求了
+        assert _step(second, "unified_media_analysis").status == "failed"
+
+
+def _fake_shots_two(source, media, config, *, pool=None) -> dict:
+    doc = _fake_shots(source, media, config, pool=pool)
+    template = doc["shots"][0]
+    shot1 = {
+        **template,
+        "shotID": "SH0001",
+        "sequenceIndex": 1,
+        "detectedEndMs": 1000,
+        "finalEndMs": 1000,
+        "durationMs": 1000,
+        "boundaryOut": {"type": "hardCutCandidate", "confidence": "high", "metric": None},
+    }
+    shot2 = {
+        **template,
+        "shotID": "SH0002",
+        "sequenceIndex": 2,
+        "detectedStartMs": 1000,
+        "finalStartMs": 1000,
+        "durationMs": 1000,
+        "boundaryIn": {"type": "hardCutCandidate", "confidence": "high", "metric": None},
+    }
+    doc["shots"] = [shot1, shot2]
+    doc["boundaries"] = []
+    return doc
+
+
+MOVED = [
+    {
+        "visualTimeMs": 1000,
+        "audioTimeMs": 1080,
+        "offsetMs": 80,
+        "audioBoundaryID": "AU0001",
+        "leftShotID": "SH0001",
+        "rightShotID": "SH0002",
+    }
+]
+
+
+def _fake_audio_cuts_moved(source, shots, media, config, *, pool=None, align_boundaries=False) -> dict:
+    doc = build_audio_cuts_stub(shots.get("shots", []), config)
+    doc["status"] = "complete"
+    # 无条件携带移动计划：pipeline 侧必须自己按 align 开关决定是否采纳
+    doc["movedBoundaries"] = list(MOVED)
+    return doc
+
+
+class TestAlignBoundaries:
+    """--align-shot-boundaries-to-audio：final 边界移动、指纹失效与幂等。"""
+
+    def _run_two_shots(self, source, tmp_path, patched, monkeypatch, **kwargs):
+        monkeypatch.setattr(shot_pipeline, "detect_shots", _fake_shots_two)
+        monkeypatch.setattr(
+            shot_pipeline, "detect_audio_cuts", _fake_audio_cuts_moved
+        )
+        return ShotAnalysisPipeline().run(_request(source, tmp_path / "out", **kwargs))
+
+    def test_align_rewrites_final_boundaries_and_keeps_detected(
+        self, source, tmp_path, patched, monkeypatch
+    ):
+        report = self._run_two_shots(
+            source, tmp_path, patched, monkeypatch, align_boundaries=True
+        )
+        assert report.status == "complete"
+        shots = json.loads(
+            (tmp_path / "out" / "raw" / "shots.json").read_text(encoding="utf-8")
+        )["shots"]
+        assert shots[0]["finalEndMs"] == 1080
+        assert shots[0]["durationMs"] == 1080
+        assert shots[1]["finalStartMs"] == 1080
+        assert shots[1]["durationMs"] == 920
+        # detected 边界永不修改
+        assert shots[0]["detectedEndMs"] == 1000
+        assert shots[1]["detectedStartMs"] == 1000
+        assert any("音频对齐" in w for w in report.warnings)
+
+    def test_align_off_keeps_detected_boundaries(
+        self, source, tmp_path, patched, monkeypatch
+    ):
+        report = self._run_two_shots(source, tmp_path, patched, monkeypatch)
+        assert report.status == "complete"
+        shots = json.loads(
+            (tmp_path / "out" / "raw" / "shots.json").read_text(encoding="utf-8")
+        )["shots"]
+        assert shots[0]["finalEndMs"] == 1000
+        assert shots[1]["finalStartMs"] == 1000
+
+    def test_aligned_run_is_fully_reusable_on_second_run(
+        self, source, tmp_path, patched, monkeypatch
+    ):
+        self._run_two_shots(source, tmp_path, patched, monkeypatch, align_boundaries=True)
+        calls_before = dict(patched)
+        second = ShotAnalysisPipeline().run(
+            _request(source, tmp_path / "out", align_boundaries=True)
+        )
+        assert second.status == "complete"
+        # 对齐后的 shots.json 直接被复用，detect_shots/audio_cuts 都不重跑
+        assert patched == calls_before
+        for step in second.steps:
+            if step.name == "acquire_lock":
+                continue
+            assert step.status == "reused", step.name
+        shots = json.loads(
+            (tmp_path / "out" / "raw" / "shots.json").read_text(encoding="utf-8")
+        )["shots"]
+        assert shots[0]["finalEndMs"] == 1080  # 未二次移动
+
+    def test_mismatched_move_plan_is_not_applied(
+        self, source, tmp_path, patched, monkeypatch
+    ):
+        monkeypatch.setattr(shot_pipeline, "detect_shots", _fake_shots_two)
+
+        def bad_move(source, shots, media, config, *, pool=None, align_boundaries=False):
+            doc = build_audio_cuts_stub(shots.get("shots", []), config)
+            doc["status"] = "complete"
+            doc["movedBoundaries"] = [{**MOVED[0], "visualTimeMs": 999}]
+            return doc
+
+        monkeypatch.setattr(shot_pipeline, "detect_audio_cuts", bad_move)
+        report = ShotAnalysisPipeline().run(
+            _request(source, tmp_path / "out", align_boundaries=True)
+        )
+        assert report.status == "complete"
+        shots = json.loads(
+            (tmp_path / "out" / "raw" / "shots.json").read_text(encoding="utf-8")
+        )["shots"]
+        assert shots[0]["finalEndMs"] == 1000  # 守卫拒绝不一致的移动计划

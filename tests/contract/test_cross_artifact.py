@@ -129,6 +129,30 @@ class TestDerivedBreakage:
             for i in _errors(issues)
         )
 
+    def test_unified_media_failed_batch_without_response_is_legal(
+        self, tmp_path: Path
+    ) -> None:
+        """partial 允许成功与永久失败并存：failed 批次可无 response（docs/02 §4.7）。"""
+        data = load_fixture("output_full", "raw/unified-media.json")
+        batch = data["batches"][0]
+        shots = batch["response"]["shots"]
+        failed_shot = shots[-1]["shotID"]
+        batch["shotIDs"] = [s["shotID"] for s in shots[:-1]]
+        batch["response"]["shots"] = shots[:-1]
+        data["batches"].append(
+            {"batchID": "B0002", "shotIDs": [failed_shot], "status": "failed"}
+        )
+        data["shotStatuses"][failed_shot] = "permanent_failure"
+        data["completedShots"] = len(shots) - 1
+        data["permanentFailureShots"] = 1
+        data["status"] = "partial"
+        issues = self._run(tmp_path, "raw/unified-media.json", data)
+        assert not [
+            i
+            for i in _errors(issues)
+            if i.artifact == "unified-media" and "集合不一致" in i.message
+        ]
+
     def test_story_block_unknown_shot(self, tmp_path: Path) -> None:
         data = load_fixture("output_full", "raw/story-blocks.json")
         broken = mutate(data, "blocks[0].shotIDs", ["SH0001", "SH0099"])
