@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/corrections.json",
+  "title": "MemoLoupe corrections",
+  "description": "人工修正 overlay（docs/02 §6、docs/04 §5）。corrections 不是 raw artifact；渲染顺序固定为 raw → resolver → corrections overlay → HTML。历史 changes 只追加、永不删改。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["correctionVersion", "documentType", "sourceRevisionID", "changes"],
+  "properties": {
+    "correctionVersion": { "const": 1 },
+    "documentType": { "enum": ["shotAnalysis", "storyAnalysis"] },
+    "sourceRevisionID": {
+      "type": "string",
+      "description": "修正所基于的源 revision；与当前 revision 不一致时文档状态为 outdated，旧修正不自动套用。"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "entityID",
+          "field",
+          "oldValue",
+          "newValue",
+          "state",
+          "verified",
+          "changedAt",
+          "actor"
+        ],
+        "properties": {
+          "entityID": { "type": "string" },
+          "field": { "type": "string" },
+          "oldValue": {
+            "description": "修正前的值，任意 JSON 值，可为 null。"
+          },
+          "newValue": {
+            "description": "修正后的值，任意 JSON 值，可为 null。"
+          },
+          "state": {
+            "enum": ["value", "absent", "absent-claimed", "unknown", "unmapped"]
+          },
+          "verified": { "type": "boolean" },
+          "changedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC ISO-8601 时间戳。"
+          },
+          "actor": { "type": "string" },
+          "note": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["field", "boundary"],
+            "default": "field",
+            "description": "boundary 修正由渲染层单独消费，不进入字段 overlay。"
+          }
+        }
+      }
+    },
+    "confirmedAt": {
+      "type": ["string", "null"],
+      "description": "用户显式确认的 UTC ISO-8601 时间戳；不得由 verified 全选推导。"
+    },
+    "confirmedBy": { "type": ["string", "null"] }
+  }
+}

@@ -16,6 +16,7 @@
 - `docs/01_ARCHITECTURE_AND_MODULES.md`：分层架构与模块职责
 - `docs/02_DATA_AND_STATE_CONTRACTS.md`：数据/状态契约实现约束
 - `docs/07_SOURCE_DATA_CONTRACT.md`：字段级数据来源契约
+- `docs/08_DEVELOPMENT_ROADMAP.md`：M3–M5 当前执行路线与 GSD-ready plan
 
 ## 开发
 

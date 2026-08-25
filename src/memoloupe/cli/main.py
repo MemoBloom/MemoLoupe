@@ -3,7 +3,10 @@
 子命令：
 
 - ``memoloupe validate TARGET [--strict] [--json-report]``：校验一个 output-dir。
-- ``memoloupe shot/story/profile``：阶段流水线，M0 尚未实现，显式报错。
+- ``memoloupe shot``：Phase 1 镜头分析。
+- ``memoloupe review --output-dir DIR [--port 8765]``：localhost review server。
+- ``memoloupe import-corrections FILE --output-dir DIR``：导入离线 corrections。
+- ``memoloupe story/profile``：尚未实现，显式报错。
 
 退出码（docs/01 §10）：
 
@@ -27,6 +30,8 @@ from typing import Sequence
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
 
+from .import_corrections import run_import_corrections
+from .review import run_review
 from .shot_analysis import run_shot_analysis
 
 EXIT_OK = 0
@@ -62,6 +67,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # shot/story/profile 的参数由各自子命令模块自行解析，这里用 REMAINDER 透传。
     p_shot = sub.add_parser("shot", help="Phase 1：镜头分析")
     p_shot.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+
+    p_review = sub.add_parser("review", help="启动 localhost 人工校对 review server")
+    p_review.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+
+    p_import = sub.add_parser(
+        "import-corrections", help="导入离线导出的 corrections JSON 并重渲染"
+    )
+    p_import.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
     for name, help_text in (
         ("story", "Phase 2：故事分析"),
@@ -117,6 +130,14 @@ def _cmd_not_implemented(command: str) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    argv = list(sys.argv[1:]) if argv is None else list(argv)
+    # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），review 与
+    # import-corrections 的参数全部以选项开头，因此在主 parser 之前分流。
+    if argv[:1] == ["review"]:
+        return run_review(argv[1:])
+    if argv[:1] == ["import-corrections"]:
+        return run_import_corrections(argv[1:])
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 

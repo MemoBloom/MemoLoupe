@@ -13,9 +13,18 @@
   .metadata-grid div { display: flex; gap: 6px; }
   .metadata-grid dt { color: #57606a; }
   .metadata-grid dd { margin: 0; font-weight: 600; }
-  .toolbar { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; display: flex; gap: 16px; align-items: center; }
+  #validation-summary { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; font-size: 13px; }
+  #validation-summary h2 { font-size: 14px; margin: 0 0 4px; }
+  #validation-summary pre { margin: 0; white-space: pre-wrap; }
+  .validation-empty { color: #57606a; margin: 0; }
+  .correction-warnings { color: #9a6700; margin: 4px 0 0; }
+  .toolbar { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .toolbar button { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
+  .toolbar button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  #pending-indicator { color: #9a6700; font-size: 13px; }
   #shot-player { width: 480px; max-width: 100%; background: #000; display: block; margin: 12px 20px; }
-  .table-wrap { overflow-x: auto; padding: 12px 20px 20px; }
+  .review-layout { display: flex; align-items: flex-start; gap: 12px; padding: 12px 20px 20px; }
+  .table-wrap { overflow-x: auto; flex: 1 1 auto; min-width: 0; }
   table { border-collapse: collapse; background: #fff; }
   th, td { border: 1px solid #d0d7de; padding: 6px 10px; vertical-align: top; text-align: left; font-size: 13px; }
   thead th { background: #f6f8fa; }
@@ -28,47 +37,103 @@
   .play-btn { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
   .play-btn:disabled { color: #57606a; cursor: not-allowed; background: #f6f8fa; }
   .play-btn:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+  .boundary-form { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #57606a; }
+  .boundary-form input[type="number"] { width: 90px; font: inherit; }
+  .boundary-form button { font: inherit; padding: 2px 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; align-self: flex-start; }
   .cell-text { display: block; }
   .cell-confidence { display: block; color: #57606a; font-size: 11px; margin-top: 2px; }
   .cell-verified { display: inline-block; color: #1a7f37; font-size: 11px; margin-left: 4px; }
+  .cell-edit { display: block; margin-top: 4px; font: inherit; font-size: 12px; max-width: 220px; }
+  .cell-verify { display: block; margin-top: 4px; font-size: 12px; color: #1a7f37; }
+  .cell-edit:focus-visible, .verify-toggle:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
   .state-value { color: #1f2328; }
   .state-absent { color: #1a7f37; background: #dafbe1; }
   .state-absent-claimed { color: #9a6700; background: #fff8c5; }
   .state-unknown { color: #57606a; background: #f6f8fa; }
   .state-unmapped { color: #8250df; background: #fbefff; }
   .shot-hidden { display: none; }
+  #evidence-drawer { flex: 0 0 260px; position: sticky; top: 12px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; font-size: 13px; }
+  #evidence-drawer h2 { font-size: 14px; margin: 0 0 4px; }
+  #evidence-drawer .drawer-hint { color: #57606a; margin: 0; }
+  #evidence-drawer code { word-break: break-all; font-size: 11px; }
+  .drawer-frame { max-width: 100%; display: block; margin: 4px 0; border: 1px solid #d0d7de; border-radius: 4px; }
 </style>
 </head>
 <body>
 <!--METADATA-->
+<!--VALIDATION_SUMMARY-->
 <div class="toolbar">
   <label for="filter-needs-review"><input type="checkbox" id="filter-needs-review"> 只显示需人工复核的镜头</label>
+  <label for="loop-shot"><input type="checkbox" id="loop-shot"> 循环播放该镜头</label>
+  <button type="button" id="export-corrections">导出 corrections JSON</button>
+  <button type="button" id="save-corrections" hidden>保存到本地</button>
+  <button type="button" id="confirm-document">确认文档</button>
+  <span id="pending-indicator" role="status" aria-live="polite"></span>
 </div>
 <video id="shot-player" controls preload="none" aria-label="镜头播放器"></video>
+<div class="review-layout">
 <div class="table-wrap">
 <!--SHOT_TABLE-->
 </div>
+<aside id="evidence-drawer" aria-label="证据与复核详情">
+  <h2>证据详情</h2>
+  <p class="drawer-hint">点击字段单元格查看证据引用与复核理由。</p>
+  <div id="evidence-drawer-content"></div>
+</aside>
+</div>
 <script>
 (function () {
+  "use strict";
+  window.__REVIEW_SERVER__ = __SERVER_MODE__;
+  var DOCUMENT_TYPE = "shotAnalysis";
+  var SOURCE_REVISION_ID = __SOURCE_REVISION_JS__;
+  var REVIEW_REASONS = __REVIEW_REASONS_JSON__;
+
+  // ---- 播放器：定位 finalStartMs，播放到 finalEndMs 暂停（可选循环）----
   var player = document.getElementById("shot-player");
+  var loopToggle = document.getElementById("loop-shot");
+  var currentStartMs = 0;
   var currentEndMs = null;
+
+  function playShot(src, startMs, endMs) {
+    currentStartMs = startMs;
+    currentEndMs = endMs;
+    if (player.getAttribute("src") !== src) { player.setAttribute("src", src); }
+    player.currentTime = startMs / 1000;
+    player.play();
+  }
   player.addEventListener("timeupdate", function () {
-    if (currentEndMs !== null && player.currentTime * 1000 >= currentEndMs) {
-      player.pause();
-      currentEndMs = null;
+    if (currentEndMs === null) { return; }
+    if (player.currentTime * 1000 >= currentEndMs) {
+      if (loopToggle.checked) {
+        player.currentTime = currentStartMs / 1000;
+      } else {
+        player.pause();
+        currentEndMs = null;
+      }
     }
   });
   Array.prototype.forEach.call(document.querySelectorAll(".play-btn"), function (btn) {
     btn.addEventListener("click", function () {
       var src = btn.getAttribute("data-clip-src");
       if (!src) { return; }
-      var startMs = parseInt(btn.getAttribute("data-start-ms"), 10) || 0;
-      currentEndMs = parseInt(btn.getAttribute("data-end-ms"), 10);
-      if (player.getAttribute("src") !== src) { player.setAttribute("src", src); }
-      player.currentTime = startMs / 1000;
-      player.play();
+      playShot(src, parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
+               parseInt(btn.getAttribute("data-end-ms"), 10));
     });
   });
+  // 点击镜头列头同样定位播放该镜头区间；列内控件点击除外。
+  Array.prototype.forEach.call(document.querySelectorAll("th[data-shot-id][data-start-ms]"), function (th) {
+    th.addEventListener("click", function (event) {
+      if (event.target.closest("button, input, select, textarea, label, form")) { return; }
+      var btn = th.querySelector(".play-btn[data-clip-src]");
+      if (!btn) { return; }
+      playShot(btn.getAttribute("data-clip-src"),
+               parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
+               parseInt(btn.getAttribute("data-end-ms"), 10));
+    });
+  });
+
+  // ---- needsReview 过滤 ----
   var filter = document.getElementById("filter-needs-review");
   filter.addEventListener("change", function () {
     var hide = {};
@@ -79,6 +144,234 @@
       var sid = el.getAttribute("data-shot-id");
       if (Object.prototype.hasOwnProperty.call(hide, sid)) {
         el.classList.toggle("shot-hidden", hide[sid]);
+      }
+    });
+  });
+
+  // ---- 人工修正：pendingChanges 累积 ----
+  var pendingChanges = [];
+  var indicator = document.getElementById("pending-indicator");
+  function sameKey(a, b) {
+    return a.entityID === b.entityID && a.field === b.field &&
+      (a.kind || "field") === (b.kind || "field");
+  }
+  function recordChange(change) {
+    change.changedAt = new Date().toISOString();
+    change.actor = "human";
+    for (var i = pendingChanges.length - 1; i >= 0; i--) {
+      if (sameKey(pendingChanges[i], change)) { pendingChanges.splice(i, 1); }
+    }
+    pendingChanges.push(change);
+    indicator.textContent = "有 " + pendingChanges.length + " 项未导出修改";
+  }
+  window.addEventListener("beforeunload", function (event) {
+    if (pendingChanges.length > 0) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
+
+  function cellOf(el) { return el.closest("td[data-field]"); }
+  function currentVerified(td) {
+    var box = td.querySelector(".verify-toggle");
+    return box ? box.checked : false;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".cell-edit"), function (control) {
+    control.addEventListener("change", function () {
+      var td = cellOf(control);
+      if (!td) { return; }
+      var state, newValue;
+      if (control.tagName === "SELECT") {
+        if (control.value === "") { return; }  // 占位选项：尚未选择映射值
+        if (control.value === "unknown") { state = "unknown"; newValue = null; }
+        else { state = "value"; newValue = control.value; }
+      } else {
+        var text = control.value.trim();
+        if (text === "") { state = "unknown"; newValue = null; }
+        else { state = "value"; newValue = text; }
+      }
+      recordChange({
+        entityID: control.getAttribute("data-shot-id"),
+        field: control.getAttribute("data-field"),
+        oldValue: control.getAttribute("data-initial-value") || null,
+        newValue: newValue,
+        state: state,
+        verified: currentVerified(td)
+      });
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".verify-toggle"), function (box) {
+    box.addEventListener("change", function () {
+      var td = cellOf(box);
+      if (!td) { return; }
+      var control = td.querySelector(".cell-edit");
+      var newValue = null;
+      if (control && control.tagName !== "SELECT" && control.value.trim() !== "") {
+        newValue = control.value.trim();
+      } else if (control && control.tagName === "SELECT" &&
+                 control.value !== "" && control.value !== "unknown") {
+        newValue = control.value;
+      }
+      recordChange({
+        entityID: box.getAttribute("data-shot-id"),
+        field: box.getAttribute("data-field"),
+        oldValue: control ? (control.getAttribute("data-initial-value") || null) : null,
+        newValue: newValue,
+        state: td.getAttribute("data-value-state"),
+        verified: box.checked
+      });
+    });
+  });
+
+  // ---- corrections 导出 / 保存 / 确认 ----
+  function correctionsPayload() {
+    return {
+      correctionVersion: 1,
+      documentType: DOCUMENT_TYPE,
+      sourceRevisionID: SOURCE_REVISION_ID,
+      changes: pendingChanges
+    };
+  }
+  document.getElementById("export-corrections").addEventListener("click", function () {
+    var blob = new Blob([JSON.stringify(correctionsPayload(), null, 2)],
+                        { type: "application/json" });
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "corrections-" + DOCUMENT_TYPE + ".json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+  var saveButton = document.getElementById("save-corrections");
+  if (window.__REVIEW_SERVER__) { saveButton.hidden = false; }
+  saveButton.addEventListener("click", function () {
+    fetch("/api/corrections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(correctionsPayload())
+    }).then(function (resp) {
+      if (resp.ok) {
+        pendingChanges = [];
+        indicator.textContent = "已保存到本地";
+      } else {
+        indicator.textContent = "保存失败：HTTP " + resp.status;
+      }
+    }).catch(function (err) {
+      indicator.textContent = "保存失败：" + err;
+    });
+  });
+  document.getElementById("confirm-document").addEventListener("click", function () {
+    if (!window.__REVIEW_SERVER__) {
+      indicator.textContent = "离线模式：请导出 corrections JSON 后用 CLI 确认文档";
+      return;
+    }
+    fetch("/api/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentType: DOCUMENT_TYPE, sourceRevisionID: SOURCE_REVISION_ID })
+    }).then(function (resp) {
+      indicator.textContent = resp.ok ? "文档已确认" : "确认失败：HTTP " + resp.status;
+    }).catch(function (err) {
+      indicator.textContent = "确认失败：" + err;
+    });
+  });
+
+  // ---- 边界修正表单（kind="boundary"；相邻连续性仅提示，最终校验在应用端）----
+  var shotOrder = [];
+  Array.prototype.forEach.call(document.querySelectorAll("th[data-shot-id][data-start-ms]"), function (th) {
+    shotOrder.push({
+      shotId: th.getAttribute("data-shot-id"),
+      startMs: parseInt(th.getAttribute("data-start-ms"), 10),
+      endMs: parseInt(th.getAttribute("data-end-ms"), 10)
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("form.boundary-form"), function (form) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var shotId = form.getAttribute("data-shot-id");
+      var startMs = parseInt(form.elements.finalStartMs.value, 10);
+      var endMs = parseInt(form.elements.finalEndMs.value, 10);
+      if (!(endMs > startMs)) {
+        indicator.textContent = shotId + "：finalEndMs 必须大于 finalStartMs";
+        return;
+      }
+      var original = null;
+      var index = -1;
+      for (var i = 0; i < shotOrder.length; i++) {
+        if (shotOrder[i].shotId === shotId) { original = shotOrder[i]; index = i; break; }
+      }
+      var notes = [];
+      if (original) {
+        if (index > 0 && shotOrder[index - 1].endMs !== startMs) {
+          notes.push("与上一镜头不连续");
+        }
+        if (index < shotOrder.length - 1 && shotOrder[index + 1].startMs !== endMs) {
+          notes.push("与下一镜头不连续");
+        }
+      }
+      recordChange({
+        kind: "boundary",
+        entityID: shotId,
+        field: "finalRange",
+        oldValue: original ? { finalStartMs: original.startMs, finalEndMs: original.endMs } : null,
+        newValue: { finalStartMs: startMs, finalEndMs: endMs },
+        state: "value",
+        verified: true
+      });
+      if (notes.length) {
+        indicator.textContent = shotId + " 提示：" + notes.join("；") + "（已记录，最终以应用端校验为准）";
+      }
+    });
+  });
+
+  // ---- 证据抽屉：点击单元格显示证据引用与复核理由 ----
+  var drawer = document.getElementById("evidence-drawer-content");
+  Array.prototype.forEach.call(document.querySelectorAll("td[data-field]"), function (td) {
+    td.addEventListener("click", function (event) {
+      if (event.target.closest("select, input, button, textarea, label, a")) { return; }
+      var field = td.getAttribute("data-field");
+      var shotId = td.getAttribute("data-shot-id");
+      drawer.textContent = "";
+      var heading = document.createElement("h3");
+      heading.textContent = shotId + " · " + field;
+      drawer.appendChild(heading);
+      var refs = (td.getAttribute("data-evidence-refs") || "").split(/\s+/);
+      var list = document.createElement("ul");
+      var hasRef = false;
+      refs.forEach(function (ref) {
+        if (!ref) { return; }
+        hasRef = true;
+        var item = document.createElement("li");
+        if (/\.(jpe?g|png)$/i.test(ref)) {
+          var img = document.createElement("img");
+          img.setAttribute("src", ref);
+          img.setAttribute("alt", shotId + " " + field + " 证据帧");
+          img.className = "drawer-frame";
+          item.appendChild(img);
+        }
+        var code = document.createElement("code");
+        code.textContent = ref;
+        item.appendChild(code);
+        list.appendChild(item);
+      });
+      if (hasRef) {
+        drawer.appendChild(list);
+      } else {
+        var none = document.createElement("p");
+        none.textContent = "该字段无证据引用（unknown 豁免）。";
+        drawer.appendChild(none);
+      }
+      var reasons = REVIEW_REASONS[shotId] || [];
+      if (reasons.length) {
+        var title = document.createElement("h4");
+        title.textContent = "复核理由";
+        drawer.appendChild(title);
+        var rlist = document.createElement("ul");
+        reasons.forEach(function (reason) {
+          var li = document.createElement("li");
+          li.textContent = reason;
+          rlist.appendChild(li);
+        });
+        drawer.appendChild(rlist);
       }
     });
   });

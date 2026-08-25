@@ -7,16 +7,23 @@
   shotAnalysis 至少一个镜头列；
 - §8.2 单元格：data-value-state 五态 + labelOnly、五态必备
   confidence/source/verified、verified 取值、evidence refs 可解析、
-  每镜头至少一个可追溯证据单元格；
+  每镜头至少一个可追溯证据单元格；单元格内的内联编辑控件
+  （select/input/textarea/button/label）合法放行，``data-original-value``
+  为合法属性，``data-verified="true"`` 合法出现；
+- §5.1/§2：页面必须有带可访问名称的确认按钮（id=confirm-document
+  或可访问名称含“确认”；按钮文本或 aria-label 至少其一非空）；
 - §8.3 安全：禁外链 script、禁 javascript: URL、禁 http(s) 外链 img/script/link；
 - §8.4 严格模式（需提供 output-dir root）：页面 shotID 集合与
-  final 边界对齐 raw/shots.json，source revision 对齐 raw/media.json。
+  final 边界对齐 raw/shots.json，source revision 对齐 raw/media.json；
+  data-document-status 与 corrections/<docType>.json 推导状态一致
+  （corrections 文件不存在时要求 draft）。
 
 所有 issue 携带行号（HTMLParser.getpos()）。
 """
 
 from __future__ import annotations
 
+import importlib
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -77,6 +84,9 @@ class _Checker(HTMLParser):
         # 每个镜头的可追溯证据单元格计数。
         self.evidence_cells: dict[str, int] = {}
         self.story_block_lines: list[int] = []
+        # 按钮收集：确认按钮存在性与可访问名称检查（docs/04 §2/§5.1）。
+        self.buttons: list[dict[str, object]] = []
+        self._button_stack: list[dict[str, object]] = []
 
     # ------------------------------------------------------------------
     # HTMLParser 回调
@@ -118,6 +128,19 @@ class _Checker(HTMLParser):
                 self.shot_columns.append((shot_id, start_ms, end_ms, line))
         if tag == "td" and "data-field" in attr_map:
             self._check_cell(attr_map, line)
+        if tag == "button":
+            button = {
+                "line": line,
+                "id": attr_map.get("id", ""),
+                "aria_label": attr_map.get("aria-label", ""),
+                "text": "",
+            }
+            self.buttons.append(button)
+            self._button_stack.append(button)
+
+    def handle_data(self, data: str) -> None:
+        if self._button_stack:
+            self._button_stack[-1]["text"] += data
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         # 自闭合标签不参与嵌套栈，但仍需安全检查。
@@ -127,6 +150,8 @@ class _Checker(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         line, _ = self.getpos()
+        if tag == "button" and self._button_stack:
+            self._button_stack.pop()
         if tag == "table" and self._table_stack:
             table = self._table_stack.pop()
             if not table["has_tbody"]:
@@ -294,6 +319,27 @@ class _Checker(HTMLParser):
                     expected="非空", actual=attrs.get(required, "缺失") or "缺失",
                 ))
 
+        # 确认按钮必须存在且带可访问名称（确认是显式用户动作，docs/04 §2/§5.1）。
+        confirm_buttons = [
+            b for b in self.buttons
+            if b["id"] == "confirm-document"
+            or "确认" in str(b["text"])
+            or "确认" in str(b["aria_label"])
+        ]
+        if not confirm_buttons:
+            self.issues.append(_issue(
+                self.artifact, line, "html",
+                "页面必须提供确认按钮（id=confirm-document 或可访问名称含“确认”）",
+                expected="确认按钮", actual="缺失",
+            ))
+        for button in confirm_buttons:
+            if not str(button["text"]).strip() and not str(button["aria_label"]).strip():
+                self.issues.append(_issue(
+                    self.artifact, int(button["line"]), "button",
+                    "确认按钮缺少可访问名称（按钮文本或 aria-label）",
+                    expected="非空文本或 aria-label", actual="均为空",
+                ))
+
         if doc_type == "shotAnalysis":
             for block_line in self.story_block_lines:
                 self.issues.append(_issue(
@@ -396,6 +442,77 @@ def _check_strict(
             artifact, html_line, "html",
             "data-source-revision 与 media.json 的 revisionID 不一致",
             expected=revision, actual=page_revision,
+        ))
+
+    # data-document-status 与 corrections 推导状态一致（docs/04 §8.4、docs/02 §6）。
+    doc_type = (checker.html_attrs or {}).get("data-document-type") or ""
+    page_status = (checker.html_attrs or {}).get("data-document-status")
+    if doc_type in DOCUMENT_TYPES and page_status in DOCUMENT_STATUSES:
+        corr_path = root / "corrections" / f"{doc_type}.json"
+        if not corr_path.is_file():
+            if page_status != "draft":
+                issues.append(_issue(
+                    artifact, html_line, "html",
+                    f"无 corrections 文件（{corr_path.name}）时 "
+                    "data-document-status 必须为 draft",
+                    expected="draft", actual=page_status,
+                ))
+        else:
+            _check_corrections_status(
+                checker, root, doc_type,
+                revision if isinstance(revision, str) else "",
+                page_status, issues,
+            )
+
+
+def _check_corrections_status(
+    checker: _Checker,
+    root: Path,
+    doc_type: str,
+    revision: str,
+    page_status: str,
+    issues: list[ValidationIssue],
+) -> None:
+    """corrections 文件存在时，用 render.corrections.document_status 推导期望状态。
+
+    render.corrections 不可用（并行开发中）时记 warning 并跳过核对；
+    corrections 文件不可读或推导结果非法记 error（显式状态，不静默吞掉）。
+    """
+    artifact, html_line = checker.artifact, checker.html_line
+    try:
+        # import_module 只查 sys.modules/文件，避免 `from pkg import sub` 缓存
+        # 包属性导致测试替身泄漏到其他用例。
+        corrections_mod = importlib.import_module("memoloupe.render.corrections")
+    except ImportError:
+        issues.append(_issue(
+            artifact, html_line, "html",
+            "render.corrections 不可用，跳过 corrections 状态核对",
+            expected="memoloupe.render.corrections", actual="ImportError",
+            severity="warning",
+        ))
+        return
+    try:
+        corrections = corrections_mod.load_corrections(root, doc_type)
+        expected_status = corrections_mod.document_status(corrections, revision)
+    except Exception as exc:
+        issues.append(_issue(
+            artifact, html_line, "html",
+            f"corrections/{doc_type}.json 不可读或非法：{exc}",
+            expected="合法 corrections JSON", actual=str(exc)[:80],
+        ))
+        return
+    if expected_status not in DOCUMENT_STATUSES:
+        issues.append(_issue(
+            artifact, html_line, "html",
+            f"document_status 返回非法状态：{expected_status!r}",
+            expected=sorted(DOCUMENT_STATUSES), actual=repr(expected_status),
+        ))
+        return
+    if page_status != expected_status:
+        issues.append(_issue(
+            artifact, html_line, "html",
+            "data-document-status 与 corrections 推导状态不一致",
+            expected=expected_status, actual=page_status,
         ))
 
 

@@ -140,7 +140,33 @@
 ### D-024：校验器 partial 修复与遗留（M2）
 
 决策：cross_artifact 校验器已修复——failed 且无 response 的批次不再报"集合不一致"（partial 允许成败并存）。  
-遗留：resolver 层的 needsReview 冲突理由（`build_observations_with_review`）尚未接入渲染层镜头列（render 改动留给 M3）；aligned shots 以派生指纹 `alignedWith` 重写，detect_shots 复用判定同时接受 base/aligned 指纹。
+遗留：resolver 层的 needsReview 冲突理由（`build_observations_with_review`）尚未接入渲染层镜头列（render 改动留给 M3）。
+已关闭：aligned shots 以派生指纹 `alignedWith` 重写后，detect_shots 复用判定同时接受 base/aligned 指纹；`test_aligned_run_is_fully_reusable_on_second_run` 已覆盖二次运行全部复用和不重复移动 final 边界。
+
+### D-025：BGM 存在性字段归属确认（M3 路线确认）
+
+决策：稳定 `unified-media.json` 的模型 audio 字段保持 `speech/bgmStyle/soundEffects`，不增加 `bgm`。BGM 是否存在只由 `music-flags.json` 的确定性检测器负责；模型只在可听到音乐时描述 `bgmStyle`。若未来需要模型交叉验证存在性，只能作为诊断证据，不得改变稳定字段或直接产生确定性 `absent`。
+理由：docs/07 明确规定 music-flags 负责“有没有 BGM”，modelShot audio 字段表不含 bgm；符合确定性优先和模型“无”降级不变量。
+
+### D-026：UnifiedMLLM 三组结构确认（M3 路线确认）
+
+决策：继续使用 `visual/audio/editing_function` 三组内部字段所有权、自检和 checkpoint；组结构不属于稳定下游契约，最终只输出合并后的 `unified-media.json` modelShot。下游不得依赖原版两组调用次数或内部组名。
+理由：docs/07 只规定最终 batches/response.shots 结构；D-004 已区分内部 groups 与传输 batches。三组字段无重叠属于实现改进，不破坏数据契约。
+
+### D-027：corrections 追加语义与状态机（M3）
+
+决策：corrections 文件（`corrections/<documentType>.json`，schema 见 `schemas/corrections.json`）采用纯追加语义，同 entityID+field 的多次修正全部保留、apply 时取最后一条；`document_status` 中 outdated 优先于一切（sourceRevision 不匹配），confirmed 只看显式 `confirmedAt`，绝不由 verified 全选推导。corrections 不是 raw artifact，不进 ArtifactName。  
+理由：docs/02 §6 overlay 原则 + docs/04 §2"确认必须显式"。
+
+### D-028：verified 取消核实与 confirm 三道闸门（M3）
+
+决策：correction change 允许 `verified=false`（取消核实），apply 时 verified 按 change 取值而非强制 true。`confirm_document` 前置三道闸门：completion 规则通过 + `validate_output_dir --strict` 无 error + `validate_html --strict` 无 error；outdated 状态拒绝确认。  
+理由：docs/04 §5.2 允许取消核实；§9 确认前必须通过严格校验。
+
+### D-029：双模式保存与 review server（M3）
+
+决策：离线导出（Blob 下载）与 localhost review server（仅 127.0.0.1，`POST /api/corrections` / `/api/confirm`）产出同一 corrections schema；server 每次 GET 页面时以 server_mode 重渲染保证最新状态；`memoloupe import-corrections` 导入时 revision 不匹配直接拒绝；导入文件的 confirmedAt 以导入时刻落盘（幂等）。  
+理由：docs/04 §5.1 双模式等价；静态 HTML 无权写本地文件。
 
 ## 3. 推荐技术默认值
 

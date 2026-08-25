@@ -1,29 +1,38 @@
-"""render.shot_html — shot-analysis.html 渲染器（docs/04 §2/§3/§6）。
+"""render.shot_html — shot-analysis.html 渲染器（docs/04 §2/§3/§5/§6）。
 
 流程固定为：读 output-dir 的 raw/*.json（缺失容忍为 None）→ 经
-:mod:`memoloupe.analysis.resolvers` 生成 Observation → 映射到
+:func:`memoloupe.analysis.resolvers.build_observations_with_review` 生成
+Observation 并收集 review 理由 → 应用 corrections overlay
+（:mod:`memoloupe.render.corrections`，docs/02 §6 渲染顺序）→ 映射到
 ``templates/shot-analysis.html`` 骨架（占位符字符串替换）→ 原子写入。
 
 - 所有模型/检测原文经 ``html.escape`` 后才进入 HTML；
 - CSS/JS 由模板固定内联，绝不动态拼接用户内容（CSP 例外因此安全）；
+- 注入 JS 的 JSON 数据经 ``json.dumps`` 并转义 ``</``，防止 ``</script>`` 逃逸；
 - 媒体一律相对路径；缺 clips/SHxxxx.mp4 时播放按钮禁用；
+- 受控词表字段渲染 ``<select>`` 内联编辑控件，自由文本字段渲染 ``<input>``；
+- 命中人工修正的单元格带 ``data-source="human"`` 与 ``data-original-value``；
 - 模板替换完成后若仍有占位符残留，抛 :class:`ArtifactError`。
 """
 
 from __future__ import annotations
 
 import html
+import importlib
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from memoloupe.analysis.observations import Observation, ValueState
-from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations
+from memoloupe.analysis.observations import Observation, Source, ValueState
+from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations_with_review
+from memoloupe.analysis.vocabulary import FieldRule, Vocabulary, load_vocabulary
 from memoloupe.core.atomic_io import read_json, write_text_atomic
 from memoloupe.core.errors import ArtifactError, ContractError
 from memoloupe.validate.html_contract import DOCUMENT_STATUSES
 
 SHOT_RENDER_VERSION = "render.v1"
 CONTRACT_VERSION = "1.0"
+DOCUMENT_TYPE = "shotAnalysis"
 
 _TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "templates" / "shot-analysis.html"
 
@@ -56,6 +65,25 @@ def _load_raws(out_dir: Path) -> dict[str, dict | None]:
         except ContractError:
             raws[name] = None
     return raws
+
+
+def _load_corrections(out_dir: Path):
+    """加载 corrections overlay，返回 ``(module, Corrections)`` 或 None。
+
+    corrections 文件不存在时返回 None（无 overlay，文档状态回落到 ``status``
+    参数）；``render.corrections`` 模块尚不可用时同样返回 None——显式降级为
+    无 overlay 渲染，而不是抛错中断渲染阶段。
+    """
+    corr_path = out_dir / "corrections" / f"{DOCUMENT_TYPE}.json"
+    if not corr_path.is_file():
+        return None
+    try:
+        # import_module 只查 sys.modules/文件，避免 `from pkg import sub` 缓存
+        # 包属性导致测试替身泄漏到其他用例。
+        corrections_mod = importlib.import_module("memoloupe.render.corrections")
+    except ImportError:
+        return None
+    return corrections_mod, corrections_mod.load_corrections(out_dir, DOCUMENT_TYPE)
 
 
 def _timecode(ms: int) -> str:
@@ -101,7 +129,66 @@ def _state_visible_text(obs: Observation) -> str:
     return _STATE_TEXT[obs.state]
 
 
-def _cell_html(obs: Observation) -> str:
+def _initial_edit_value(obs: Observation) -> str:
+    """编辑控件的初始值（JS 作为 pendingChanges 的 oldValue）。"""
+    if obs.state == ValueState.VALUE and obs.value is not None:
+        if isinstance(obs.value, list):
+            return "、".join(str(item) for item in obs.value)
+        return str(obs.value)
+    if obs.state == ValueState.UNMAPPED:
+        return str(obs.original_value)
+    return ""
+
+
+def _edit_control_html(obs: Observation, rule: FieldRule | None) -> str:
+    """单元格内联编辑控件：受控词表字段 <select>，自由文本字段 <input>。
+
+    控件原生可键盘操作；aria-label 携带 shotID+field。所有值 html.escape。
+    """
+    esc_field = html.escape(obs.field)
+    esc_shot = html.escape(obs.shot_id)
+    aria = html.escape(f"编辑 {obs.shot_id} {obs.field}")
+    initial = html.escape(_initial_edit_value(obs))
+    if rule is None:
+        return (
+            f'<input type="text" class="cell-edit" data-field="{esc_field}" '
+            f'data-shot-id="{esc_shot}" data-initial-value="{initial}" '
+            f'value="{initial}" aria-label="{aria}">'
+        )
+    options = list(rule.values)
+    if "unknown" not in options:
+        options.append("unknown")
+    current: str | None = None
+    extra: tuple[str, str] | None = None
+    if obs.state == ValueState.VALUE and isinstance(obs.value, str):
+        if obs.value in options:
+            current = obs.value
+        else:
+            # 词表外当前值（如 Apple Vision 原始标签）：保留可见且选中。
+            extra = (obs.value, f"{obs.value}（词表外当前值）")
+    elif obs.state == ValueState.UNKNOWN:
+        current = "unknown"
+    elif obs.state == ValueState.UNMAPPED:
+        # 保留原值并提示映射（docs/04 §8.2：unmapped 应保留可见原始值或修正入口）。
+        extra = ("", f"{obs.original_value}（待映射）")
+    else:
+        extra = ("", _STATE_TEXT[obs.state])
+    parts: list[str] = []
+    for opt in options:
+        selected = " selected" if current == opt else ""
+        parts.append(f'<option value="{html.escape(opt)}"{selected}>{html.escape(opt)}</option>')
+    if extra is not None:
+        parts.append(
+            f'<option value="{html.escape(extra[0])}" selected>{html.escape(extra[1])}</option>'
+        )
+    return (
+        f'<select class="cell-edit" data-field="{esc_field}" '
+        f'data-shot-id="{esc_shot}" data-initial-value="{initial}" '
+        f'aria-label="{aria}">{"".join(parts)}</select>'
+    )
+
+
+def _cell_html(obs: Observation, rule: FieldRule | None) -> str:
     """字段单元格：属性顺序固定（快照稳定），全部值 html.escape。"""
     attrs = (
         f'data-field="{html.escape(obs.field)}" '
@@ -112,28 +199,52 @@ def _cell_html(obs: Observation) -> str:
         f'data-source="{html.escape(obs.source.value)}" '
         f'data-verified="{"true" if obs.verified else "false"}"'
     )
+    if obs.source == Source.HUMAN:
+        # 人工修正单元格：保留修正前的旧值（docs/04 §5、docs/02 §3.2）。
+        original = "" if obs.original_value is None else str(obs.original_value)
+        attrs += f' data-original-value="{html.escape(original)}"'
     state_class = f"state-{obs.state.value}"
+    esc_field = html.escape(obs.field)
+    esc_shot = html.escape(obs.shot_id)
     parts = [f'<span class="cell-text {state_class}">{_state_visible_text(obs)}</span>']
     # confidence=unknown 也必须可见（docs/04 §3.3）。
     parts.append(f'<span class="cell-confidence">置信度 {html.escape(obs.confidence.value)}</span>')
     if obs.verified:
         parts.append('<span class="cell-verified">已核实</span>')
+    parts.append(_edit_control_html(obs, rule))
+    checked = " checked" if obs.verified else ""
+    parts.append(
+        f'<label class="cell-verify"><input type="checkbox" class="verify-toggle" '
+        f'data-field="{esc_field}" data-shot-id="{esc_shot}" '
+        f'aria-label="核实 {esc_shot} {esc_field}"{checked}> 已核实</label>'
+    )
     return f"<td {attrs}>{''.join(parts)}</td>"
 
 
 def _column_header_html(
-    shot: dict, frame_ref: str | None, clip_src: str | None
+    shot: dict,
+    frame_ref: str | None,
+    clip_src: str | None,
+    review_reasons: list[str],
 ) -> str:
     shot_id = str(shot.get("shotID", ""))
     start_ms = shot.get("finalStartMs")
     end_ms = shot.get("finalEndMs")
     duration_ms = shot.get("durationMs")
-    needs_review = bool(shot.get("needsReview"))
+    # needsReview：合并 shots.json 标记与 resolver 报告的 review 理由（D-005）。
+    needs_review = bool(shot.get("needsReview")) or bool(review_reasons)
     esc_id = html.escape(shot_id)
+
+    title_attr = ""
+    if review_reasons:
+        title_attr = f' title="{html.escape("；".join(review_reasons))}"'
+    elif needs_review:
+        title_attr = ' title="shots.json 标记 needsReview"'
 
     lines = [
         f'<th scope="col" data-shot-id="{esc_id}" data-start-ms="{start_ms}" '
-        f'data-end-ms="{end_ms}" data-needs-review="{"true" if needs_review else "false"}">',
+        f'data-end-ms="{end_ms}" data-needs-review="{"true" if needs_review else "false"}"'
+        f"{title_attr}>",
         '<div class="shot-head">',
         f'<span class="shot-id">{esc_id}</span>',
     ]
@@ -161,6 +272,17 @@ def _column_header_html(
             f'<button type="button" class="play-btn" disabled '
             f'aria-label="镜头 {esc_id} 无 clip，无法播放">▶ 无 clip</button>'
         )
+    if isinstance(start_ms, int) and isinstance(end_ms, int):
+        # 边界修正表单：提交进 pendingChanges（kind="boundary"），最终校验在应用端。
+        lines.append(
+            f'<form class="boundary-form" data-shot-id="{esc_id}" '
+            f'aria-label="{esc_id} 边界修正">'
+            f'<label>finalStartMs <input type="number" name="finalStartMs" '
+            f'value="{start_ms}" min="0" aria-label="{esc_id} finalStartMs"></label>'
+            f'<label>finalEndMs <input type="number" name="finalEndMs" '
+            f'value="{end_ms}" min="0" aria-label="{esc_id} finalEndMs"></label>'
+            f'<button type="submit">提交边界修正</button></form>'
+        )
     lines.append("</div></th>")
     return "".join(lines)
 
@@ -168,8 +290,10 @@ def _column_header_html(
 def _table_html(
     shots: list[dict],
     observations_by_shot: dict[str, list[Observation]],
+    review_reasons_by_shot: dict[str, list[str]],
     frame_refs: dict[str, str],
     out_dir: Path,
+    vocabulary: Vocabulary,
 ) -> str:
     head_cells = ['<th scope="col">字段 \\ 镜头</th>']
     for shot in shots:
@@ -177,7 +301,10 @@ def _table_html(
         clip_path = out_dir / "clips" / f"{shot_id}.mp4"
         clip_src = f"clips/{shot_id}.mp4" if clip_path.is_file() else None
         head_cells.append(
-            _column_header_html(shot, frame_refs.get(shot_id), clip_src)
+            _column_header_html(
+                shot, frame_refs.get(shot_id), clip_src,
+                review_reasons_by_shot.get(shot_id, []),
+            )
         )
     rows = [
         "<table>",
@@ -194,7 +321,7 @@ def _table_html(
             ]
             for shot in shots:
                 obs = observations_by_shot[str(shot.get("shotID", ""))][row_index]
-                cells.append(_cell_html(obs))
+                cells.append(_cell_html(obs, vocabulary.fields.get(obs.field)))
             rows.append(f"<tr>{''.join(cells)}</tr>")
     rows.append("</tbody></table>")
     return "\n".join(rows)
@@ -222,11 +349,47 @@ def _metadata_html(status: str, shot_count: int, revision: str) -> str:
     )
 
 
-def render_shot_html(out_dir: Path, *, status: str = "draft") -> Path:
+def _validation_html(validation_summary: str | None, warnings: list[str]) -> str:
+    """校验摘要区（只读）：外部校验结果 + corrections overlay 警告。"""
+    parts = [
+        '<section id="validation-summary" aria-label="校验摘要">',
+        "<h2>校验摘要</h2>",
+    ]
+    if validation_summary is None:
+        parts.append('<p class="validation-empty">未提供校验摘要</p>')
+    else:
+        parts.append(f'<pre class="validation-report">{html.escape(validation_summary)}</pre>')
+    if warnings:
+        parts.append('<ul class="correction-warnings">')
+        for warning in warnings:
+            parts.append(f"<li>{html.escape(warning)}</li>")
+        parts.append("</ul>")
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _js_string(value: str) -> str:
+    """转成安全的 JS 字符串字面量（json.dumps + 转义 "</"，防 </script> 逃逸）。"""
+    return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
+
+
+def render_shot_html(
+    out_dir: Path,
+    *,
+    status: str = "draft",
+    server_mode: bool = False,
+    validation_summary: str | None = None,
+) -> Path:
     """渲染 out_dir 的 shot-analysis.html 并原子写入，返回写入路径。
 
-    shots.json 缺失/不可读时抛 :class:`ArtifactError`（无镜头列可渲染）；
+    渲染顺序：raw → resolver → corrections overlay → HTML（docs/02 §6）。
+    存在 corrections 文件时文档状态由 ``document_status`` 推导，否则回落到
+    ``status`` 参数。shots.json 缺失/不可读时抛 :class:`ArtifactError`；
     其余 raw 文件缺失时对应字段落 unknown。
+
+    - ``server_mode=True`` 时页面注入 ``window.__REVIEW_SERVER__ = true``，
+      显示"保存到本地"按钮（POST /api/corrections）；
+    - ``validation_summary`` 写入只读校验摘要区。
     """
     out_dir = Path(out_dir)
     if status not in DOCUMENT_STATUSES:
@@ -245,10 +408,6 @@ def render_shot_html(out_dir: Path, *, status: str = "draft") -> Path:
     if not shots:
         raise ArtifactError("shots", "raw/shots.json 不含合法镜头条目")
 
-    observations_by_shot = {
-        str(shot["shotID"]): build_observations(str(shot["shotID"]), raws, DEFAULT_RESOLVERS)
-        for shot in shots
-    }
     revision = "unknown"
     media = raws.get("media")
     if media:
@@ -256,14 +415,53 @@ def render_shot_html(out_dir: Path, *, status: str = "draft") -> Path:
         if isinstance(value, str) and value:
             revision = value
 
+    vocabulary = load_vocabulary()
+    loaded = _load_corrections(out_dir)
+
+    observations_by_shot: dict[str, list[Observation]] = {}
+    review_reasons_by_shot: dict[str, list[str]] = {}
+    warnings: list[str] = []
+    for shot in shots:
+        shot_id = str(shot["shotID"])
+        observations, reasons = build_observations_with_review(
+            shot_id, raws, DEFAULT_RESOLVERS
+        )
+        if loaded is not None:
+            corrections_mod, corrections = loaded
+            observations, corr_warnings = corrections_mod.apply_corrections(
+                observations, corrections, revision
+            )
+            warnings.extend(str(w) for w in corr_warnings)
+        observations_by_shot[shot_id] = observations
+        review_reasons_by_shot[shot_id] = list(reasons)
+
+    if loaded is not None:
+        corrections_mod, corrections = loaded
+        document_status = corrections_mod.document_status(corrections, revision)
+        if document_status not in DOCUMENT_STATUSES:
+            raise ArtifactError(
+                "corrections",
+                f"document_status 返回非法状态 {document_status!r}"
+                f"（应为 {sorted(DOCUMENT_STATUSES)}）",
+            )
+    else:
+        document_status = status
+
     document = _TEMPLATE_PATH.read_text(encoding="utf-8")
     replacements = {
-        "__DOCUMENT_STATUS__": status,
+        "__DOCUMENT_STATUS__": document_status,
         "__CONTRACT_VERSION__": CONTRACT_VERSION,
         "__SOURCE_REVISION__": html.escape(revision),
-        "<!--METADATA-->": _metadata_html(status, len(shots), revision),
+        "__SOURCE_REVISION_JS__": _js_string(revision),
+        "__SERVER_MODE__": "true" if server_mode else "false",
+        "__REVIEW_REASONS_JSON__": json.dumps(
+            review_reasons_by_shot, ensure_ascii=False
+        ).replace("</", "<\\/"),
+        "<!--METADATA-->": _metadata_html(document_status, len(shots), revision),
+        "<!--VALIDATION_SUMMARY-->": _validation_html(validation_summary, warnings),
         "<!--SHOT_TABLE-->": _table_html(
-            shots, observations_by_shot, _frame_refs(raws, out_dir), out_dir
+            shots, observations_by_shot, review_reasons_by_shot,
+            _frame_refs(raws, out_dir), out_dir, vocabulary,
         ),
     }
     for placeholder, content in replacements.items():

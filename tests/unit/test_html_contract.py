@@ -1,11 +1,14 @@
 """validate.html_contract 单元测试：手工构造非法 HTML，逐项验证捕获能力。
 
-契约依据：docs/04 §8.1 结构、§8.2 单元格、§8.3 安全、§8.4 严格数据一致性。
+契约依据：docs/04 §8.1 结构、§8.2 单元格（含编辑控件放行）、§8.3 安全、
+§8.4 严格数据一致性（含 corrections 状态核对）。
 """
 
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -17,6 +20,7 @@ VALID_DOC = """<!DOCTYPE html>
       data-contract-version="1.0" data-source-revision="a1b2c3d4e5f6">
 <head><meta charset="utf-8"><title>shot</title></head>
 <body>
+<button type="button" id="confirm-document">确认文档</button>
 <table id="shot-table">
   <thead>
     <tr>
@@ -288,3 +292,126 @@ class TestStrictConsistency:
         root = self._make_root(tmp_path)
         doc = VALID_DOC.replace('data-source-revision="a1b2c3d4e5f6"', 'data-source-revision="deadbeef"')
         assert _errors(_validate(tmp_path, doc, root=root, strict=False)) == []
+
+
+class TestEditingControlsAllowed:
+    """M3：单元格内的内联编辑控件不触发误报（docs/04 §5/§8.2）。"""
+
+    def test_select_input_textarea_controls_allowed(self, tmp_path):
+        doc = VALID_DOC.replace(
+            ">全景</td>",
+            '><span class="cell-text">全景</span>'
+            '<select class="cell-edit" data-field="visual.framing" data-shot-id="SH0001"'
+            ' aria-label="编辑 SH0001 visual.framing">'
+            '<option value="远景">远景</option>'
+            '<option value="全景" selected>全景</option>'
+            '<option value="unknown">unknown</option>'
+            "</select>"
+            '<input type="text" class="cell-edit" value="全景" aria-label="编辑备注">'
+            '<textarea aria-label="备注"></textarea>'
+            '<label><input type="checkbox" class="verify-toggle"'
+            ' aria-label="核实 SH0001 visual.framing"> 已核实</label></td>',
+        )
+        assert _errors(_validate(tmp_path, doc)) == []
+
+    def test_original_value_and_verified_true_allowed(self, tmp_path):
+        doc = VALID_DOC.replace(
+            'data-source="unifiedModel" data-verified="false"',
+            'data-source="human" data-verified="true" data-original-value="全景"',
+        )
+        assert _errors(_validate(tmp_path, doc)) == []
+
+
+class TestConfirmButton:
+    """页面必须有带可访问名称的确认按钮（docs/04 §2：确认必须显式）。"""
+
+    def test_missing_confirm_button(self, tmp_path):
+        doc = VALID_DOC.replace(
+            '<button type="button" id="confirm-document">确认文档</button>\n', ""
+        )
+        issues = _errors(_validate(tmp_path, doc))
+        assert "确认" in _messages(issues)
+
+    def test_confirm_button_without_accessible_name(self, tmp_path):
+        doc = VALID_DOC.replace(
+            '<button type="button" id="confirm-document">确认文档</button>',
+            '<button type="button" id="confirm-document"></button>',
+        )
+        issues = _errors(_validate(tmp_path, doc))
+        assert "可访问名称" in _messages(issues)
+
+    def test_confirm_button_with_aria_label_only(self, tmp_path):
+        doc = VALID_DOC.replace(
+            '<button type="button" id="confirm-document">确认文档</button>',
+            '<button type="button" id="confirm-document" aria-label="确认文档"></button>',
+        )
+        assert _errors(_validate(tmp_path, doc)) == []
+
+
+class TestStrictCorrectionsStatus:
+    """strict：data-document-status 与 corrections 文件状态一致（docs/04 §8.4）。"""
+
+    def _make_root(self, tmp_path: Path, *, with_corrections: bool) -> Path:
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        (raw / "shots.json").write_text(
+            json.dumps({"shots": [
+                {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 3203},
+            ]}),
+            encoding="utf-8",
+        )
+        (raw / "media.json").write_text(
+            json.dumps({"source": {"revisionID": "a1b2c3d4e5f6"}}), encoding="utf-8"
+        )
+        if with_corrections:
+            corr_dir = tmp_path / "corrections"
+            corr_dir.mkdir()
+            (corr_dir / "shotAnalysis.json").write_text(
+                json.dumps({
+                    "correctionVersion": 1,
+                    "documentType": "shotAnalysis",
+                    "sourceRevisionID": "a1b2c3d4e5f6",
+                    "changes": [],
+                }),
+                encoding="utf-8",
+            )
+        return tmp_path
+
+    def _install_fake_corrections(self, monkeypatch, status: str):
+        mod = types.ModuleType("memoloupe.render.corrections")
+        mod.load_corrections = lambda out_dir, document_type: {"documentType": document_type}
+        mod.document_status = lambda corrections, current_revision: status
+        monkeypatch.setitem(sys.modules, "memoloupe.render.corrections", mod)
+
+    def test_no_corrections_file_requires_draft(self, tmp_path):
+        root = self._make_root(tmp_path, with_corrections=False)
+        doc = VALID_DOC.replace('data-document-status="draft"', 'data-document-status="underReview"')
+        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
+        assert "draft" in _messages(issues) and "corrections" in _messages(issues)
+
+    def test_no_corrections_file_draft_passes(self, tmp_path):
+        root = self._make_root(tmp_path, with_corrections=False)
+        assert _errors(_validate(tmp_path, VALID_DOC, root=root, strict=True)) == []
+
+    def test_status_mismatch_with_corrections(self, tmp_path, monkeypatch):
+        root = self._make_root(tmp_path, with_corrections=True)
+        self._install_fake_corrections(monkeypatch, "underReview")
+        issues = _errors(_validate(tmp_path, VALID_DOC, root=root, strict=True))
+        status_issues = [i for i in issues if "data-document-status" in i.message]
+        assert status_issues
+        assert status_issues[0].expected == "underReview"
+        assert status_issues[0].actual == "draft"
+
+    def test_status_consistent_with_corrections(self, tmp_path, monkeypatch):
+        root = self._make_root(tmp_path, with_corrections=True)
+        self._install_fake_corrections(monkeypatch, "underReview")
+        doc = VALID_DOC.replace('data-document-status="draft"', 'data-document-status="underReview"')
+        assert _errors(_validate(tmp_path, doc, root=root, strict=True)) == []
+
+    def test_corrections_module_unavailable_warns_not_errors(self, tmp_path, monkeypatch):
+        root = self._make_root(tmp_path, with_corrections=True)
+        # sys.modules 置 None 使 import 抛 ImportError，模拟并行模块尚不存在。
+        monkeypatch.setitem(sys.modules, "memoloupe.render.corrections", None)
+        issues = _validate(tmp_path, VALID_DOC, root=root, strict=True)
+        assert _errors(issues) == []
+        assert any(i.severity == "warning" and "corrections" in i.message for i in issues)

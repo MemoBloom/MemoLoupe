@@ -225,16 +225,18 @@
 
 - audio cuts、ASR、music、MLLM、Apple Vision、Observation resolver。
 
-### M3：人工校对
+### M3：渲染收尾与故事分析
 
-- 播放器、corrections、completion、confirmed/outdated。
+- Phase 1 review reason 呈现、ASR 聚块、文本模型、story HTML、CLI 与严格校验。
 
-### M4：故事分析
+### M4：风格档案
 
-- ASR 聚块、文本模型、story HTML。
+- 确定性聚合、模型蒸馏、profile CLI、schema v2 与跨文件校验。
 
-### M5：风格档案
+### M5：真实服务、词表与校准
 
-- 确定性聚合、模型蒸馏、schema v2。
+- 真实服务联调、完整词表、黄金视频参数校准、HTML 人工校对体验和发布准备。
+
+M3–M5 的当前 plan 拆分与执行状态见 `docs/08_DEVELOPMENT_ROADMAP.md`。
 
 每个里程碑都必须形成可运行纵向产物，不接受只提交大量空模块。

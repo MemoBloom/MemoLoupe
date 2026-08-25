@@ -11,6 +11,7 @@
 7. `docs/05_TESTING_AND_ACCEPTANCE.md`
 8. `docs/06_DECISIONS_AND_ASSUMPTIONS.md`
 9. `docs/07_SOURCE_DATA_CONTRACT.md`（实现具体字段或生成 schema 时必须查阅）
+10. `docs/08_DEVELOPMENT_ROADMAP.md`（M3–M5 当前执行路线）
 
 ## 规范优先级
 
@@ -22,6 +23,7 @@
 4. `docs/01_ARCHITECTURE_AND_MODULES.md` 中的模块边界。
 5. `docs/04_UI_AND_VALIDATION.md` 中的呈现和人工校对约束。
 6. `docs/06_DECISIONS_AND_ASSUMPTIONS.md` 中的推荐默认值。
+7. `docs/08_DEVELOPMENT_ROADMAP.md` 中的阶段拆分与任务状态；它不得覆盖以上产品和数据契约。
 
 不得为了让测试通过而弱化更高优先级的契约。若实现与文档矛盾，应修改实现；若确需改变契约，先更新设计文档、契约版本和迁移策略。
 
