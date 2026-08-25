@@ -214,7 +214,101 @@
 理由：docs/04 §4 story 页面要求（五态/证据/校对语义）+ roadmap 03-04 门禁
 要求 + 保持与 shot 页面一致的机器语义与校验闭环。
 
-### D-034：Phase 03 验收修复（证据引用、slot 覆盖、下游失效）
+### D-034：profile 确定性聚合规则（04-01）
+
+决策：`analysis/profile_aggregate.py` 为纯函数友好模块，不导入/调用任何模型
+服务。聚合规则：
+
+- **分布按镜头数计权**（docs/03 §4.1 默认），unknown/unmapped 不入分布
+  （无法归类不编造）；coverage 按时间并集占**分析范围**比例，且所有输入
+  区间必须裁剪到 analyzedRange 后再求并集；
+- **style.transitions/framing/lighting** 来自 unified 模型值经受控词表
+  （`editing.transition`/`visual.framing`/`visual.lightingType`）归一化；
+- **style.cameraMovement** 只使用 camera-motion.json 的 Apple Vision
+  确定性值并**保留原始枚举**（static/pan_right/…），不映射为"推/拉/摇"
+  等摄影术语——docs/02 §4.8 规定 Vision 只证明图像运动，不得夸大为确定
+  摄影术语；capabilityStatus 非 complete 时输出空分布；
+- **style.hostedCoverage** 使用明确人物关键词（subjects 命中
+  HOSTED_KEYWORDS 的镜头时长占比）；无法可靠判断时返回 0.0 保守值
+  （CALIBRATION A-007）；
+- **audioBoundaryBySlot**：slot 内部块接缝取前块末镜头 boundaryOut 的
+  classification，synchronizedCut 占可判定边界比例 >= 0.5 才算 aligned
+  （CALIBRATION A-007）；无接缝真空对齐 true，有接缝全不可判定 false；
+- **musicAlignment** 为确定性信号（CALIBRATION A-007）：无 music 区间 →
+  `no music detected`；无内部块边界 → `unknown`；块边界被 BGM 区间覆盖
+  比例 >= 0.5 → `music aligned with story boundaries`，否则
+  `music not aligned with story boundaries`；
+- **expectationChains** 由 block.blockRelation 的 `kind → Bxxxx` 跨 slot
+  引用确定性提取（同 slot 引用不计）；turns/nonLinearDevices 保守空数组；
+- **shotDuration** 输出 mean/p50（numpy 线性插值），镜头数 >= 5 时附
+  p10/p90；比例统一 4 位小数、时长 3 位小数（"仅最终序列化舍入"）。
+
+理由：确定性优先 + "不夸大为确定摄影术语" + "无法可靠判断时采用可解释保守
+值"；全部待校准参数集中在常量并记录。
+
+### D-035：narrativeFunction 允许 null（04-01 schema widening）
+
+决策：`schemas/style-profile.json` 的 `L1.narrativeFunction` 由 string 放宽
+为 `["string", "null"]`（enum 同步加入 null）。确定性聚合阶段无法判断叙事
+功能（它属模型主观层 docs/03 §4.2），schema 原必填非 null 与"不得为填满
+schema 伪造"（docs/02 §4.12 hook/payoff 精神）冲突；聚合输出 null、蒸馏后
+由模型填充。这是向后兼容 widening（现有 fixture 均为具体值，仍合法），
+无需迁移。
+理由：模型主观字段在确定性阶段输出合法占位，与 functionalTitle/
+intendedReaction 允许 null 一致。
+
+### D-036：profile 蒸馏解析与白名单合并（04-02）
+
+决策：`parse_profile_distill` 对模型响应整体校验（任一不合规整体拒绝）：
+
+- slot 集合必须与 aggregate 完全一致（不增不减）；
+- **确定性字段白名单保护**：模型返回 L1.types/durationShare/rangeSeconds/
+  minBlocks 或 L3.shotIds/shotCount/avgShotSeconds（任意层级）→ 整体拒绝；
+- narrativeFunction 表外值 → null（该枚举无 unknown，保守占位）；
+- hook/payoff 为 null 或合法 layeredRole：L1 的 slotId/blockId 必须存在且
+  blockId 属于声明的 slotId，L2.form/referenceContent 非空，L3.shotIds
+  为非空且存在的镜头数组；
+- structureRequirements 的 slotId 必须存在；discussionItems 的 id 唯一、
+  options 非空且每项含 id/label、defaultIfUnanswered 必填；
+- 合并是白名单 update：确定性字段结构上只从 aggregate 复制，
+  `distillStatus=complete`、createdAt 更新为蒸馏时间；
+- 模型不可用/不合规时**保留 aggregate 文件不动**
+  （`distillStatus=skipped` 即未成功蒸馏的合法状态），report partial +
+  warning 呈现失败，不重写文件以免污染聚合指纹的复用判定。
+
+理由：docs/03 §4.2（模型不得修改确定性时长/ID/分布/计数）+ "失败可见"
+不变量 + 保持候选/确定性结果绝不因模型失败丢失。
+
+### D-037：profile CLI 输入门禁（04-03）
+
+决策：`memoloupe profile --output-dir DIR` 默认要求 `raw/media.json`、
+`raw/shots.json`、`raw/story-blocks.json` 存在且通过 schema 校验（profile
+确定性部分依赖 Phase 1/2 契约），否则退出码 3；无 `--allow-draft` 选项
+（story 的草稿门禁只针对未确认的镜头分析，profile 消费的是 story-blocks
+产物本身）。`style-profile.json` 经 ArtifactStore 原子写入输出根目录；
+`schemaVersion=2`、`id=profile-<revision>`、source 路径为相对
+`shot-analysis.html`/`story-analysis.html`。
+理由：docs/08 04-03 输出要求 + 输入契约完整性优先。
+
+### D-038：Phase 04 review 修复（coverage 并集与 profile 引用闭合）
+
+决策：
+
+1. `style.textOverlay`、`style.voiceMix.speechCoverage`、`style.hostedCoverage`
+   必须按区间并集计算，并裁剪到 analyzedRange；ASR segment 重叠不得双计。
+2. `style.bgm.coverage` 优先使用 `music-flags.json.musicIntervals` 的时间并集；
+   仅在无有效区间时回退到 per-shot `musicOverlapRatio`，且同一 shot 取最大
+   ratio，避免重复条目双计。
+3. profile 蒸馏解析与 strict validate 都必须校验 hook/payoff 的 slotId、
+   blockId、shotIds 闭合，并校验 blockId 属于声明 slot、shotIds 属于声明
+   block；strict validate
+   同步检查 structureRequirements 与 expectationChains 的引用闭合。
+
+理由：docs/03 §4.1 明确 coverage 默认按时间交集/并集占分析范围比例，docs/08
+04-03 要求 block/shot/hook/payoff 引用闭合。该修复防止重叠 ASR 或模型返回
+坏引用时生成 schema 不合法或语义不可追溯的 `style-profile.json`。
+
+### D-039：Phase 03 验收修复（证据引用、slot 覆盖、下游失效）
 
 决策：
 

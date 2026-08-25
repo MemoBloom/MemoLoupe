@@ -28,8 +28,8 @@
 - M3 已交付：人工校对闭环（corrections overlay、review server、import-corrections）。
 - Phase 03 已交付（03-01~03-04）：review reason 机器语义、确定性 story scaffold、
   文本模型编排、story HTML/CLI/校验闭环。
-- 全量测试：`968 passed in 48.28s`。
-- `memoloupe profile` 尚未实现。
+- Phase 04 已交付（04-01~04-03）：确定性 profile 聚合、模型蒸馏、CLI 与校验闭环。
+- 全量测试：`1041 passed in 48.10s`。
 
 已关闭的路线分歧：
 
@@ -42,7 +42,7 @@
 | Phase | 目标 | 前置 | 完成状态 |
 |---|---|---|---|
 | 03 | Phase 1 收尾并交付完整故事分析 | M2 | ✅ 已完成（03-01~03-04） |
-| 04 | 交付 schema v2 风格档案 | Phase 03 | 待开发 |
+| 04 | 交付 schema v2 风格档案 | Phase 03 | ✅ 已完成（04-01~04-03） |
 | 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 待开发，可并行准备 |
 
 ## 4. Phase 03：渲染收尾与故事分析
@@ -246,37 +246,44 @@ Phase 1 fixture/output
 
 类型：feature/test  
 依赖：Phase 03
+状态：已完成（2026-08-25，`analysis/profile_aggregate.py`，1041 tests 全绿）
 
 新增 `src/memoloupe/analysis/profile_aggregate.py`，设计为纯函数友好模块。
 
 必须计算：
 
-- [ ] slot 序列、时间范围、durationShare、minBlocks。
-- [ ] L3 shotIds、shotCount、avgShotSeconds。
-- [ ] 全片镜头时长 mean、p50；可附加 p10/p90。
-- [ ] densityCurve、slotPacing。
-- [ ] audioBoundaryBySlot 和 musicAlignment。
-- [ ] transition、framing、lighting、cameraMovement 分布。
-- [ ] textOverlay coverage、BGM coverage、speech/voiceMix coverage。
-- [ ] hostedCoverage。
-- [ ] ASR segmentCount、characterCount、speechDurationMs。
-- [ ] turns、nonLinearDevices、expectationChains。
+- [x] slot 序列、时间范围、durationShare、minBlocks。
+- [x] L3 shotIds、shotCount、avgShotSeconds。
+- [x] 全片镜头时长 mean、p50；可附加 p10/p90。
+- [x] densityCurve、slotPacing。
+- [x] audioBoundaryBySlot 和 musicAlignment。
+- [x] transition、framing、lighting、cameraMovement 分布。
+- [x] textOverlay coverage、BGM coverage、speech/voiceMix coverage。
+- [x] hostedCoverage。
+- [x] ASR segmentCount、characterCount、speechDurationMs。
+- [x] turns、nonLinearDevices、expectationChains。
 
-当前默认规则：
+当前默认规则（决策记录见 docs/06 D-034/D-035）：
 
-- 风格分布按镜头数计权。
+- 风格分布按镜头数计权；unknown/unmapped 不入分布。
 - coverage 按分析范围内的时间并集计权。
-- 内部保留精度，仅在最终序列化舍入。
+- 内部保留精度，仅在最终序列化舍入（比例 4 位、时长 3 位）。
 - 空数据输出空分布或 null，不除零、不伪造。
-- hostedCoverage 初版使用明确人物主持/出镜证据；无法可靠判断时采用可解释保守值并记录 CALIBRATION。
-- slot boundary aligned 初版以同步切边界占可判定边界的比例为指标，阈值进入配置并记录。
+- hostedCoverage 初版使用明确人物主持/出镜关键词证据；无法可靠判断时采用
+  保守 0.0 并记录 CALIBRATION A-007。
+- slot boundary aligned 以同步切边界占可判定边界比例 >= 0.5 为指标
+  （CALIBRATION A-007）。
+- cameraMovement 分布只用 camera-motion.json 的确定性值并保留原始枚举
+  （不映射为摄影术语，docs/02 §4.8）。
+- expectationChains 由 blockRelation 的跨 slot 引用确定性提取。
 
-测试必须从最小和完整 fixtures 重新计算预期值，不直接复用 fixture 中结果作为算法输入。
+测试从完整 fixtures 重新计算预期值，不直接复用 fixture 中结果作为算法输入。
 
 ### 04-02：Profile 模型蒸馏
 
 类型：feature/test  
 依赖：04-01、03-03 文本模型端口
+状态：已完成（2026-08-25，`analysis/profile_prompts.py` + `analysis/profile_pipeline.py` 编排，1041 tests 全绿）
 
 模型只允许补充：
 
@@ -289,17 +296,19 @@ Phase 1 fixture/output
 
 必须实现：
 
-- [ ] 蒸馏请求只包含结构化 story/profile aggregate，不发送视频。
-- [ ] prompt 强调 affordance 和 L1/L2/L3 分层，不做具体地点/对象一一复刻。
-- [ ] 模型响应 schema 校验。
-- [ ] 确定性字段白名单保护；模型返回这些字段应被拒绝。
-- [ ] 模型失败时保留 aggregate，`distillStatus` 为 unavailable/skipped/empty。
-- [ ] 模型成功且主观字段完整时 `distillStatus=complete`。
+- [x] 蒸馏请求只包含结构化 story/profile aggregate，不发送视频。
+- [x] prompt 强调 affordance 和 L1/L2/L3 分层，不做具体地点/对象一一复刻。
+- [x] 模型响应 schema 校验。
+- [x] 确定性字段白名单保护；模型返回这些字段应被拒绝。
+- [x] 模型失败时保留 aggregate，`distillStatus` 保持 skipped（未成功蒸馏的
+      合法状态），report partial。
+- [x] 模型成功且主观字段完整时 `distillStatus=complete`。
 
 ### 04-03：Profile CLI、输出与一致性
 
 类型：feature/test  
 依赖：04-01、04-02
+状态：已完成（2026-08-25，1041 tests 全绿）
 
 新增：
 
@@ -308,15 +317,25 @@ Phase 1 fixture/output
 
 必须实现：
 
-- [ ] `memoloupe profile --output-dir DIR`。
-- [ ] 根目录原子写入 `style-profile.json`。
-- [ ] schemaVersion 固定为 2。
-- [ ] source revision、路径和时长来自 media/输出目录。
-- [ ] story slot 与 profile slot 集合一致。
-- [ ] block、shot、hook/payoff/turn 引用闭合。
-- [ ] durationShare、shotCount、avgShotSeconds、分布总和可复算。
-- [ ] 无模型和 Mock 模型两条 E2E。
-- [ ] strict validate 覆盖 profile。
+- [x] `memoloupe profile --output-dir DIR`。
+- [x] 根目录原子写入 `style-profile.json`。
+- [x] schemaVersion 固定为 2。
+- [x] source revision、路径和时长来自 media/输出目录。
+- [x] story slot 与 profile slot 集合一致。
+- [x] block、shot、hook/payoff/turn 引用闭合。
+- [x] durationShare、shotCount、avgShotSeconds、分布总和可复算。
+- [x] 无模型和 Mock 模型两条 E2E。
+- [x] strict validate 覆盖 profile。
+
+实现要点（决策记录见 docs/06 D-036/D-037）：
+
+- 输入门禁：media/shots/story-blocks 必需（退出码 3）；
+- 聚合指纹含全部上游产物内容哈希；蒸馏指纹叠加 prompt 版本与服务标记；
+  每次成功蒸馏后 checkpoint（`checkpoints/style-profile-distill.json`），
+  重跑指纹命中不重发请求；
+- 模型失败保留确定性聚合（distillStatus=skipped），report partial；
+- story 重写会使 slot 集合失效的旧 style-profile 归档到
+  `checkpoints/outdated/`，避免陈旧 Phase 3 产物污染 strict 校验。
 
 ## 6. Phase 05：真实服务、词表与校准
 
@@ -445,7 +464,8 @@ Phase 1 fixture/output
 
 ## 10. 下一步
 
-Phase 03（故事分析纵向链路）已完成。下一个可执行 plan 是 `04-01`
-（确定性 Profile Aggregate）：它不依赖模型，可先完成 `profile_aggregate.py`
-的纯函数聚合与测试，再按顺序执行 04-02、04-03。05-01/05-02 可在 Phase 04
-期间并行准备适配层与词表。
+Phase 03 与 Phase 04（故事分析与风格档案纵向链路）均已完成。下一个可执行
+plan 是 `05-01`（真实服务联调）与 `05-02`（完整受控词表）：两者不依赖
+外部黄金样例，可先补齐供应商适配与词表契约测试；05-03（黄金视频校准）与
+05-04（HTML 体验/性能/发布）需要外部输入（真实视频、端点、视觉原型），
+可在适配层完成后并行推进。

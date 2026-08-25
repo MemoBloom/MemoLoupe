@@ -1,9 +1,9 @@
 # MemoLoupe 后续开发任务清单
 
 > 依据：`comparison-memoclip-lapian-vs-MemoLoupe.md` 的差距分析 + MemoLoupe `docs/` 规格与 `docs/06` 决策记录。
-> 现状基线（2026-08-25 实测）：M0+M1 + M2 + M3 + Phase 03 已交付，**968 测试全过**（`uv run pytest -q`，48.28s）。
-> 当前提交：`dcee671`（M3: 人工校对 + M3-M5 开发路线文档）。03-01~03-04 与 Phase 03 产物待提交。
-> 目标：补全 Phase 3 / Phase 4，达到与 memoclip-lapian 功能等价。
+> 现状基线（2026-08-25 实测）：M0+M1 + M2 + M3 + Phase 03 + Phase 04 已交付，**1041 测试全过**（`uv run pytest -q`，48.10s）。
+> 当前提交：`30093c3`（Phase 03: 故事分析纵向链路）。Phase 04 产物待提交。
+> 目标：补全 Phase 3 / Phase 4 剩余体验与真实服务适配，达到与 memoclip-lapian 功能等价。
 >
 > **重要**：MemoLoupe 已有官方执行路线 `docs/08_DEVELOPMENT_ROADMAP.md`（Phase 03/04/05，GSD plan 结构，含接口草案与验收标准）。
 > 本清单是面向执行的任务视图，与 roadmap 的对应关系已标注到每一项；**冲突时以 docs/07 契约与 docs/08 路线为准**。
@@ -20,7 +20,7 @@
 | M2 | 音频与智能分析（六特征/BGM/Vision/模型编排） | ✅ 已交付 |
 | M3 | 人工校对（corrections overlay + review server + 导入导出） | ✅ 已交付 |
 | Phase 03 | 渲染收尾 + Phase 2 故事分析 | ✅ 已交付（03-01~03-04） |
-| Phase 04 | Phase 3 风格档案（schema v2） | ⬜ 待开发 |
+| Phase 04 | Phase 3 风格档案（schema v2） | ✅ 已交付（04-01~04-03） |
 | Phase 05 | 真实服务、完整词表、真实样例校准与体验收尾 | ⬜ 待开发，可并行准备 |
 
 ---
@@ -102,24 +102,24 @@
 > 铁律：**先确定性聚合，再模型蒸馏**；profile 模型不可用时确定性 profile 仍生成、distillStatus 非 complete。
 
 ### 04-01 确定性 Profile Aggregate
-- [ ] **T3.1 `analysis/profile_aggregate.py` — 第一趟确定性聚合**（纯函数友好，**不调用模型**）
-  - [ ] slot 序列、时间范围、durationShare、minBlocks。
-  - [ ] L3 shotIds、shotCount、avgShotSeconds。
-  - [ ] 全片镜头时长 mean/p50（可附 p10/p90）；densityCurve、slotPacing。
-  - [ ] audioBoundaryBySlot、musicAlignment。
-  - [ ] transition/framing/lighting/cameraMovement 分布。
-  - [ ] textOverlay coverage、BGM coverage、speech/voiceMix coverage、hostedCoverage。
-  - [ ] ASR segmentCount/characterCount/speechDurationMs；turns、nonLinearDevices、expectationChains。
-  - 待校准（docs/06 A-007）：风格分布按镜头数还是时长加权（当前默认镜头数）、hosted coverage 规则、audio boundary aligned 的 slot 聚合阈值。
+- [x] **T3.1 `analysis/profile_aggregate.py` — 第一趟确定性聚合** ✅（2026-08-25，1041 tests 全绿；纯函数，不调用模型）
+  - [x] slot 序列、时间范围、durationShare、minBlocks。
+  - [x] L3 shotIds、shotCount、avgShotSeconds。
+  - [x] 全片镜头时长 mean/p50（>=5 镜头附 p10/p90）；densityCurve、slotPacing。
+  - [x] audioBoundaryBySlot、musicAlignment（确定性信号，阈值 CALIBRATION A-007）。
+  - [x] transition/framing/lighting 分布（词表归一化）、cameraMovement 分布（camera-motion 原始枚举）。
+  - [x] textOverlay coverage、BGM coverage、speech/voiceMix coverage、hostedCoverage（关键词保守值）。
+  - [x] ASR segmentCount/characterCount/speechDurationMs；expectationChains（blockRelation 跨 slot 提取）、turns/nonLinearDevices 保守空数组。
+  - 决策记录：D-034（聚合规则）、D-035（narrativeFunction 允许 null widening）；待校准 A-007。
 
 ### 04-02 模型蒸馏与输出
-- [ ] **T3.2 第二趟模型蒸馏**
-  - [ ] 蒸馏 prompt 强调 docs/03 §4.2 约束。
-  - [ ] 输出 structureRequirements/adoptionHints/discussionItems 等模型字段。
-  - [ ] profile 模型失败时 distillStatus ≠ complete，确定性部分照常产出。
-- [ ] **T3.3 `style-profile.json` 输出 + schema 校验**（写根目录，过 `schemas/style-profile.json` v2）。
-- [ ] **T3.4 CLI `memoloupe profile`**（替换 `_cmd_not_implemented`，新建 `cli/profile_build.py`）。
-- [ ] **T3.5 跨文件一致性**：style-profile 引用的 storyBlockID/shotID/slot 与上游 story-blocks、shots 对齐校验。
+- [x] **T3.2 第二趟模型蒸馏** ✅
+  - [x] 蒸馏 prompt 强调 docs/03 §4.2 约束（`analysis/profile_prompts.py`，只含结构化文本）。
+  - [x] 输出 structureRequirements/adoptionHints/discussionItems 等模型字段。
+  - [x] 确定性字段白名单保护（返回即整体拒绝）；模型失败时保留确定性聚合（distillStatus=skipped），report partial。
+- [x] **T3.3 `style-profile.json` 输出 + schema 校验** ✅（根目录原子写入，过 `schemas/style-profile.json` v2；每次成功蒸馏后 checkpoint `checkpoints/style-profile-distill.json`）。
+- [x] **T3.4 CLI `memoloupe profile`** ✅（`cli/profile_build.py` + 根级 `run_profile_build.py`；输入门禁 media/shots/story-blocks，退出码 3；`--mock-text-model` 演示）。
+- [x] **T3.5 跨文件一致性** ✅（profile slotId 与 story slots 对齐、L3 与 shots 一致、durationShare 总和 1.0；story 重写使 slot 集合失效时旧 profile 归档 `checkpoints/outdated/`）。
 
 ---
 
@@ -136,10 +136,10 @@
 ## 五、建议执行顺序
 
 1. ~~T0.1 / T0.2~~（已关闭）。
-2. **T1.1 剩余三项** —— 彻底关闭 03-01（`data-review-reasons` 机器语义 + html_contract 校验 + 回归测试），改动小、风险低，可先收官 Phase 1。
-3. **T2.x（Phase 03）** —— 故事分析纵向切片：03-02 scaffold → 03-03 文本模型 → 03-04 HTML/CLI/校验。
-4. **T3.x（Phase 04）** —— 风格档案：04-01 确定性聚合 → 04-02 蒸馏与输出。
-5. **T5.x（Phase 05）** —— 真实服务与校准，可与 3/4 并行推进适配层。
+2. ~~T1.1~~（03-01 已收官）。
+3. ~~T2.x（Phase 03）~~（已完成：03-02 scaffold → 03-03 文本模型 → 03-04 HTML/CLI/校验）。
+4. ~~T3.x（Phase 04）~~（已完成：04-01 确定性聚合 → 04-02 蒸馏与输出 → 04-03 CLI/校验闭环）。
+5. **T5.x（Phase 05）** —— 真实服务联调（05-01）与完整词表（05-02）不依赖黄金样例，可先行；05-03/05-04 等外部输入（真实视频、端点、视觉原型）。
 
 每个里程碑完成后：跑全量 `uv run pytest -q`、生成样例产物过 `memoloupe validate <dir> --strict`、更新 `docs/06_DECISIONS_AND_ASSUMPTIONS.md`。
 

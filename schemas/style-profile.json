@@ -56,13 +56,14 @@
             },
             "functionalTitle": { "type": ["string", "null"] },
             "narrativeFunction": {
-              "type": "string",
+              "type": ["string", "null"],
               "enum": [
                 "setup",
                 "progression",
                 "complication",
                 "resolution",
-                "reflection"
+                "reflection",
+                null
               ]
             },
             "durationShare": { "$ref": "#/$defs/ratio" },

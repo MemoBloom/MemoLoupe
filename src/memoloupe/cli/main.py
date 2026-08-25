@@ -5,9 +5,9 @@
 - ``memoloupe validate TARGET [--strict] [--json-report]``：校验一个 output-dir。
 - ``memoloupe shot``：Phase 1 镜头分析。
 - ``memoloupe story``：Phase 2 故事分析。
+- ``memoloupe profile``：Phase 3 风格档案。
 - ``memoloupe review --output-dir DIR [--port 8765]``：localhost review server。
 - ``memoloupe import-corrections FILE --output-dir DIR``：导入离线 corrections。
-- ``memoloupe profile``：尚未实现，显式报错。
 
 退出码（docs/01 §10）：
 
@@ -32,6 +32,7 @@ from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
 
 from .import_corrections import run_import_corrections
+from .profile_build import run_profile_build
 from .review import run_review
 from .shot_analysis import run_shot_analysis
 from .story_analysis import run_story_analysis
@@ -82,7 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ("story", "Phase 2：故事分析"),
         ("profile", "Phase 3：风格档案"),
     ):
-        p = sub.add_parser(name, help=f"{help_text}（profile 尚未实现）")
+        p = sub.add_parser(name, help=help_text)
         p.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
     return parser
@@ -124,23 +125,19 @@ def _cmd_validate(target: Path, *, strict: bool, json_report: bool) -> int:
     return EXIT_VALIDATION_FAILED if errors else EXIT_OK
 
 
-def _cmd_not_implemented(command: str) -> int:
-    print(
-        f"错误：子命令 '{command}' 尚未实现。", file=sys.stderr,
-    )
-    return EXIT_STAGE_FAILED
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），review、
-    # import-corrections 与 story 的参数全部以选项开头，因此在主 parser 之前分流。
+    # import-corrections、story 与 profile 的参数全部以选项开头，因此在主
+    # parser 之前分流。
     if argv[:1] == ["review"]:
         return run_review(argv[1:])
     if argv[:1] == ["import-corrections"]:
         return run_import_corrections(argv[1:])
     if argv[:1] == ["story"]:
         return run_story_analysis(argv[1:])
+    if argv[:1] == ["profile"]:
+        return run_profile_build(argv[1:])
 
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -151,7 +148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "shot":
         return run_shot_analysis(args.args)
-    return _cmd_not_implemented(args.command)
+    raise SystemExit(f"未知子命令：{args.command}")
 
 
 if __name__ == "__main__":

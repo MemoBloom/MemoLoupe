@@ -75,6 +75,12 @@ class TestUnimplementedCommands:
         assert main(["story", "--output-dir", str(tmp_path / "nonexistent")]) == EXIT_INPUT
         assert "不存在" in capsys.readouterr().err
 
-    def test_profile_reports_not_implemented(self, capsys):
-        assert main(["profile"]) == EXIT_STAGE_FAILED
-        assert "尚未实现" in capsys.readouterr().err
+    def test_profile_command_missing_dir_is_input_error(self, tmp_path, capsys):
+        assert main(["profile", "--output-dir", str(tmp_path / "nonexistent")]) == EXIT_INPUT
+        assert "不存在" in capsys.readouterr().err
+
+    def test_profile_command_missing_inputs_is_input_error(self, tmp_path, capsys):
+        work = tmp_path / "out"
+        work.mkdir()
+        assert main(["profile", "--output-dir", str(work)]) == EXIT_INPUT
+        assert "输入不可用" in capsys.readouterr().err

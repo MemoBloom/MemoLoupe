@@ -653,13 +653,27 @@ def _check_style_profile(docs: dict[str, dict], issues: list[ValidationIssue]) -
         s for s in doc.get("structure", {}).get("slots", [])
         if isinstance(s, dict)
     ]
+    story_slot_ids: set[str] = set()
+    story_block_ids: set[str] = set()
+    block_to_slots: dict[str, set[str]] = {}
+    block_to_shots: dict[str, set[str]] = {}
 
     if story:
-        story_slot_ids = {
-            s.get("slotID")
-            for s in story.get("slots", [])
-            if isinstance(s, dict) and isinstance(s.get("slotID"), str)
-        }
+        for block in story.get("blocks", []):
+            if isinstance(block, dict) and isinstance(block.get("storyBlockID"), str):
+                block_id = block["storyBlockID"]
+                story_block_ids.add(block_id)
+                block_to_shots[block_id] = {
+                    sid for sid in block.get("shotIDs", []) if isinstance(sid, str)
+                }
+        for story_slot in story.get("slots", []):
+            if not isinstance(story_slot, dict) or not isinstance(story_slot.get("slotID"), str):
+                continue
+            slot_id = story_slot["slotID"]
+            story_slot_ids.add(slot_id)
+            for bid in story_slot.get("blockIDs", []):
+                if isinstance(bid, str):
+                    block_to_slots.setdefault(bid, set()).add(slot_id)
         profile_slot_ids = {
             s.get("slotId") for s in slots if isinstance(s.get("slotId"), str)
         }
@@ -724,6 +738,97 @@ def _check_style_profile(docs: dict[str, dict], issues: list[ValidationIssue]) -
             "全部 slot 的 L1.durationShare 之和必须为 1.0（容差 1e-6）",
             expected="1.0", actual=repr(sum(shares)),
         ))
+
+    def _check_layered_role(role_name: str) -> None:
+        role = doc.get("structure", {}).get(role_name)
+        if role is None or not isinstance(role, dict):
+            return
+        base = f"$.structure.{role_name}"
+        l1 = role.get("L1", {}) if isinstance(role.get("L1"), dict) else {}
+        slot_id = l1.get("slotId")
+        block_id = l1.get("blockId")
+        if story_slot_ids and slot_id not in story_slot_ids:
+            issues.append(_issue(
+                name, f"{base}.L1.slotId",
+                f"{role_name} 引用的 slotId 不存在于 story-blocks",
+                expected=sorted(story_slot_ids), actual=repr(slot_id),
+            ))
+        if story_block_ids and block_id not in story_block_ids:
+            issues.append(_issue(
+                name, f"{base}.L1.blockId",
+                f"{role_name} 引用的 blockId 不存在于 story-blocks",
+                expected=sorted(story_block_ids), actual=repr(block_id),
+            ))
+        if (
+            isinstance(slot_id, str)
+            and isinstance(block_id, str)
+            and block_to_slots
+            and slot_id not in block_to_slots.get(block_id, set())
+        ):
+            issues.append(_issue(
+                name, f"{base}.L1.blockId",
+                f"{role_name} 的 blockId 必须属于同一个 slotId",
+                expected=sorted(block_to_slots.get(block_id, set())),
+                actual=f"{block_id} @ {slot_id}",
+            ))
+        l3 = role.get("L3", {}) if isinstance(role.get("L3"), dict) else {}
+        for j, sid in enumerate(l3.get("shotIds", [])):
+            if isinstance(sid, str) and shot_map and sid not in shot_map:
+                issues.append(_issue(
+                    name, f"{base}.L3.shotIds[{j}]",
+                    f"{role_name}.L3.shotIds 引用的 shotID 不存在于 shots.json",
+                    expected=sorted(shot_map), actual=sid,
+                ))
+            if (
+                isinstance(sid, str)
+                and isinstance(block_id, str)
+                and block_to_shots
+                and sid not in block_to_shots.get(block_id, set())
+            ):
+                issues.append(_issue(
+                    name, f"{base}.L3.shotIds[{j}]",
+                    f"{role_name}.L3.shotIds 必须属于同一个 blockId",
+                    expected=sorted(block_to_shots.get(block_id, set())),
+                    actual=f"{sid} @ {block_id}",
+                ))
+
+    _check_layered_role("hook")
+    _check_layered_role("payoff")
+
+    structure_reqs = doc.get("structureRequirements")
+    if isinstance(structure_reqs, list) and story_slot_ids:
+        for i, item in enumerate(structure_reqs):
+            if not isinstance(item, dict):
+                continue
+            slot_id = item.get("slotId")
+            if slot_id not in story_slot_ids:
+                issues.append(_issue(
+                    name, f"$.structureRequirements[{i}].slotId",
+                    "structureRequirements 引用的 slotId 不存在于 story-blocks",
+                    expected=sorted(story_slot_ids), actual=repr(slot_id),
+                ))
+
+    chains = doc.get("structure", {}).get("expectationChains")
+    if isinstance(chains, list):
+        for i, chain in enumerate(chains):
+            if not isinstance(chain, dict):
+                continue
+            for field in ("fromSlot", "toSlot"):
+                slot_id = chain.get(field)
+                if story_slot_ids and slot_id not in story_slot_ids:
+                    issues.append(_issue(
+                        name, f"$.structure.expectationChains[{i}].{field}",
+                        "expectationChains 引用的 slotId 不存在于 story-blocks",
+                        expected=sorted(story_slot_ids), actual=repr(slot_id),
+                    ))
+            evidence = chain.get("evidence")
+            block_id = evidence.get("blockId") if isinstance(evidence, dict) else None
+            if story_block_ids and block_id not in story_block_ids:
+                issues.append(_issue(
+                    name, f"$.structure.expectationChains[{i}].evidence.blockId",
+                    "expectationChains.evidence.blockId 不存在于 story-blocks",
+                    expected=sorted(story_block_ids), actual=repr(block_id),
+                ))
 
 
 def _check_evidence_refs(
