@@ -12,6 +12,7 @@ from memoloupe.core.config import (
     config_fingerprint,
     deep_merge,
     load_config,
+    load_env_file,
     redacted_snapshot,
 )
 from memoloupe.core.errors import ConfigError
@@ -29,6 +30,7 @@ class TestDefaultConfig:
             "vision",
             "asr",
             "unifiedModel",
+            "textModel",
             "story",
             "profile",
             "render",
@@ -42,11 +44,25 @@ class TestDefaultConfig:
         assert DEFAULT_CONFIG["audioCuts"]["syncToleranceMs"] == 100
         assert DEFAULT_CONFIG["audioCuts"]["associationWindowMs"] == 500
         assert DEFAULT_CONFIG["story"]["gapMs"] == 1200
+        assert DEFAULT_CONFIG["asr"]["baseUrl"] is None
+        assert DEFAULT_CONFIG["asr"]["apiKey"] is None
+        assert DEFAULT_CONFIG["asr"]["model"] is None
+        assert DEFAULT_CONFIG["asr"]["timeoutSec"] == 120.0
+        assert DEFAULT_CONFIG["unifiedModel"]["baseUrl"] is None
+        assert DEFAULT_CONFIG["unifiedModel"]["apiKey"] is None
+        assert DEFAULT_CONFIG["unifiedModel"]["model"] is None
+        assert DEFAULT_CONFIG["unifiedModel"]["fallbackModel"] is None
+        assert DEFAULT_CONFIG["unifiedModel"]["timeoutSec"] == 300.0
         assert DEFAULT_CONFIG["unifiedModel"]["batchSize"] == 4
         assert DEFAULT_CONFIG["unifiedModel"]["concurrency"] == 10
         assert DEFAULT_CONFIG["unifiedModel"]["videoFPS"] == 10.0
         assert DEFAULT_CONFIG["unifiedModel"]["mediaResolution"] == "default"
         assert DEFAULT_CONFIG["unifiedModel"]["maxRetries"] == 3
+        assert DEFAULT_CONFIG["textModel"]["baseUrl"] is None
+        assert DEFAULT_CONFIG["textModel"]["apiKey"] is None
+        assert DEFAULT_CONFIG["textModel"]["model"] is None
+        assert DEFAULT_CONFIG["textModel"]["timeoutSec"] == 300.0
+        assert DEFAULT_CONFIG["textModel"]["maxTokens"] == 0
         assert DEFAULT_CONFIG["vision"]["sampleFps"] == 2.0
         assert DEFAULT_CONFIG["vision"]["maximumFramesPerShot"] == 12
         assert DEFAULT_CONFIG["vision"]["maximumImageDimension"] == 960
@@ -110,10 +126,43 @@ class TestLoadConfig:
         env = {
             "MEMOLOUPE_QUALITY__BLURFLAGTHRESHOLD": "13.5",
             "MEMOLOUPE_MUSIC__ENABLED": "false",
+            "MEMOLOUPE_TEXTMODEL__TIMEOUTSEC": "12.5",
+            "MEMOLOUPE_TEXTMODEL__MAXTOKENS": "2048",
+            "MEMOLOUPE_ASR__TIMEOUTSEC": "30.5",
+            "MEMOLOUPE_UNIFIEDMODEL__TIMEOUTSEC": "99.5",
         }
         config = load_config(env=env)
         assert config["quality"]["blurFlagThreshold"] == 13.5
         assert config["music"]["enabled"] is False
+        assert config["textModel"]["timeoutSec"] == 12.5
+        assert config["textModel"]["maxTokens"] == 2048
+        assert config["asr"]["timeoutSec"] == 30.5
+        assert config["unifiedModel"]["timeoutSec"] == 99.5
+
+    def test_env_optional_service_strings(self) -> None:
+        env = {
+            "MEMOLOUPE_TEXTMODEL__BASEURL": "https://api.example.test/v1",
+            "MEMOLOUPE_TEXTMODEL__APIKEY": "sk-text",
+            "MEMOLOUPE_TEXTMODEL__MODEL": "story-model",
+            "MEMOLOUPE_ASR__BASEURL": "https://asr.example.test/v1",
+            "MEMOLOUPE_ASR__APIKEY": "sk-asr",
+            "MEMOLOUPE_ASR__MODEL": "asr-model",
+            "MEMOLOUPE_UNIFIEDMODEL__BASEURL": "https://vision.example.test/v1",
+            "MEMOLOUPE_UNIFIEDMODEL__APIKEY": "sk-unified",
+            "MEMOLOUPE_UNIFIEDMODEL__MODEL": "unified-model",
+            "MEMOLOUPE_UNIFIEDMODEL__FALLBACKMODEL": "unified-fallback",
+        }
+        config = load_config(env=env)
+        assert config["textModel"]["baseUrl"] == "https://api.example.test/v1"
+        assert config["textModel"]["apiKey"] == "sk-text"
+        assert config["textModel"]["model"] == "story-model"
+        assert config["asr"]["baseUrl"] == "https://asr.example.test/v1"
+        assert config["asr"]["apiKey"] == "sk-asr"
+        assert config["asr"]["model"] == "asr-model"
+        assert config["unifiedModel"]["baseUrl"] == "https://vision.example.test/v1"
+        assert config["unifiedModel"]["apiKey"] == "sk-unified"
+        assert config["unifiedModel"]["model"] == "unified-model"
+        assert config["unifiedModel"]["fallbackModel"] == "unified-fallback"
 
     def test_env_unknown_key_raises(self) -> None:
         with pytest.raises(ConfigError):
@@ -175,3 +224,33 @@ class TestConfigFingerprint:
         a = load_config(env={})
         b = load_config(cli_overrides={"story": {"gapMs": 999}}, env={})
         assert config_fingerprint(a, ["shots"]) == config_fingerprint(b, ["shots"])
+
+
+class TestLoadEnvFile:
+    def test_parses_key_values_and_ignores_comments(self, tmp_path: Path) -> None:
+        env_path = tmp_path / ".env"
+        env_path.write_text(
+            "# comment\nMEMOLOUPE_ASR__APIKEY=sk-from-env\n\n"
+            "MEMOLOUPE_ASR__MODEL='whisper-2'\n",
+            encoding="utf-8",
+        )
+        result = load_env_file(env_path)
+        assert result["MEMOLOUPE_ASR__APIKEY"] == "sk-from-env"
+        assert result["MEMOLOUPE_ASR__MODEL"] == "whisper-2"
+
+    def test_does_not_override_existing_env(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("MEMOLOUPE_ASR__APIKEY", "sk-existing")
+        env_path = tmp_path / ".env"
+        env_path.write_text("MEMOLOUPE_ASR__APIKEY=sk-from-env\n", encoding="utf-8")
+        result = load_env_file(env_path)
+        assert "MEMOLOUPE_ASR__APIKEY" not in result
+
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        assert load_env_file(tmp_path / "nope.env") == {}
+
+    def test_env_file_feeds_load_config(self, tmp_path: Path, monkeypatch) -> None:
+        env_path = tmp_path / ".env"
+        env_path.write_text("MEMOLOUPE_ASR__APIKEY=sk-from-env\n", encoding="utf-8")
+        loaded = load_env_file(env_path)
+        config = load_config(env={**loaded, "MEMOLOUPE_ASR__BASEURL": "http://x"})
+        assert config["asr"]["apiKey"] == "sk-from-env"

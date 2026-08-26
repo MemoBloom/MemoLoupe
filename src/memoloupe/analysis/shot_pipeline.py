@@ -66,7 +66,7 @@ from memoloupe.media.probe import probe_media
 from memoloupe.media.quality import QUALITY_DETECTION_VERSION, detect_quality
 from memoloupe.media.shots import SHOT_DETECTION_VERSION, detect_shots
 from memoloupe.render.shot_html import SHOT_RENDER_VERSION, render_shot_html
-from memoloupe.services.asr import OpenAICompatibleASR
+from memoloupe.services.asr import build_asr_service
 from memoloupe.services.mock import MockASRService, default_mock_unified
 from memoloupe.services.unified_media import OpenAICompatibleUnifiedMedia
 from memoloupe.validate.cross_artifact import validate_output_dir
@@ -82,6 +82,22 @@ PIPELINE_STATE_FILENAME = ".memoloupe-pipeline.json"
 #: 必需步骤：失败立即终止整个阶段。
 REQUIRED_STEPS = frozenset(
     {"probe_media", "detect_shots", "extract_frames", "build_clips", "validate"}
+)
+
+#: 05-04：可被 ``--skip`` 显式跳过的可选步骤（跳过写降级产物，不省略）。
+#: extract_frames 虽属 REQUIRED_STEPS，但允许显式跳过（写 failed stub），
+#: 此时"跳过"是用户意图而非失败。
+SKIPPABLE_STEPS = frozenset(
+    {
+        "detect_audio_cuts",
+        "run_asr",
+        "detect_music",
+        "extract_frames",
+        "detect_audio_energy",
+        "detect_quality",
+        "unified_media_analysis",
+        "analyze_camera_motion",
+    }
 )
 
 #: 步骤执行顺序（docs/03 §2.1 DAG 的串行化）。
@@ -143,6 +159,10 @@ class ShotAnalysisRequest:
     # 显式注入的服务实例（测试/嵌入用）；None 时按 mock_services/config 构造。
     asr_service: Any = None
     unified_service: Any = None
+    # 05-04：显式跳过的可选步骤（写 skipped/unavailable 降级产物，不省略）。
+    skip_steps: frozenset[str] = frozenset()
+    # 05-04：调试模式——只保留前 N 个镜头（产物不满足完整范围契约，见 warning）。
+    max_shots: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +177,106 @@ def build_asr_stub() -> dict:
         "status": "skipped",
         "transcript": {"segments": []},
         "note": "ASR 服务未配置（M1）",
+    }
+
+
+def _truncate_shots(shots_doc: dict, max_shots: int) -> dict:
+    """调试模式：只保留前 ``max_shots`` 个镜头（05-04 --max-shots）。
+
+    返回裁剪后的副本；产物不满足完整范围契约（末镜头终点 ≠ analyzedRange
+    终点、末 boundaryOut 非 sourceEnd），由调用方记 warning。
+    """
+    truncated = shots_doc["shots"][:max_shots]
+    doc = dict(shots_doc)
+    doc["shots"] = truncated
+    analysis = dict(doc.get("analysis", {}))
+    analysis["selectedBoundaryCount"] = max(0, len(truncated) - 1)
+    analysis["note"] = "调试模式 --max-shots：仅保留前 N 个镜头，产物不满足完整范围契约"
+    doc["analysis"] = analysis
+    return doc
+
+
+def build_frames_stub(shots: list[dict], revision_id: str) -> dict:
+    """frame-evidence.json 降级产物：帧抽取被显式跳过。
+
+    ``status=failed`` + ``frames=[]`` + failedFrames 全镜头——
+    表达"未产出帧"，绝不伪装成已抽取。
+    """
+    return {
+        "status": "failed",
+        "request": {
+            "sourceRevisionID": revision_id,
+            "inputVideo": "（未抽取：extract_frames 被跳过）",
+            "inputCacheKey": "skipped",
+            "width": 640,
+        },
+        "extraction": {"mode": "skipped", "workerCount": 1, "cachedFrames": 0},
+        "frames": [],
+        "failedFrames": [
+            {
+                "shotID": shot["shotID"],
+                "reason": "用户显式跳过 extract_frames（--skip）",
+            }
+            for shot in shots
+        ],
+        "note": "帧抽取未运行（--skip extract_frames）",
+    }
+
+
+def build_audio_energy_stub(shots: list[dict], media: dict, config: dict) -> dict:
+    """audio-energy.json 降级产物：能量检测被显式跳过。
+
+    ``hasAudio=false`` + 每镜头 ``label=unknown``/``medianDb=null``——
+    D-007 语义：未测量 ≠ 静音，绝不伪造数值。
+    """
+    duration_ms = int(media.get("source", {}).get("durationMs", 0))
+    return {
+        "source": "skipped（--skip detect_audio_energy）",
+        "durationMs": duration_ms,
+        "sampleRate": 16000,
+        "hasAudio": False,
+        "thresholds": {},
+        "shots": [
+            {
+                "shotID": shot["shotID"],
+                "label": "unknown",
+                "medianDb": None,
+                "frameCount": 0,
+                "note": "能量检测未运行（--skip）",
+            }
+            for shot in shots
+        ],
+        "note": "音频能量检测未运行（--skip detect_audio_energy）",
+    }
+
+
+def build_quality_stub(shots: list[dict], media: dict, config: dict) -> dict:
+    """quality-flags.json 降级产物：质量检测被显式跳过。
+
+    schema 只允许 ``status=complete``，因此用 ``confidence=unknown`` +
+    空 ``flags`` 表达"未检测"——docs/02 §4.9 明确 confidence=unknown 时
+    空 flags 不得解释为未发现问题。
+    """
+    return {
+        "status": "complete",
+        "method": "skipped（--skip detect_quality）",
+        "audioStatus": "failed",
+        "flaggedShotCount": 0,
+        "shotCount": len(shots),
+        "thresholds": {},
+        "shots": [
+            {
+                "shotID": shot["shotID"],
+                "startMs": int(shot["finalStartMs"]),
+                "endMs": int(shot["finalEndMs"]),
+                "flags": [],
+                "confidence": "unknown",
+                "measurements": {},
+                "note": "质量检测未运行（--skip）",
+            }
+            for shot in shots
+        ],
+        "note": "质量检测未运行（--skip detect_quality）",
     }
 
 
@@ -355,23 +475,14 @@ def _service_marker(injected: Any, mock_services: bool, service: Any) -> str:
 
 
 def _build_asr_service(config: dict, mock_services: bool) -> Any:
-    """按配置构造 ASR 服务；未配置时返回 None（调用方走 skipped 降级）。"""
+    """按配置构造 ASR 服务；未配置时返回 None（调用方走 skipped 降级）。
+
+    05-01C：provider 选择（openai-json / openai-multipart）在
+    :func:`memoloupe.services.asr.build_asr_service` 统一处理。
+    """
     if mock_services:
         return MockASRService()
-    asr_cfg = config.get("asr", {})
-    if not asr_cfg.get("enabled", True):
-        return None
-    api_key = asr_cfg.get("apiKey")
-    base_url = asr_cfg.get("baseUrl")
-    model = asr_cfg.get("model")
-    if not (api_key and base_url and model):
-        return None
-    return OpenAICompatibleASR(
-        base_url=str(base_url),
-        api_key=str(api_key),
-        model=str(model),
-        timeout_sec=float(asr_cfg.get("timeoutSec", 120.0)),
-    )
+    return build_asr_service(config)
 
 
 def _build_unified_service(
@@ -587,6 +698,7 @@ class ShotAnalysisPipeline:
             fp: str,
             fn: Callable[[], dict],
             status_of: Callable[[dict], str | None] | None = None,
+            skip_fn: Callable[[], dict] | None = None,
         ) -> dict | None:
             """通用 artifact 步骤：复用判定 → 执行 → 原子写入。失败按必需性处理。
 
@@ -596,9 +708,28 @@ class ShotAnalysisPipeline:
               （断点续跑），并记 warning、pipeline 落 partial；
             - skipped/unavailable 是确定性降级，manifest 记 complete
               （下次可直接复用），记 warning 但不影响整体 complete。
+
+            ``skip_fn``：步骤在 ``request.skip_steps`` 中时生成显式降级
+            stub（05-04：跳过 ≠ absent，产物保持合法且状态可见）。
             """
             nonlocal hard_failure, any_failed, any_produced
             step_start = time.monotonic()
+            if name in request.skip_steps:
+                if skip_fn is None:
+                    record(name, "failed", _elapsed(step_start),
+                           detail=f"步骤 {name} 被 --skip 但无降级实现")
+                    warnings.append(f"步骤 {name} 被 --skip 但无降级实现")
+                    return None
+                data = skip_fn()
+                doc_status = status_of(data) if status_of is not None else None
+                manifest_status = (
+                    doc_status if doc_status in ("partial", "failed") else "complete"
+                )
+                store.write(artifact, data, WriteMetadata(fingerprint=fp, status=manifest_status))
+                any_produced = True
+                record(name, "skipped", 0, detail="用户显式跳过（--skip）")
+                warnings.append(f"步骤 {name} 已被 --skip 显式跳过（写降级产物）")
+                return data
             if cacheable(name) and store.is_reusable(artifact, fp):
                 record(name, "reused", _elapsed(step_start), detail=f"fingerprint={fp}")
                 return store.read(artifact)
@@ -736,6 +867,20 @@ class ShotAnalysisPipeline:
             if shots_doc is None:
                 return self._report(steps, warnings, out_dir, started, "failed")
             shots: list[dict] = shots_doc["shots"]
+            # 05-04：调试模式 --max-shots——只保留前 N 个镜头。
+            if request.max_shots is not None and len(shots) > request.max_shots:
+                shots_doc = _truncate_shots(shots_doc, request.max_shots)
+                store.write(
+                    ArtifactName.SHOTS, shots_doc,
+                    WriteMetadata(fingerprint=shots_fp_eff),
+                )
+                shots = shots_doc["shots"]
+                any_produced = True
+                warnings.append(
+                    f"调试模式 --max-shots={request.max_shots}：仅保留前 "
+                    f"{len(shots)} 个镜头；产物不满足完整范围契约，"
+                    "validate 预期报错"
+                )
 
             # 4. detect_audio_cuts（必须在 extract_frames 之前：--align 可能改
             #    final 边界，帧/clip/能量/质量都按新边界生成）--------------------
@@ -752,6 +897,7 @@ class ShotAnalysisPipeline:
                     align_boundaries=request.align_boundaries,
                 ),
                 status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_audio_cuts_stub(shots, config),
             )
 
             # 4a. --align：仅当检测给出移动计划且 shots 仍是检测原值时才重写
@@ -802,6 +948,7 @@ class ShotAnalysisPipeline:
                 asr_fp,
                 lambda: run_asr_stage(source, media, config, service=asr_service),
                 status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_asr_stub(),
             )
 
             # 6. detect_music（链 asr 指纹；ASR 非 complete 时内部降级为
@@ -822,6 +969,7 @@ class ShotAnalysisPipeline:
                 music_fp,
                 lambda: detect_music(source, shots, asr_doc, media, config, pool=pool),
                 status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_music_flags_stub(shots, config),
             )
 
             # 7. extract_frames -----------------------------------------------
@@ -837,6 +985,7 @@ class ShotAnalysisPipeline:
                 ArtifactName.FRAME_EVIDENCE,
                 frames_fp,
                 lambda: extract_frames(source, shots, media, config, out_dir, pool=pool),
+                skip_fn=lambda: build_frames_stub(shots, revision_id),
             )
             if hard_failure:
                 return self._report(steps, warnings, out_dir, started, "failed")
@@ -883,6 +1032,7 @@ class ShotAnalysisPipeline:
                 ArtifactName.AUDIO_ENERGY,
                 energy_fp,
                 lambda: detect_audio_energy(source, shots, has_audio, config, pool=pool),
+                skip_fn=lambda: build_audio_energy_stub(shots, media, config),
             )
 
             # 10. detect_quality ------------------------------------------------
@@ -900,6 +1050,7 @@ class ShotAnalysisPipeline:
                 ArtifactName.QUALITY_FLAGS,
                 quality_fp,
                 lambda: detect_quality(source, shots, has_audio, config, pool=pool),
+                skip_fn=lambda: build_quality_stub(shots, media, config),
             )
 
             # 11. unified_media_analysis（链 clips 指纹 + 词表版本；服务未配置
@@ -942,6 +1093,7 @@ class ShotAnalysisPipeline:
                 unified_fp,
                 produce_unified,
                 status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_skipped_unified_media(clips, config, revision_id),
             )
 
             # 12. analyze_camera_motion（链 shots 指纹；helper 不可用由适配器
@@ -960,6 +1112,7 @@ class ShotAnalysisPipeline:
                 camera_fp,
                 lambda: analyze_camera_motion(source, shots, media, config, pool=pool),
                 status_of=lambda d: (d.get("analysis") or {}).get("capabilityStatus"),
+                skip_fn=lambda: build_camera_motion_stub(shots, media, config),
             )
 
             artifact_fps = {
@@ -1039,8 +1192,19 @@ class ShotAnalysisPipeline:
                     detail = "; ".join(
                         f"{i.artifact}:{i.json_path} {i.message}" for i in errors[:5]
                     )
-                    record("validate", "failed", _elapsed(step_start), detail=detail)
-                    hard_failure = True
+                    if request.max_shots is not None:
+                        # 05-04：调试模式（--max-shots 截断产物）下 validate
+                        # 降级为 warning，不阻断阶段（产物本就不满足完整契约）。
+                        record("validate", "skipped", _elapsed(step_start),
+                               detail="--max-shots 调试模式：校验错误降级为警告")
+                        for issue in errors:
+                            warnings.append(
+                                f"校验错误（调试模式降级）{issue.artifact}:"
+                                f"{issue.json_path} {issue.message}"
+                            )
+                    else:
+                        record("validate", "failed", _elapsed(step_start), detail=detail)
+                        hard_failure = True
                 else:
                     record(
                         "validate",

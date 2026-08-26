@@ -61,6 +61,7 @@ class OpenAICompatibleTextModel:
         api_key: str | None,
         model: str,
         timeout_sec: float = 300.0,
+        max_tokens: int | None = None,
     ) -> None:
         if not api_key:
             raise CapabilityUnavailableError("textModel", "未配置 api_key")
@@ -68,6 +69,7 @@ class OpenAICompatibleTextModel:
         self._api_key = api_key
         self._model = model
         self._timeout_sec = timeout_sec
+        self._max_tokens = max_tokens
 
     def generate(self, request: TextModelRequest) -> str:
         messages: list[dict] = []
@@ -75,8 +77,9 @@ class OpenAICompatibleTextModel:
             messages.append({"role": "system", "content": request.system})
         messages.append({"role": "user", "content": request.prompt})
         payload: dict = {"model": self._model, "messages": messages}
-        if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
+        max_tokens = request.max_tokens if request.max_tokens is not None else self._max_tokens
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         response = http_json_post(
             f"{self._base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self._api_key}"},

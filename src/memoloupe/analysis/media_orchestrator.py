@@ -21,10 +21,12 @@
 - 归一化不在本层：模型原始值（含 "无"）原样保留进 raw，
   absent-claimed 等语义归 Observation 层（docs/02 §4.7）。
 
-fallback 说明：UnifiedMediaService 协议已冻结，模型名在适配器构造时固定，
-编排层无法在同一 service 上切换模型重发。因此当服务暴露 ``fallback_model``
-且镜头最终失败时，仅在失败批次记录 ``fallbackAttempted: true``；真正的
-主备切换需要服务层支持（例如以 fallback 模型重建适配器后整体重跑）。
+fallback（05-01B）：服务暴露 ``fallback_model`` 且支持 ``with_model`` 时，
+编排器构造 fallback 适配器并在主模型失败后按 ``fallbackModel`` 重发——
+先批次级重发，再（若仍失败）单镜头级先主后备。fallback 构造失败按无
+fallback 显式降级（不静默换服务）。产物记录：成功批次 ``fallbackUsed``，
+失败镜头 ``fallbackAttempted``/``fallbackFailed``。协议
+``analyze_batch(clips, group)`` 保持冻结不变。
 """
 
 from __future__ import annotations
@@ -131,68 +133,113 @@ def _parse_group_response(
 
 def _request_validated(
     service: UnifiedMediaService,
+    fallback_service: UnifiedMediaService | None,
     clips: list[ModelClip],
     group: AnalysisGroup,
     max_retries: int,
     sleep: Callable[[float], None],
     validator: jsonschema.Validator,
     counter: list[int],
-) -> dict[str, dict]:
-    """带重试的已校验请求：返回 {shotID: payload}，counter 累计调用次数。
+) -> tuple[dict[str, dict], bool]:
+    """带重试的已校验请求：返回 ``({shotID: payload}, used_fallback)``。
 
-    - PermanentServiceError：立即向上抛（不重试）。
-    - TransientServiceError / 响应不合法：指数退避重试，耗尽抛 _BatchExhausted。
+    - 主模型按 max_retries 指数退避重试（PermanentServiceError 立即上抛）；
+    - 主模型耗尽（Transient/_BatchError）或 Permanent 失败后，若提供
+      ``fallback_service`` 则以 fallback 模型重发一轮（同样按 max_retries
+      重试），成功返回 ``(shots, True)``；
+    - fallback 也失败时原样上抛（保持现有 partial/failed 降级语义）。
     - 其他异常（如 mock 注入的崩溃）不在此捕获，原样传播。
     """
     expected_ids = [clip.shot_id for clip in clips]
-    last: Exception | None = None
-    for attempt in range(max_retries + 1):
-        counter[0] += 1
-        try:
-            text = service.analyze_batch(clips, group)
-            return _parse_group_response(text, group, expected_ids, validator)
-        except PermanentServiceError:
+
+    def attempt(provider: UnifiedMediaService) -> dict[str, dict]:
+        last: Exception | None = None
+        for attempt_index in range(max_retries + 1):
+            counter[0] += 1
+            try:
+                text = provider.analyze_batch(clips, group)
+                return _parse_group_response(text, group, expected_ids, validator)
+            except PermanentServiceError:
+                raise
+            except (TransientServiceError, _BatchError) as exc:
+                last = exc
+                if attempt_index < max_retries:
+                    sleep(_RETRY_BASE_SEC * (2**attempt_index))
+        raise _BatchExhausted(str(last)) from last
+
+    try:
+        return attempt(service), False
+    except (PermanentServiceError, _BatchExhausted):
+        if fallback_service is None:
             raise
-        except (TransientServiceError, _BatchError) as exc:
-            last = exc
-            if attempt < max_retries:
-                sleep(_RETRY_BASE_SEC * (2**attempt))
-    raise _BatchExhausted(str(last)) from last
+        # 主模型失败：按 fallbackModel 重发（不递归 fallback）。
+        return attempt(fallback_service), True
 
 
 def _analyze_partition(
     clips: list[ModelClip],
     group: AnalysisGroup,
     service: UnifiedMediaService,
+    fallback_service: UnifiedMediaService | None,
     max_retries: int,
     sleep: Callable[[float], None],
     validator: jsonschema.Validator,
     semaphore: threading.Semaphore,
     on_success: Callable[[dict[str, dict]], None],
     counter: list[int],
-) -> list[str]:
-    """分析一个批次；批次失败回退单镜头。返回本批次永久失败的 shotID 列表。"""
-    try:
-        with semaphore:
-            shots = _request_validated(
-                service, clips, group, max_retries, sleep, validator, counter
-            )
-        on_success(shots)
-        return []
-    except (PermanentServiceError, _BatchExhausted):
-        pass  # 批次持续失败：回退到单镜头逐个请求
+) -> tuple[list[str], dict[str, bool]]:
+    """分析一个批次；批次失败先按 fallbackModel 重发，再回退单镜头
+    （单镜头同样先主模型后 fallback）。
 
-    failed: list[str] = []
-    for clip in clips:
+    返回 ``(永久失败 shotID 列表, {"attempted": bool, "used": bool})``。
+    """
+    stats = {"attempted": False, "used": False}
+
+    def run(
+        provider: UnifiedMediaService | None, shot_set: list[ModelClip]
+    ) -> tuple[list[str], bool]:
+        """尝试一次请求；成功返回 ([], used_fallback)，失败返回 (shotIDs, False)。"""
+        if provider is None:
+            return [c.shot_id for c in shot_set], False
         try:
             with semaphore:
-                shots = _request_validated(
-                    service, [clip], group, max_retries, sleep, validator, counter
+                shots, used_fallback = _request_validated(
+                    provider, None, shot_set, group,
+                    max_retries, sleep, validator, counter,
                 )
             on_success(shots)
+            return [], used_fallback
         except (PermanentServiceError, _BatchExhausted):
-            failed.append(clip.shot_id)
-    return failed
+            return [c.shot_id for c in shot_set], False
+
+    failed, used = run(service, clips)
+    stats["used"] = used
+    if failed:
+        stats["attempted"] = fallback_service is not None
+        if fallback_service is not None:
+            fb_failed, fb_used = run(fallback_service, clips)
+            # fallback 批次成功（fb_failed 为空）即视为 fallback 生效。
+            stats["used"] = stats["used"] or fb_used or not fb_failed
+            if not fb_failed:
+                return [], stats
+            # 批次 fallback 也失败：单镜头逐个（主 → fallback）。
+            failed = []
+            for clip in clips:
+                single_failed, _ = run(service, [clip])
+                if not single_failed:
+                    continue
+                fb_single_failed, fb_single_used = run(fallback_service, [clip])
+                stats["used"] = stats["used"] or fb_single_used or not fb_single_failed
+                if fb_single_failed:
+                    failed.append(clip.shot_id)
+        else:
+            # 无 fallback：批次失败后单镜头主模型重试（原行为）。
+            failed = []
+            for clip in clips:
+                single_failed, _ = run(service, [clip])
+                if single_failed:
+                    failed.append(clip.shot_id)
+    return failed, stats
 
 
 # ---------------------------------------------------------------------------
@@ -264,16 +311,19 @@ def _run_group(
     partitions: list[list[str]],
     clip_index: dict[str, ModelClip],
     service: UnifiedMediaService,
+    fallback_service: UnifiedMediaService | None,
     *,
     batch_size: int,
     concurrency: int,
     max_retries: int,
     sleep: Callable[[float], None],
-) -> tuple[dict[str, dict], dict[int, int], list[str]]:
-    """执行一个组：返回 ({shotID: payload}, {分区号: 请求次数}, 永久失败 shotIDs)。"""
+) -> tuple[dict[str, dict], dict[int, int], list[str], dict[int, dict[str, bool]]]:
+    """执行一个组：返回 ({shotID: payload}, {分区号: 请求次数},
+    永久失败 shotIDs, {分区号: fallback 统计})。"""
     valid_ids = {sid for part in partitions for sid in part}
     results = _load_checkpoint(store, group, batch_size, valid_ids)
     attempts: dict[int, int] = {}
+    fallback_stats: dict[int, dict[str, bool]] = {}
     failed: list[str] = []
     todo = [
         (p, [sid for sid in part if sid not in results])
@@ -281,7 +331,7 @@ def _run_group(
     ]
     todo = [(p, sids) for p, sids in todo if sids]
     if not todo:
-        return results, attempts, failed
+        return results, attempts, failed, fallback_stats
 
     validator = _schema_validator(group.schema)
     semaphore = threading.Semaphore(concurrency)
@@ -293,13 +343,14 @@ def _run_group(
             results.update(shots)
             _write_checkpoint(store, group, batch_size, results)
 
-    def work(partition_index: int, shot_ids: list[str]) -> list[str]:
+    def work(partition_index: int, shot_ids: list[str]) -> tuple[list[str], dict[str, bool]]:
         counter = [0]
         clips = [clip_index[sid] for sid in shot_ids]
-        failed_ids = _analyze_partition(
+        failed_ids, stats = _analyze_partition(
             clips,
             group,
             service,
+            fallback_service,
             max_retries,
             sleep,
             validator,
@@ -309,6 +360,7 @@ def _run_group(
         )
         with lock:
             attempts[partition_index] = counter[0]
+            fallback_stats[partition_index] = stats
         return failed_ids
 
     workers = max(1, min(concurrency, len(todo)))
@@ -319,7 +371,7 @@ def _run_group(
         futures = [pool.submit(work, p, sids) for p, sids in todo]
         for future in futures:
             failed.extend(future.result())
-    return results, attempts, failed
+    return results, attempts, failed, fallback_stats
 
 
 def _merge_model_shot(group_results: dict[str, dict[str, dict]], shot_id: str) -> dict | None:
@@ -391,13 +443,25 @@ def run_unified_media_analysis(
 
     group_results: dict[str, dict[str, dict]] = {}
     group_attempts: dict[str, dict[int, int]] = {}
+    group_fallback: dict[str, dict[int, dict[str, bool]]] = {}
+    # fallback 服务：服务暴露 fallback_model 且支持 with_model 时构造
+    # （显式配置，不静默换服务；构造失败按无 fallback 降级）。
+    fallback_service: UnifiedMediaService | None = None
+    fb_model = getattr(service, "fallback_model", None)
+    with_model = getattr(service, "with_model", None)
+    if fb_model and callable(with_model):
+        try:
+            fallback_service = with_model(fb_model)
+        except Exception as exc:  # noqa: BLE001 —— fallback 构造失败显式降级
+            _logger.debug(f"fallback service 构造失败，按无 fallback 处理：{exc}")
     for group in groups:
-        results, attempts, failed = _run_group(
+        results, attempts, failed, fallback_stats = _run_group(
             store,
             group,
             partitions,
             clip_index,
             service,
+            fallback_service,
             batch_size=batch_size,
             concurrency=concurrency,
             max_retries=max_retries,
@@ -405,6 +469,7 @@ def run_unified_media_analysis(
         )
         group_results[group.name] = results
         group_attempts[group.name] = attempts
+        group_fallback[group.name] = fallback_stats
         if failed:
             _logger.debug(
                 f"group={group.name} permanent failures: {','.join(sorted(failed))}"
@@ -422,6 +487,13 @@ def run_unified_media_analysis(
     batch_records: list[dict] = []
     for p, part in enumerate(partitions):
         total_attempts = sum(group_attempts[g.name].get(p, 0) for g in groups)
+        # 分区级 fallback 统计：三组取或。
+        fb_attempted = any(
+            group_fallback[g.name].get(p, {}).get("attempted", False) for g in groups
+        )
+        fb_used = any(
+            group_fallback[g.name].get(p, {}).get("used", False) for g in groups
+        )
         if part and all(sid in succeeded for sid in part):
             record: dict = {
                 "shotIDs": list(part),
@@ -430,6 +502,9 @@ def run_unified_media_analysis(
             }
             if total_attempts:
                 record["attempts"] = total_attempts
+            if fb_used:
+                # 该分区至少一次请求经 fallback 模型成功。
+                record["fallbackUsed"] = True
             batch_records.append(record)
             continue
         # 部分失败的分区拆成单镜头记录：失败批次不得伪造 response，
@@ -441,11 +516,14 @@ def run_unified_media_analysis(
                     "status": "complete",
                     "response": {"shots": [merged[sid]]},
                 }
+                if fb_used:
+                    record["fallbackUsed"] = True
             else:
                 record = {"shotIDs": [sid], "status": "failed"}
-                if fallback_model:
-                    # 协议冻结，无法在编排层换模型重发；仅记录（见模块 docstring）。
+                if fb_attempted:
+                    # 尝试过 fallback 仍失败：记录 fallback 证据（05-01B）。
                     record["fallbackAttempted"] = True
+                    record["fallbackFailed"] = True
             if total_attempts:
                 record["attempts"] = total_attempts
             batch_records.append(record)

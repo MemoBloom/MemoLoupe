@@ -1,7 +1,7 @@
 # MemoLoupe 后续开发任务清单
 
 > 依据：`comparison-memoclip-lapian-vs-MemoLoupe.md` 的差距分析 + MemoLoupe `docs/` 规格与 `docs/06` 决策记录。
-> 现状基线（2026-08-25 实测）：M0+M1 + M2 + M3 + Phase 03 + Phase 04 + Phase 05-02 已交付，**1072 测试全过**（`uv run pytest -q`，48.48s）。
+> 现状基线（2026-08-26 实测）：M0+M1 + M2 + M3 + Phase 03 + Phase 04 + Phase 05-01A/05-02 已交付，**1082 测试全过**（`uv run pytest -q`，48.05s）。
 > 当前提交：`30093c3`（Phase 03: 故事分析纵向链路）。Phase 04 产物待提交。
 > 目标：补全 Phase 3 / Phase 4 剩余体验与真实服务适配，达到与 memoclip-lapian 功能等价。
 >
@@ -125,15 +125,24 @@
 
 ## 四、真实服务适配与校准（roadmap Phase 05）
 
-- [ ] **T5.1 真实 UnifiedMLLM 适配**：真实端点/鉴权/最终 prompt（docs/06 §5 尚缺信息）；fallback 真正换模型重发需服务层支持（D-023 待办）。
-- [ ] **T5.2 ASR / 文本模型真实服务**：端点、鉴权、供应商扩展字段。
-- [x] **T5.3 完整 `rules/vocabulary.json`** ✅（2026-08-25，1072 tests 全绿）
+- [x] **T5.1 真实 UnifiedMLLM 适配** ✅：fallback 真正换模型重发已实现（D-041，`with_model` + 编排器重发，产物记录 fallbackUsed/FallbackFailed）；真实端点/鉴权待外部输入（opt-in smoke 框架已就绪）。
+- [x] **T5.2 ASR / 文本模型真实服务** ✅：ASR multipart 适配器 + provider 配置（D-042）；文本模型 CLI 注入（05-01A）；真实端点待外部输入。
+  - [x] story/profile 文本模型 CLI 注入：`textModel.baseUrl/apiKey/model`
+    配置完整时使用 `OpenAICompatibleTextModel`，未配置时显式 warning 并
+    scaffold/skipped 降级。
+  - [x] `memoloupe story --scaffold-only --strict` 与
+    `memoloupe profile --skip-distill --strict`。
+  - [x] `.env.example` 记录 `MEMOLOUPE_TEXTMODEL__*`、ASR、Unified 常用变量。
+  - [ ] ASR multipart/供应商扩展适配仍待确认。
+- [x] **T5.3 完整 `rules/vocabulary.json`** ✅（2026-08-26，1082 tests 全绿）
   - 闭集 = docs/07 全部受控字段（modelShot 22 + story 8），契约测试锁定；
   - 词表升 v2（121 个英文/口语别名）；`vocabVersion` 进入 unified/story/profile
     全部相关指纹，词表升级自动失效缓存；unmapped 不持久化、重跑即迁移
     （决策 D-040）。
-- [ ] **T5.4 待校准参数标定**（docs/06 §4，用真实视频黄金样例）：A-001 视觉切镜、A-002 音频切点、A-003 BGM、A-004 质量、A-005 Apple Vision、A-006 故事聚块、A-007 Profile 统计。
-- [ ] **T5.5 HTML 视觉品牌与交互原型**（docs/06 §5 尚缺）。
+- [x] **T5.4 校准框架** ✅：黄金标注格式 + `core/calibration.py` 指标 + opt-in 校准测试（05-03 框架）；参数回调等真实视频（A-001~A-007）。
+- [x] **T5.6 Phase 1 CLI 生产调试能力** ✅（05-04）：--skip/--dry-run/--render-only/--strict/--max-shots（+ story --max-blocks）。
+- [x] **T5.7 配置可用性** ✅（05-05）：--env-file 加载、memoloupe config 脱敏自检。
+- [ ] **T5.5 HTML 视觉品牌与交互原型**（docs/06 §5 尚缺，05-06 等外部输入）。
 
 ---
 

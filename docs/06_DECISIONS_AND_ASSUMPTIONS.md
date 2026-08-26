@@ -363,6 +363,74 @@ intendedReaction 允许 null 一致。
 理由：docs/08 05-02 要求（完整闭集、契约测试、指纹失效、迁移路径）；
 别名不改变归一化语义（逐项仍须命中词表），仅提高模型输出宽容度。
 
+### D-041：UnifiedMLLM fallback 真实重发（05-01B）
+
+决策：`UnifiedMediaService` 协议保持冻结（`analyze_batch(clips, group)`），
+fallback 通过适配器扩展实现——`OpenAICompatibleUnifiedMedia` 增加只读
+`model`/`fallback_model` 属性与 `with_model(model)`（复用 base_url/api_key/
+timeout 重建实例）；`MockUnifiedMediaService` 同样支持并记录调用时的
+`model` 字段。编排器在主模型重试耗尽（或 Permanent 失败）后：
+批次级按 `fallbackModel` 重发一轮（同 max_retries 重试，不递归 fallback），
+仍失败再单镜头级先主后备。产物记录：成功批次 `fallbackUsed`；失败镜头
+`fallbackAttempted`+`fallbackFailed`。fallback 服务构造失败按无 fallback
+显式降级（不静默换服务）。
+理由：docs/08 05-01B（fallback 成为真实行为）；D-023 待办关闭。
+
+### D-042：ASR provider 与 multipart 适配器（05-01C）
+
+决策：`asr.provider` 选择 transport——`openai-json`（默认，JSON+base64）
+与 `openai-multipart`（multipart/form-data 文件上传，`asr.fileField`
+默认 `file`，原版 memoclip-lapian 形态）。`services/base.py` 抽出
+`http_post_bytes`（JSON post 与 multipart 共用错误分类/脱敏逻辑）；
+`build_asr_service(config)` 工厂统一构造，未配置/未启用返回 None（调用方
+走 skipped 降级）。multipart body 用标准库手工构造（不引入第三方依赖）。
+理由：docs/08 05-01C 协议形态确认与适配器拆分；稳定契约
+（ASRRequest/ASRResult）不变。
+
+### D-043：Phase 1 CLI 生产调试能力（05-04）
+
+决策：
+
+1. `--skip STEP`（可重复）：显式跳过可选步骤并**写降级产物**（跳过 ≠
+   absent）。stub 语义：ASR/Unified/music → `skipped`；audio-cuts →
+   `unavailable`（首末仍 sourceStart/sourceEnd）；frames →
+   `status=failed`+failedFrames（schema 无 skipped）；audio-energy →
+   `hasAudio=false`+label=unknown（D-007：未测量 ≠ 静音）；quality →
+   `confidence=unknown`+空 flags（docs/02 §4.9：不得解释为无问题）。
+   不可跳过步骤（probe/detect_shots/build_clips/validate）报参数错误。
+2. `--dry-run`：等价于跳过全部可选步骤，只产出切镜/clip/基础产物；
+   与 `--mock-services`（仍跑模型编排，只是 mock 响应）明确区分。
+3. `--render-only`：只读 raw 重渲 shot-analysis.html，不触发检测与模型
+   请求，不改 raw。
+4. `--strict`：pipeline 任一步 partial 时退出码 5（failed 本就 5），
+   供 CI 失败门禁。
+5. `--max-shots N` / story `--max-blocks N`：调试裁剪；产物不满足完整
+   范围契约，validate 预期报错，调试模式下 validate 错误降级为 warning。
+
+理由：docs/08 05-04（与原版对人工联调影响最大的 CLI 能力）；跳过语义
+遵守"跳过 ≠ absent"契约铁律。
+
+### D-044：配置可用性与黄金校准框架（05-05 / 05-03 框架）
+
+决策：
+
+1. `--env-file PATH`（任意子命令均可，`memoloupe --env-file .env shot ...`）：
+   `core.config.load_env_file` 解析 KEY=VALUE（忽略注释/空行，取值去引号），
+   **不覆盖进程已有环境变量**；注入的环境变量在 main 返回前恢复（不污染
+   测试进程）。文件缺失 → 空（行为可预测）。
+2. `memoloupe config`：输出 `redacted_snapshot` 脱敏后的有效配置，并在
+   stderr 标出未配置的真实服务项（ASR/UnifiedMLLM/TextModel）。
+3. 环境变量命名保持 `MEMOLOUPE_<GROUP>__<KEY>`（camelCase 拼接）不变，
+   不引入 snake_case 别名（避免双命名漂移；配置自检命令已降低试错成本）。
+4. 原版 `--require-status`/`--source-shot-document` 不实现：等价检查 =
+   `memoloupe validate --strict`（覆盖产物状态与 HTML 文档状态一致性）。
+5. 黄金校准框架：`core/calibration.py` 纯函数指标（边界容差召回/精确率、
+   枚举准确率）+ `tests/fixtures/golden/` 标注格式（schemaVersion=1）+
+   `tests/e2e/test_golden_calibration.py`（无标注/视频时 skip）。参数回调
+   必须遵循 docs/08 05-03 纪律（先失败测试→改默认值→失效缓存→记录实证）。
+
+理由：docs/08 05-05/05-03；无外部输入前不凭感觉改阈值。
+
 ### D-041：Phase 05 review 修复（profile 词表对象与指纹一致）
 
 决策：`profile_aggregate` 不再在模块 import 时冻结 `rules/vocabulary.json`。
@@ -373,6 +441,22 @@ Vocabulary，将同一个对象的 `version` 写入 fingerprint，并把同一�
 理由：05-02 的缓存失效语义依赖 `vocabVersion`。如果指纹读取的是新版本，
 但聚合使用 import 时的旧词表，重跑会发生但历史 unmapped/别名迁移不会真正
 生效。显式注入词表对象可保证"缓存键"与"实际归一化规则"一致。
+
+### D-042：story/profile 真实文本模型配置（05-01A）
+
+决策：新增独立 `textModel` 配置分组（`baseUrl/apiKey/model/timeoutSec/
+maxTokens`），`memoloupe story` 与 `memoloupe profile` 在非 mock、非显式
+跳过模式下从该分组构造 `OpenAICompatibleTextModel`。配置缺失或不完整时
+不报错中断，而是输出 warning 并保持既有 scaffold / `distillStatus=skipped`
+显式降级。CLI 同步新增：
+
+- `memoloupe story --scaffold-only`：强制只产确定性 story scaffold；
+- `memoloupe profile --skip-distill`：强制只产确定性 style-profile；
+- `--strict`：模型阶段 partial 时返回非零，供 CI/真实服务联调用。
+
+理由：story/profile 文本模型与 UnifiedMLLM 的输入形态、prompt、token 上限和
+供应商策略不同，独立配置能避免把视频理解模型配置误用于文本蒸馏；同时保持
+无凭据环境的可恢复降级行为，符合 docs/03 §5 降级矩阵。
 
 ## 3. 推荐技术默认值
 

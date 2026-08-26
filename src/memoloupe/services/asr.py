@@ -1,12 +1,16 @@
 """ASR 服务端口（docs/01 §7.1、docs/03 §2.7）。
 
 适配器把供应商响应归一为稳定结构，供应商扩展只进入 ``raw_extras`` 命名空间，
-绝不泄漏为主契约字段。
+绝不泄漏为主契约字段。05-01C：支持两种 transport——``openai-json``
+（JSON + base64，默认）与 ``openai-multipart``（multipart/file 上传，
+原版 memoclip-lapian 形态）；:func:`build_asr_service` 按 ``asr.provider``
+构造。
 """
 
 from __future__ import annotations
 
 import base64
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -17,6 +21,7 @@ from memoloupe.services.base import (
     SERVICE_PROTOCOL_VERSION,
     PermanentServiceError,
     http_json_post,
+    http_post_bytes,
 )
 
 __all__ = [
@@ -25,7 +30,13 @@ __all__ = [
     "ASRResult",
     "ASRService",
     "OpenAICompatibleASR",
+    "MultipartOpenAICompatibleASR",
+    "build_asr_service",
 ]
+
+#: 支持的 provider / transport。
+PROVIDER_JSON = "openai-json"
+PROVIDER_MULTIPART = "openai-multipart"
 
 
 @dataclass(frozen=True)
@@ -138,3 +149,147 @@ class OpenAICompatibleASR:
             "provider": {k: v for k, v in response.items() if k != "segments"}
         }
         return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
+
+
+def _multipart_body(
+    fields: dict[str, str],
+    file_field: str,
+    filename: str,
+    file_bytes: bytes,
+    content_type: str,
+) -> tuple[bytes, str]:
+    """手工构造 multipart/form-data body，返回 ``(body, boundary)``。"""
+    boundary = f"----MemoLoupeBoundary{uuid.uuid4().hex}"
+    lines: list[bytes] = []
+    for name, value in fields.items():
+        lines.append(
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n'
+            f"\r\n{value}\r\n".encode("utf-8")
+        )
+    lines.append(
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{file_field}"; '
+        f'filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n".encode("utf-8")
+    )
+    lines.append(file_bytes)
+    lines.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(lines), boundary
+
+
+class MultipartOpenAICompatibleASR:
+    """OpenAI ``/audio/transcriptions`` multipart/file 上传适配器。
+
+    原版 memoclip-lapian 使用 multipart 文件上传；本适配器用标准库手工构造
+    multipart body（不引入第三方依赖），文件字段名由 ``file_field`` 配置
+    （默认 ``file``）。响应归一化与 :class:`OpenAICompatibleASR` 相同。
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str | None,
+        model: str,
+        file_field: str = "file",
+        timeout_sec: float = 120.0,
+    ) -> None:
+        if not api_key:
+            raise CapabilityUnavailableError("asr", "未配置 api_key")
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._file_field = file_field
+        self._timeout_sec = timeout_sec
+
+    def transcribe(self, media_path: Path, request: ASRRequest) -> ASRResult:
+        try:
+            audio_bytes = media_path.read_bytes()
+        except OSError as exc:
+            raise PermanentServiceError(
+                f"asr media unreadable: {type(exc).__name__}"
+            ) from None
+        fields = {"model": self._model, "response_format": "verbose_json"}
+        if request.language:
+            fields["language"] = request.language
+        body, boundary = _multipart_body(
+            fields,
+            file_field=self._file_field,
+            filename=media_path.name,
+            file_bytes=audio_bytes,
+            content_type="application/octet-stream",
+        )
+        response = http_post_bytes(
+            f"{self._base_url}/audio/transcriptions",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            body=body,
+            timeout_sec=self._timeout_sec,
+        )
+        return self._normalize(response, request)
+
+    def _normalize(self, response: dict, request: ASRRequest) -> ASRResult:
+        """与 OpenAICompatibleASR 同一归一化（segments → 稳定结构）。"""
+        raw_segments = response.get("segments", [])
+        if not isinstance(raw_segments, list):
+            raise PermanentServiceError("asr response: segments is not a list")
+        segments: list[dict] = []
+        for index, seg in enumerate(raw_segments):
+            if not isinstance(seg, dict) or not {"start", "end", "text"} <= seg.keys():
+                raise PermanentServiceError(
+                    f"asr response: segment[{index}] 缺少 start/end/text"
+                )
+            start_ms = seconds_to_ms(seg["start"])
+            end_ms = seconds_to_ms(seg["end"])
+            if end_ms <= request.start_ms:
+                continue
+            if request.end_ms is not None and start_ms >= request.end_ms:
+                continue
+            segments.append(
+                {
+                    "startMs": start_ms,
+                    "endMs": end_ms,
+                    "text": str(seg["text"]),
+                    "speaker": seg.get("speaker"),
+                    "confidence": seg.get("confidence"),
+                }
+            )
+        raw_extras = {
+            "provider": {k: v for k, v in response.items() if k != "segments"}
+        }
+        return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
+
+
+def build_asr_service(config: dict) -> ASRService | None:
+    """按 ``config["asr"]`` 构造 ASR 服务；未配置/未启用时返回 None。
+
+    ``provider`` 取值：``openai-json``（默认，JSON + base64）或
+    ``openai-multipart``（multipart 文件上传，``fileField`` 可配置）。
+    """
+    asr_cfg = config.get("asr", {}) if isinstance(config, dict) else {}
+    if not asr_cfg.get("enabled", True):
+        return None
+    api_key = asr_cfg.get("apiKey")
+    base_url = asr_cfg.get("baseUrl")
+    model = asr_cfg.get("model")
+    if not (api_key and base_url and model):
+        return None
+    provider = str(asr_cfg.get("provider", PROVIDER_JSON))
+    timeout_sec = float(asr_cfg.get("timeoutSec", 120.0))
+    if provider == PROVIDER_MULTIPART:
+        return MultipartOpenAICompatibleASR(
+            base_url=str(base_url),
+            api_key=str(api_key),
+            model=str(model),
+            file_field=str(asr_cfg.get("fileField", "file")),
+            timeout_sec=timeout_sec,
+        )
+    return OpenAICompatibleASR(
+        base_url=str(base_url),
+        api_key=str(api_key),
+        model=str(model),
+        timeout_sec=timeout_sec,
+    )

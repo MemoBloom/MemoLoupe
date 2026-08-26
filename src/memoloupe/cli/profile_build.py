@@ -28,8 +28,11 @@ from memoloupe.analysis.profile_pipeline import (
 )
 from memoloupe.artifacts.schemas import ArtifactName
 from memoloupe.artifacts.store import ArtifactStore
-from memoloupe.core.errors import MemoLoupeError
+from memoloupe.core.config import load_config
+from memoloupe.core.errors import ConfigError, MemoLoupeError
 from memoloupe.services.mock import MockTextModelService
+
+from .text_model_config import build_text_model_service
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -58,6 +61,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mock-text-model",
         action="store_true",
         help="文本模型使用可编程 mock（演示/测试用，不发起网络请求）",
+    )
+    parser.add_argument(
+        "--skip-distill",
+        action="store_true",
+        help="只生成确定性 style-profile，不调用真实或 mock 文本模型蒸馏",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="阶段 partial/failed 时返回非零退出码",
     )
     parser.add_argument(
         "--json-report", action="store_true", help="输出机器可读 JSON 报告"
@@ -116,6 +129,9 @@ def _mock_text_service() -> MockTextModelService:
 
 def run_profile_build(argv: Sequence[str]) -> int:
     args = _build_parser().parse_args(list(argv))
+    if args.skip_distill and args.mock_text_model:
+        print("错误：--skip-distill 与 --mock-text-model 不能同时使用", file=sys.stderr)
+        return EXIT_USAGE
 
     out_dir: Path = args.output_dir
     if not out_dir.is_dir():
@@ -136,7 +152,20 @@ def run_profile_build(argv: Sequence[str]) -> int:
         )
         return EXIT_INPUT
 
-    text_service = _mock_text_service() if args.mock_text_model else None
+    text_service = None
+    if args.skip_distill:
+        print("  [warning] --skip-distill：跳过文本模型蒸馏", file=sys.stderr)
+    elif args.mock_text_model:
+        text_service = _mock_text_service()
+    else:
+        try:
+            config = load_config()
+        except ConfigError as exc:
+            print(f"错误：配置不可用：{exc}", file=sys.stderr)
+            return EXIT_USAGE
+        text_service, warning = build_text_model_service(config)
+        if warning:
+            print(f"  [warning] {warning}", file=sys.stderr)
     request = ProfileBuildRequest(
         output_dir=out_dir,
         text_service=text_service,
@@ -151,4 +180,8 @@ def run_profile_build(argv: Sequence[str]) -> int:
     else:
         _print_summary(report)
 
-    return EXIT_STAGE_FAILED if report.status == "failed" else EXIT_OK
+    if report.status == "failed":
+        return EXIT_STAGE_FAILED
+    if args.strict and report.status == "partial":
+        return EXIT_STAGE_FAILED
+    return EXIT_OK

@@ -21,7 +21,7 @@
 
 ## 2. 已验证基线
 
-截至 2026-08-25：
+截至 2026-08-26：
 
 - M0+M1 已交付：可执行契约、ArtifactStore、校验器、确定性 Phase 1、shot HTML。
 - M2 已交付：音频六特征、BGM、ASR、Apple Vision、三组 UnifiedMLLM、checkpoint 和降级路径。
@@ -29,8 +29,17 @@
 - Phase 03 已交付（03-01~03-04）：review reason 机器语义、确定性 story scaffold、
   文本模型编排、story HTML/CLI/校验闭环。
 - Phase 04 已交付（04-01~04-03）：确定性 profile 聚合、模型蒸馏、CLI 与校验闭环。
+- Phase 05-01A 已交付：story/profile 真实文本模型 CLI 注入、显式跳过/strict 开关、`.env.example`。
+- Phase 05-01B 已交付：UnifiedMLLM fallback 真实重发（`fallbackModel` 换模型重发，
+  产物记录 fallbackUsed/fallbackFailed）。
+- Phase 05-01C 已交付：ASR provider 选择（openai-json / openai-multipart 适配器）。
+- Phase 05-01D 已交付：真实服务 opt-in 测试框架、脱敏 fixture、日志/配置脱敏审计。
 - Phase 05-02 已交付：完整受控词表、版本化缓存失效、迁移护栏。
-- 全量测试：`1072 passed in 48.48s`。
+- Phase 05-03 框架已交付：黄金标注格式、校准指标（core/calibration.py）、
+  opt-in 校准测试（真实视频/标注到达后启用）。
+- Phase 05-04 已交付：`--skip`/`--dry-run`/`--render-only`/`--strict`/`--max-shots`。
+- Phase 05-05 已交付：`--env-file` 加载、`memoloupe config` 脱敏自检。
+- 全量测试：`1125 passed, 6 skipped`。
 
 已关闭的路线分歧：
 
@@ -44,7 +53,7 @@
 |---|---|---|---|
 | 03 | Phase 1 收尾并交付完整故事分析 | M2 | ✅ 已完成（03-01~03-04） |
 | 04 | 交付 schema v2 风格档案 | Phase 03 | ✅ 已完成（04-01~04-03） |
-| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 05-02 已完成；05-01/05-03/05-04 待开发 |
+| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 05-01A~D、05-02、05-03 框架、05-04、05-05 已完成；05-03 校准与 05-06 待外部输入 |
 
 ## 4. Phase 03：渲染收尾与故事分析
 
@@ -347,27 +356,31 @@ Phase 1 fixture/output
 ### 05-01：真实服务联调
 
 类型：integration/config/test  
-依赖：Phase 03、04 可用 Mock 完成后
+依赖：Phase 03、04 可用 Mock 完成后  
+状态：05-01A~D 已完成（2026-08-26，决策记录 docs/06 D-041/D-042/D-044）
 
 现有基础：UnifiedMLLM 和 ASR 已有 OpenAI-compatible 适配器。此计划不是从零编写，而是验证供应商兼容性并补齐缺口。
 
 必须实现：
 
 - [ ] 用目标 UnifiedMLLM 验证 video Data URI、JSON response format、batch 限制和超时。
-- [ ] 真正按 fallbackModel 切换模型重发，而不只记录 fallbackAttempted。
-- [ ] 验证 ASR 服务采用 JSON+base64 还是 multipart；必要时新增供应商适配器。
-- [ ] 为 story/profile 接入真实文本模型。
-- [ ] 真实服务测试默认 opt-in，不进入无凭据 CI。
-- [ ] 录制脱敏响应 fixture，覆盖供应商常见变体。
-- [ ] 日志确认不泄露 key、Data URI 和完整模型返回。
+- [x] 真正按 fallbackModel 切换模型重发，而不只记录 fallbackAttempted。
+- [x] 验证 ASR 服务采用 JSON+base64 还是 multipart；必要时新增供应商适配器。
+- [x] 为 story/profile 接入真实文本模型（`textModel` 配置 + CLI 注入；
+  未配置时显式 warning 并降级）。
+- [x] 真实服务测试默认 opt-in，不进入无凭据 CI。
+- [x] 录制脱敏响应 fixture，覆盖供应商常见变体。
+- [x] 日志确认不泄露 key、Data URI 和完整模型返回。
+- [x] 提供 `.env.example` 配置示例（含 `--env-file` 加载，05-05）。
 
-需要外部输入：端点、模型名、鉴权方式、供应商请求限制。
+需要外部输入：端点、模型名、鉴权方式、供应商请求限制（真实 smoke
+测试在 `MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1` 且凭据齐全时启用）。
 
 ### 05-02：完整受控词表
 
 类型：data/test  
 依赖：可与 05-01 并行
-状态：已完成（2026-08-25，1072 tests 全绿；决策记录见 docs/06 D-040）
+状态：已完成（2026-08-26，1082 tests 全绿；决策记录见 docs/06 D-040）
 
 - [x] 扩展 `rules/vocabulary.json` 到完整闭集。
 - [x] 为别名、箭头变化、多选、unknown/unmapped 增加契约测试。
@@ -388,7 +401,9 @@ Phase 1 fixture/output
 ### 05-03：黄金视频与参数校准
 
 类型：test/calibration  
-依赖：真实样例
+依赖：真实样例  
+状态：框架已完成（2026-08-26：标注格式 + `core/calibration.py` 指标 +
+opt-in 校准测试）；真实视频/标注到达后逐项校准。
 
 校准项：
 
@@ -402,8 +417,8 @@ Phase 1 fixture/output
 
 每项校准必须：
 
-- [ ] 保存脱敏黄金标注或期望范围。
-- [ ] 先新增失败测试。
+- [x] 保存脱敏黄金标注或期望范围（`tests/fixtures/golden/`，格式见 README）。
+- [x] 先新增失败测试（`test_golden_calibration.py`，无标注时 skip）。
 - [ ] 更新配置默认值和算法版本。
 - [ ] 更新 fingerprint，确保旧缓存失效。
 - [ ] 在 docs/06 记录实证、局限和适用范围。
@@ -411,11 +426,13 @@ Phase 1 fixture/output
 ### 05-04：HTML 体验、性能与发布准备
 
 类型：feature/performance/docs  
-依赖：Phase 03/04
+依赖：Phase 03/04  
+状态：05-05 的 CLI 能力部分已完成（2026-08-26，docs/06 D-043）；
+HTML 品牌/交互/性能/发布文档等外部输入（视觉原型、真实长视频）。
 
 - [ ] 明确 shot/story HTML 视觉品牌和交互原型。
-- [ ] 人工 correction 导出或 localhost review server。
-- [ ] confirmed/outdated/completion 状态闭环。
+- [x] 人工 correction 导出或 localhost review server（M3 已交付）。
+- [x] confirmed/outdated/completion 状态闭环（M3 已交付）。
 - [ ] 真实长视频性能基线。
 - [ ] 支持的最大时长、格式和平台范围。
 - [ ] 分享模式路径脱敏。
@@ -476,9 +493,12 @@ Phase 1 fixture/output
 
 ## 10. 下一步
 
-Phase 03、Phase 04 与 05-02（完整受控词表）已完成。下一个可执行 plan 是
-`05-01`（真实服务联调）：其中不依赖端点的部分（fallback 真正换模型重发、
-ASR multipart 适配器扩展点、真实服务测试的 opt-in 框架与脱敏 fixture 录制）
-可先行实现；供应商端点/鉴权/限制等仍需外部输入。05-03（黄金视频校准）与
-05-04（HTML 体验/性能/发布）依赖真实视频与视觉原型，可在适配层完成后
-并行推进。
+Phase 03、04 与 05-01A~D、05-02、05-03 框架、05-04（CLI 调试）、05-05
+均已完成。剩余工作全部依赖外部输入：
+
+- **05-01 真实 smoke**：提供 UnifiedMLLM/ASR/文本模型端点与凭据后，置
+  `MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1` 跑真实服务验证（opt-in 框架已就绪）；
+- **05-03 参数校准**：提供 2~5 支真实视频 + 人工标注
+  （`tests/fixtures/golden/` 格式），逐项回调 A-001~A-007；
+- **05-06 HTML/性能/发布**：视觉原型与真实长视频到达后推进品牌/交互/
+  性能基线与发布文档。

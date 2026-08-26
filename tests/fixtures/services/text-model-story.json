@@ -1,0 +1,28 @@
+{
+  "note": "脱敏后的 story 文本模型响应快照（05-01D）。",
+  "blocks": [
+    {
+      "storyBlockID": "B0001",
+      "blockTitle": "机场出发",
+      "divisionAxis": "行动/任务",
+      "divisionRationale": "这两个镜头都在交代出发行动。",
+      "primaryRole": "hook",
+      "coreContent": "旅行从机场出发，建立即将展开的旅程期待。",
+      "informationRole": "建立背景、推进新信息",
+      "narrativeDensity": "中",
+      "audienceReaction": "好奇/想看下去",
+      "visualIndependence": "静音也能看懂",
+      "blockRelation": "铺垫 → B0002",
+      "relationReason": "先建立出发场景，后续进入目的地体验。"
+    }
+  ],
+  "slots": [
+    {
+      "slotID": "S001",
+      "slotType": "开场引入",
+      "slotTitle": "旅程启动",
+      "blockIDs": ["B0001"],
+      "slotRationale": "片头以出发动作和地点建立旅拍主题。"
+    }
+  ]
+}

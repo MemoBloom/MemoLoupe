@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -30,6 +31,8 @@ from typing import Sequence
 
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
+
+from memoloupe.core.config import load_env_file
 
 from .import_corrections import run_import_corrections
 from .profile_build import run_profile_build
@@ -86,6 +89,8 @@ def _build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=help_text)
         p.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
+    sub.add_parser("config", help="输出脱敏后的有效配置与未配置服务项")
+
     return parser
 
 
@@ -125,11 +130,77 @@ def _cmd_validate(target: Path, *, strict: bool, json_report: bool) -> int:
     return EXIT_VALIDATION_FAILED if errors else EXIT_OK
 
 
+def _cmd_config_print() -> int:
+    """``memoloupe config``：输出脱敏后的有效配置并标出未配置的真实服务项。"""
+    from memoloupe.core.config import load_config, redacted_snapshot
+
+    config = load_config()
+    snapshot = redacted_snapshot(config)
+    json.dump(snapshot, sys.stdout, ensure_ascii=False, indent=2)
+    sys.stdout.write("\n")
+    missing: list[str] = []
+    for name, cfg in (
+        ("ASR", config.get("asr", {})),
+        ("UnifiedMLLM", config.get("unifiedModel", {})),
+        ("TextModel", config.get("textModel", {})),
+    ):
+        if not (
+            cfg.get("apiKey") and cfg.get("baseUrl") and cfg.get("model")
+        ):
+            missing.append(name)
+    if missing:
+        print(f"未配置的真实服务：{'、'.join(missing)}", file=sys.stderr)
+    else:
+        print("真实服务配置完整", file=sys.stderr)
+    return EXIT_OK
+
+
+def _extract_env_file(argv: Sequence[str]) -> tuple[list[str], str | None]:
+    """从 argv 提取 ``--env-file PATH``（或 ``--env-file=PATH``）并移除。
+
+    只匹配主命令参数区，避免与子命令内部同名参数冲突时误删
+    （子命令参数以 ``--output-dir`` 等开头，--env-file 由本函数统一消费）。
+    """
+    out: list[str] = []
+    env_file: str | None = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--env-file" and index + 1 < len(argv):
+            env_file = argv[index + 1]
+            index += 2
+        elif arg.startswith("--env-file="):
+            env_file = arg.split("=", 1)[1]
+            index += 1
+        else:
+            out.append(arg)
+            index += 1
+    return out, env_file
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），review、
     # import-corrections、story 与 profile 的参数全部以选项开头，因此在主
     # parser 之前分流。
+    argv, env_file = _extract_env_file(argv)
+    injected_env: dict[str, str] = {}
+    if env_file is not None:
+        # 05-05：--env-file 加载（不覆盖进程已有环境变量）。注入的环境变量
+        # 在 main 返回前恢复，避免污染测试进程与重复调用。
+        loaded = load_env_file(Path(env_file))
+        for key, value in loaded.items():
+            if key not in os.environ:
+                os.environ[key] = value
+                injected_env[key] = value
+    try:
+        return _dispatch(argv)
+    finally:
+        for key in injected_env:
+            os.environ.pop(key, None)
+
+
+def _dispatch(argv: Sequence[str]) -> int:
     if argv[:1] == ["review"]:
         return run_review(argv[1:])
     if argv[:1] == ["import-corrections"]:
@@ -148,6 +219,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "shot":
         return run_shot_analysis(args.args)
+    if args.command == "config":
+        return _cmd_config_print()
     raise SystemExit(f"未知子命令：{args.command}")
 
 

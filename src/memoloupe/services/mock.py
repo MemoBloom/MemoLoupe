@@ -94,9 +94,34 @@ class MockUnifiedMediaService:
     传入 callable 时签名为 ``(clips, group, call_index) -> str``。
     """
 
-    def __init__(self, script: MockScript) -> None:
+    def __init__(
+        self,
+        script: MockScript,
+        *,
+        model: str = "mock-model",
+        fallback_model: str | None = None,
+    ) -> None:
         self._script = script
+        self._model = model
+        self._fallback_model = fallback_model
         self.calls: list[dict] = []
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def fallback_model(self) -> str | None:
+        return self._fallback_model
+
+    def with_model(self, model: str) -> "MockUnifiedMediaService":
+        """返回共享 script 的新 mock（05-01B：编排器 fallback 重发）。
+
+        ``calls`` 独立记录，便于断言两次请求使用的模型不同。
+        """
+        return MockUnifiedMediaService(
+            self._script, model=model, fallback_model=self._fallback_model
+        )
 
     def analyze_batch(
         self, clips: Sequence[ModelClip], group: AnalysisGroup
@@ -109,6 +134,7 @@ class MockUnifiedMediaService:
                 "shot_ids": shot_ids,
                 "clips": tuple(clips),
                 "analysis_group": group,
+                "model": self._model,
             }
         )
         if callable(self._script):

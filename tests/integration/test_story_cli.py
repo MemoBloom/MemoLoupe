@@ -14,9 +14,12 @@ from memoloupe.cli.main import (
     EXIT_INPUT,
     EXIT_OK,
     EXIT_STAGE_FAILED,
+    EXIT_USAGE,
     EXIT_VALIDATION_FAILED,
     main,
 )
+from memoloupe.services.base import PermanentServiceError
+from memoloupe.services.mock import MockTextModelService
 
 FIXTURE_FULL = Path(__file__).parent.parent / "fixtures" / "output_full"
 FIXTURE_MINIMAL = Path(__file__).parent.parent / "fixtures" / "minimal"
@@ -79,6 +82,44 @@ class TestStoryCLI:
         assert blocks["status"] == "complete"
         assert blocks["slots"], "mock 填充应产出 slot"
         assert (work / "checkpoints" / "story-blocks-model.json").is_file()
+
+    def test_scaffold_only_skips_text_model(self, tmp_path):
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        code = main([
+            "story", "--output-dir", str(work), "--allow-draft",
+            "--scaffold-only", "--force", "scaffold_story_blocks",
+        ])
+        assert code == EXIT_OK
+        blocks = _read_json(work / "raw" / "story-blocks.json")
+        assert blocks["status"] == "scaffold"
+        assert blocks["slots"] == []
+
+    def test_scaffold_only_conflicts_with_mock(self, tmp_path):
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        code = main([
+            "story", "--output-dir", str(work), "--allow-draft",
+            "--scaffold-only", "--mock-text-model",
+        ])
+        assert code == EXIT_USAGE
+
+    def test_strict_returns_failed_on_text_model_failure(self, tmp_path, monkeypatch):
+        import memoloupe.cli.story_analysis as story_cli
+
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        service = MockTextModelService({0: PermanentServiceError("HTTP 401")})
+        monkeypatch.setattr(
+            story_cli,
+            "build_text_model_service",
+            lambda config: (service, None),
+        )
+        code = main([
+            "story", "--output-dir", str(work), "--allow-draft",
+            "--strict", "--force", "story_model_fill",
+        ])
+        assert code == EXIT_STAGE_FAILED
 
     def test_story_rerun_reuses_checkpoint(self, tmp_path):
         work = tmp_path / "out"

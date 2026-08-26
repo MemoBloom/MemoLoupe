@@ -13,9 +13,13 @@ from pathlib import Path
 from memoloupe.cli.main import (
     EXIT_INPUT,
     EXIT_OK,
+    EXIT_STAGE_FAILED,
+    EXIT_USAGE,
     EXIT_VALIDATION_FAILED,
     main,
 )
+from memoloupe.services.base import PermanentServiceError
+from memoloupe.services.mock import MockTextModelService
 
 FIXTURE_FULL = Path(__file__).parent.parent / "fixtures" / "output_full"
 
@@ -41,6 +45,39 @@ class TestProfileCLI:
         assert slot["L1"]["narrativeFunction"] is not None
         assert slot["L2"]["referenceContent"] != ""
         assert (work / "checkpoints" / "style-profile-distill.json").is_file()
+
+    def test_skip_distill_produces_aggregate(self, tmp_path):
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        assert main(["profile", "--output-dir", str(work), "--skip-distill"]) == EXIT_OK
+        profile = json.loads((work / "style-profile.json").read_text(encoding="utf-8"))
+        assert profile["distillStatus"] == "skipped"
+
+    def test_skip_distill_conflicts_with_mock(self, tmp_path):
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        code = main([
+            "profile", "--output-dir", str(work),
+            "--skip-distill", "--mock-text-model",
+        ])
+        assert code == EXIT_USAGE
+
+    def test_strict_returns_failed_on_text_model_failure(self, tmp_path, monkeypatch):
+        import memoloupe.cli.profile_build as profile_cli
+
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        service = MockTextModelService({0: PermanentServiceError("HTTP 401")})
+        monkeypatch.setattr(
+            profile_cli,
+            "build_text_model_service",
+            lambda config: (service, None),
+        )
+        code = main([
+            "profile", "--output-dir", str(work),
+            "--strict", "--force", "profile_distill",
+        ])
+        assert code == EXIT_STAGE_FAILED
 
     def test_rerun_reuses_checkpoint(self, tmp_path):
         work = tmp_path / "out"

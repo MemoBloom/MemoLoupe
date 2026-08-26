@@ -109,6 +109,8 @@ class StoryAnalysisRequest:
     text_service: Any = None  # TextModelService；None 时只产 scaffold
     force: frozenset[str] = frozenset()
     no_cache: bool = False
+    # 05-04：调试模式——只保留前 N 个 block（产物不满足全覆盖契约，见 warning）。
+    max_blocks: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +801,15 @@ class StoryAnalysisPipeline:
                 scaffold_doc = build_scaffold_document(
                     shots, raws.get("asr"), request.gap_ms
                 )
+                # 05-04：调试模式 --max-blocks——只保留前 N 个 block。
+                if request.max_blocks is not None and len(scaffold_doc["blocks"]) > request.max_blocks:
+                    scaffold_doc["blocks"] = scaffold_doc["blocks"][: request.max_blocks]
+                    scaffold_doc["slots"] = []
+                    warnings.append(
+                        f"调试模式 --max-blocks={request.max_blocks}：仅保留前 "
+                        f"{len(scaffold_doc['blocks'])} 个 block；产物不满足全量覆盖契约，"
+                        "validate 预期报错"
+                    )
                 scaffold_rewritten = False
                 if cacheable and store.is_reusable(ArtifactName.STORY_BLOCKS, fp):
                     record("scaffold_story_blocks", "reused", _elapsed(step_start),

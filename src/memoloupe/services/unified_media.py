@@ -99,9 +99,29 @@ class OpenAICompatibleUnifiedMedia:
         self._timeout_sec = timeout_sec
 
     @property
+    def model(self) -> str:
+        """当前模型名（日志与 artifact 使用）。"""
+        return self._model
+
+    @property
     def fallback_model(self) -> str | None:
         """主模型持续不可用时编排器可回退的模型名。"""
         return self._fallback_model
+
+    def with_model(self, model: str) -> "OpenAICompatibleUnifiedMedia":
+        """返回以指定模型名重建的适配器（05-01B：per-request model override）。
+
+        复用 base_url/api_key/timeout 与 fallback 配置，便于编排器在
+        ``fallbackModel`` 上重发请求；协议 ``analyze_batch(clips, group)``
+        保持不变。
+        """
+        return OpenAICompatibleUnifiedMedia(
+            base_url=self._base_url,
+            api_key=self._api_key,
+            model=model,
+            fallback_model=self._fallback_model,
+            timeout_sec=self._timeout_sec,
+        )
 
     def analyze_batch(
         self, clips: Sequence[ModelClip], group: AnalysisGroup

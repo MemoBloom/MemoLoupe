@@ -87,15 +87,33 @@ DEFAULT_CONFIG: dict = {
     },
     "asr": {
         "enabled": True,
+        "provider": "openai-json",
+        "baseUrl": None,
+        "apiKey": None,
+        "model": None,
+        "fileField": "file",
+        "timeoutSec": 120.0,
     },
     "unifiedModel": {
+        "baseUrl": None,
+        "apiKey": None,
+        "model": None,
+        "fallbackModel": None,
+        "timeoutSec": 300.0,
         "batchSize": 4,
         "concurrency": 10,
         "videoFPS": 10.0,
         "mediaResolution": "default",
         "maxRetries": 3,
         "transport": "videoDataURI",
+    },
+    "textModel": {
+        "baseUrl": None,
         "apiKey": None,
+        "model": None,
+        "timeoutSec": 300.0,
+        # 0 表示使用服务端默认上限；正整数会作为默认 max_tokens 传给请求。
+        "maxTokens": 0,
     },
     "story": {
         "gapMs": 1200,
@@ -223,3 +241,33 @@ def load_config(
     if cli_overrides:
         config = deep_merge(config, cli_overrides)
     return config
+
+
+def load_env_file(path: Path) -> dict[str, str]:
+    """解析 ``.env`` 文件为环境变量 dict（05-05）。
+
+    - 空行与 ``#`` 注释忽略；``KEY=VALUE`` 取值去引号；
+    - **不覆盖进程已有的环境变量**（键已存在于 ``os.environ`` 时跳过）；
+    - 文件不存在或不可读时返回空 dict（行为可预测）。
+    """
+    result: dict[str, str] = {}
+    path = Path(path)
+    if not path.is_file():
+        return result
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return result
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if not key:
+            continue
+        if key in os.environ:
+            continue  # 不覆盖已有环境变量
+        result[key] = value
+    return result

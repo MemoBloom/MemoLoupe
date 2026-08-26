@@ -15,6 +15,7 @@
 | [06_DECISIONS_AND_ASSUMPTIONS.md](06_DECISIONS_AND_ASSUMPTIONS.md) | 已选默认方案、已知冲突、待校准参数和变更规则 |
 | [07_SOURCE_DATA_CONTRACT.md](07_SOURCE_DATA_CONTRACT.md) | 用户提供的完整数据协议原文，生成 schema 和模型时的字段级依据 |
 | [08_DEVELOPMENT_ROADMAP.md](08_DEVELOPMENT_ROADMAP.md) | M3–M5 当前后续路线、GSD-ready phase/plan、验收和缺失材料 |
+| [09_COLLABORATION_BACKLOG.md](09_COLLABORATION_BACKLOG.md) | Phase 05+ 剩余 gap 的协作开发 backlog、任务包、依赖和验收标准 |
 
 ## 规范词
 
@@ -41,7 +42,7 @@
 - 模型服务实现：阅读 02、03、05。
 - Web/HTML 实现：阅读 02、04、05。
 - 端到端开发 AI：按编号顺序全部阅读。
-- 后续阶段规划或执行：阅读 06、08，并回查相应专项规格。
+- 后续阶段规划或执行：阅读 06、08、09，并回查相应专项规格。
 
 ## 文档自身的完成定义
 

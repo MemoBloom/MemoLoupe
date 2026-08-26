@@ -1,0 +1,4 @@
+{
+  "note": "脱敏后的 UnifiedMLLM 真实形态响应快照（05-01D）。rawText 为带 Markdown fence 的原始模型返回；已删除 key/URL/Data URI/完整敏感原文。",
+  "rawText": "```json\n{\"shots\": [{\"shotID\": \"SH0001\", \"visual\": {\"content\": \"机场出发大厅\", \"subjects\": \"旅客\", \"framing\": \"全景\", \"cameraMovement\": \"跟\"}, \"editing\": {\"transition\": \"硬切\"}, \"components\": {\"texts\": [], \"compositingEvents\": \"无\"}, \"confidence\": {\"visual\": \"medium\", \"overall\": \"medium\"}}]}\n```"
+}

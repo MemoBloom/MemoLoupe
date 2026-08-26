@@ -73,11 +73,11 @@ def _payload(group_name: str, shot_ids, *, content_prefix: str | None = None) ->
     return json.dumps({"shots": shots}, ensure_ascii=False)
 
 
-def _good_service(shot_ids) -> MockUnifiedMediaService:
+def _good_service(shot_ids, *, model: str = "mock-unified-1") -> MockUnifiedMediaService:
     def script(clips, group, call_index):
         return _payload(group.name, [c.shot_id for c in clips])
 
-    return MockUnifiedMediaService(script)
+    return MockUnifiedMediaService(script, model=model)
 
 
 def _validate(doc: dict) -> None:
@@ -89,7 +89,6 @@ class TestHappyPath:
         clips = _clips_info(5)
         shot_ids = [c["shotID"] for c in clips]
         service = _good_service(shot_ids)
-        service.model = "mock-unified-1"
         doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=2))
 
         _validate(doc)
@@ -144,7 +143,7 @@ class TestHappyPath:
         doc = _run(
             ArtifactStore(tmp_path), clips, _good_service(["SH0001"]), _config()
         )
-        assert doc["request"]["model"] == "mock"
+        assert doc["request"]["model"] == "mock-unified-1"
         assert doc["request"]["fallbackModel"] is None
 
     def test_raw_wu_value_passthrough(self, tmp_path):
@@ -299,8 +298,7 @@ class TestPermanentFailure:
                 raise PermanentServiceError("clip unreadable: shotID=SH0001")
             return _payload(group.name, ids)
 
-        service = MockUnifiedMediaService(script)
-        service.fallback_model = "mock-fallback"
+        service = MockUnifiedMediaService(script, fallback_model="mock-fallback")
         doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=4))
 
         _validate(doc)
@@ -317,6 +315,7 @@ class TestPermanentFailure:
         assert by_id["SH0001"]["status"] == "failed"
         assert "response" not in by_id["SH0001"]
         assert by_id["SH0001"]["fallbackAttempted"] is True
+        assert by_id["SH0001"]["fallbackFailed"] is True
         assert by_id["SH0002"]["status"] == "complete"
         assert by_id["SH0002"]["response"]["shots"][0]["shotID"] == "SH0002"
 
@@ -355,6 +354,114 @@ class TestPermanentFailure:
         assert doc["shotStatuses"] == {"SH0001": "permanent_failure"}
         # 批次 3 次（1+2 重试）+ 单镜头 3 次，每组如此
         assert doc["batches"][0]["attempts"] == (3 + 3) * 3
+
+
+class TestFallbackModelRetry:
+    """05-01B：主模型失败后按 fallbackModel 真正重发（不再是仅记录）。"""
+
+    def test_fallback_success_records_fallback_used(self, tmp_path):
+        clips = _clips_info(2)
+
+        def primary(clips_arg, group, call_index):
+            raise PermanentServiceError("primary model down")
+
+        def fallback(clips_arg, group, call_index):
+            return _payload(group.name, [c.shot_id for c in clips_arg])
+
+        service = MockUnifiedMediaService(primary, model="primary-1", fallback_model="fallback-2")
+        # 手动给编排器可用的 fallback：主 mock 的 with_model 复用同一 script，
+        # 因此这里直接构造一个独立 fallback mock 并替换 with_model 行为。
+        fb = MockUnifiedMediaService(fallback, model="fallback-2", fallback_model=None)
+        service.with_model = lambda model: fb  # type: ignore[method-assign]
+
+        doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=2))
+        _validate(doc)
+        assert doc["status"] == "complete"
+        # 批次级 fallback 成功：整批完成且记录 fallbackUsed。
+        assert doc["batches"][0]["fallbackUsed"] is True
+        assert doc["batches"][0]["status"] == "complete"
+        assert doc["permanentFailureShots"] == 0
+        # 两次请求使用不同模型（主模型失败 → fallback 模型重发）。
+        assert fb.calls, "fallback mock 应收到重发请求"
+        assert all(c["model"] == "fallback-2" for c in fb.calls)
+
+    def test_fallback_failure_records_fallback_failed(self, tmp_path):
+        clips = _clips_info(2)
+
+        def always_fail(clips_arg, group, call_index):
+            raise PermanentServiceError("model down")
+
+        service = MockUnifiedMediaService(
+            always_fail, model="primary-1", fallback_model="fallback-2"
+        )
+        fb = MockUnifiedMediaService(always_fail, model="fallback-2")
+        service.with_model = lambda model: fb  # type: ignore[method-assign]
+
+        doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=2))
+        _validate(doc)
+        assert doc["status"] == "failed"
+        records = {b["shotIDs"][0]: b for b in doc["batches"]}
+        for sid in ("SH0001", "SH0002"):
+            assert records[sid]["status"] == "failed"
+            assert records[sid]["fallbackAttempted"] is True
+            assert records[sid]["fallbackFailed"] is True
+
+    def test_no_fallback_model_keeps_legacy_semantics(self, tmp_path):
+        clips = _clips_info(2)
+        calls = {"n": 0}
+
+        def script(clips_arg, group, call_index):
+            calls["n"] += 1
+            raise PermanentServiceError("model down")
+
+        service = MockUnifiedMediaService(script)  # 无 fallback_model
+        doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=2))
+        _validate(doc)
+        assert doc["status"] == "failed"
+        records = {b["shotIDs"][0]: b for b in doc["batches"]}
+        for sid in ("SH0001", "SH0002"):
+            assert "fallbackAttempted" not in records[sid]
+            assert "fallbackUsed" not in records[sid]
+
+    def test_single_shot_fallback_success_after_batch_failure(self, tmp_path):
+        # 批次与批次级 fallback 都失败（乱序/非法），单镜头 fallback 成功。
+        clips = _clips_info(2)
+
+        def bad(clips_arg, group, call_index):
+            return "not json {"
+
+        def good(clips_arg, group, call_index):
+            return _payload(group.name, [c.shot_id for c in clips_arg])
+
+        service = MockUnifiedMediaService(bad, model="primary-1", fallback_model="fallback-2")
+        fb = MockUnifiedMediaService(good, model="fallback-2")
+        service.with_model = lambda model: fb  # type: ignore[method-assign]
+
+        doc = _run(ArtifactStore(tmp_path), clips, service, _config(batchSize=2, maxRetries=0))
+        _validate(doc)
+        assert doc["status"] == "complete"
+        assert all(b["fallbackUsed"] for b in doc["batches"])
+        assert doc["permanentFailureShots"] == 0
+
+    def test_fallback_service_construction_failure_degrades(self, tmp_path):
+        # with_model 抛异常 → 按无 fallback 显式降级，不击垮编排。
+        clips = _clips_info(1)
+
+        def script(clips_arg, group, call_index):
+            return _payload(group.name, [c.shot_id for c in clips_arg])
+
+        class ExplodingService:
+            fallback_model = "fb"
+            model = "primary-1"
+
+            def with_model(self, model):
+                raise RuntimeError("cannot rebuild")
+
+            def analyze_batch(self, clips_arg, group):
+                return _payload(group.name, [c.shot_id for c in clips_arg])
+
+        doc = _run(ArtifactStore(tmp_path), clips, ExplodingService(), _config())
+        assert doc["status"] == "complete"
 
 
 class TestCheckpoint:

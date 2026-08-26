@@ -1,0 +1,10 @@
+{
+  "note": "脱敏后的 ASR verbose_json 响应快照（05-01D）。",
+  "text": "今天我们从机场出发。第二段解说。",
+  "language": "zh",
+  "duration": 6.0,
+  "segments": [
+    {"start": 0.82, "end": 2.46, "text": "今天我们从机场出发。", "speaker": "SPEAKER_0", "confidence": 0.92},
+    {"start": 3.5, "end": 5.2, "text": "第二段解说。", "speaker": "SPEAKER_0", "confidence": 0.88}
+  ]
+}

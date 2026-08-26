@@ -76,7 +76,24 @@ def http_json_post(
     payload: dict,
     timeout_sec: float,
 ) -> dict:
-    """POST JSON 并解析 JSON 响应，错误按可重试性分类且全程脱敏。
+    """POST JSON 并解析 JSON 响应（05-01C：multipart 见 :func:`http_post_bytes`）。"""
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    return http_post_bytes(
+        url,
+        headers={"Content-Type": "application/json", **headers},
+        body=body,
+        timeout_sec=timeout_sec,
+    )
+
+
+def http_post_bytes(
+    url: str,
+    *,
+    headers: dict[str, str],
+    body: bytes,
+    timeout_sec: float,
+) -> dict:
+    """POST 原始字节并解析 JSON 响应，错误按可重试性分类且全程脱敏。
 
     - HTTP 429 / 5xx → :class:`TransientServiceError`
     - 其他 4xx（含 400/401/403）→ :class:`PermanentServiceError`
@@ -84,17 +101,16 @@ def http_json_post(
     - 响应非 JSON 或不是对象 → :class:`PermanentServiceError`
 
     异常信息只含状态码与截断、脱敏后的服务端正文摘要；
-    绝不包含请求头、payload 内容。
+    绝不包含请求头、body 内容。
 
     说明：为行为确定性，本函数直连目标地址，不走系统/环境代理。
     """
     secrets = _header_secrets(headers)
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", **headers},
+        headers=headers,
     )
     try:
         with _OPENER.open(request, timeout=timeout_sec) as response:

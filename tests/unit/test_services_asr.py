@@ -16,7 +16,12 @@ from memoloupe.services.asr import (
     ASRRequest,
     ASRResult,
     ASRService,
+    MultipartOpenAICompatibleASR,
     OpenAICompatibleASR,
+    PROVIDER_JSON,
+    PROVIDER_MULTIPART,
+    _multipart_body,
+    build_asr_service,
 )
 from memoloupe.services.base import PermanentServiceError, TransientServiceError
 
@@ -186,6 +191,94 @@ class TestTranscribe:
     def test_missing_media_file_is_permanent(self, server, tmp_path):
         with pytest.raises(PermanentServiceError):
             _make(server).transcribe(tmp_path / "nope.mp4", ASRRequest())
+
+
+class TestMultipartAdapter:
+    """05-01C：multipart/form-data 上传适配器。"""
+
+    def _make(self, server, **kwargs) -> MultipartOpenAICompatibleASR:
+        return MultipartOpenAICompatibleASR(
+            base_url=server.url, api_key=API_KEY, model="whisper-x", **kwargs
+        )
+
+    def test_multipart_body_contains_fields_and_file(self):
+        body, boundary = _multipart_body(
+            {"model": "whisper-x", "response_format": "verbose_json"},
+            file_field="file",
+            filename="clip.mp4",
+            file_bytes=b"\x00\x01media",
+            content_type="application/octet-stream",
+        )
+        text = body.decode("utf-8", errors="replace")
+        assert boundary in text
+        assert 'name="model"' in text and 'whisper-x' in text
+        assert 'name="file"; filename="clip.mp4"' in text
+        assert b"\x00\x01media" in body
+        assert text.endswith(f"--{boundary}--\r\n")
+
+    def test_transcribe_uploads_multipart(self, server, media_file):
+        server.handler.behavior = {
+            "body": {"segments": [{"start": 0.0, "end": 1.0, "text": "ok"}]}
+        }
+        result = self._make(server, file_field="audio").transcribe(
+            media_file, ASRRequest(language="zh")
+        )
+        assert result.segments[0]["text"] == "ok"
+        captured = server.handler.captured
+        content_type = captured["headers"].get("Content-Type", "")
+        assert content_type.startswith("multipart/form-data; boundary=")
+        boundary = content_type.split("boundary=", 1)[1]
+        assert f"--{boundary}" in captured["body"].decode("utf-8", errors="replace")
+        assert 'name="audio"; filename="clip.mp4"' in captured["body"].decode(
+            "utf-8", errors="replace"
+        )
+        assert captured["headers"].get("Authorization") == f"Bearer {API_KEY}"
+
+    def test_missing_api_key_raises(self):
+        with pytest.raises(CapabilityUnavailableError):
+            MultipartOpenAICompatibleASR(base_url="http://x", api_key=None, model="m")
+
+
+class TestBuildService:
+    """05-01C：asr.provider 配置选择适配器。"""
+
+    def _config(self, **overrides) -> dict:
+        cfg = {
+            "enabled": True,
+            "provider": PROVIDER_JSON,
+            "baseUrl": "http://asr.example.com",
+            "apiKey": "sk-key",
+            "model": "whisper-x",
+            "fileField": "file",
+            "timeoutSec": 30.0,
+        }
+        cfg.update(overrides)
+        return {"asr": cfg}
+
+    def test_default_provider_is_json(self):
+        service = build_asr_service(self._config())
+        assert isinstance(service, OpenAICompatibleASR)
+
+    def test_multipart_provider(self):
+        service = build_asr_service(self._config(provider=PROVIDER_MULTIPART))
+        assert isinstance(service, MultipartOpenAICompatibleASR)
+
+    def test_custom_file_field(self):
+        service = build_asr_service(
+            self._config(provider=PROVIDER_MULTIPART, fileField="audio_file")
+        )
+        assert service._file_field == "audio_file"
+
+    def test_disabled_returns_none(self):
+        assert build_asr_service(self._config(enabled=False)) is None
+
+    def test_missing_credentials_returns_none(self):
+        assert build_asr_service(self._config(apiKey=None)) is None
+        assert build_asr_service({"asr": {}}) is None
+
+    def test_unknown_provider_falls_back_to_json(self):
+        service = build_asr_service(self._config(provider="bogus"))
+        assert isinstance(service, OpenAICompatibleASR)
 
     def test_satisfies_protocol(self, server):
         assert isinstance(_make(server), ASRService)
