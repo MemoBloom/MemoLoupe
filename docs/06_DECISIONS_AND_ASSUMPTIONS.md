@@ -458,6 +458,31 @@ maxTokens`），`memoloupe story` 与 `memoloupe profile` 在非 mock、非显�
 供应商策略不同，独立配置能避免把视频理解模型配置误用于文本蒸馏；同时保持
 无凭据环境的可恢复降级行为，符合 docs/03 §5 降级矩阵。
 
+### D-045：本地 ASR provider（FireRedVAD + MLX Whisper）
+
+决策：新增 `asr.provider=local-fireredvad-mlx`（`services/asr_local.py`）。
+流水线：ffmpeg 解码 analyzedRange 为 16kHz mono s16le wav → FireRedVAD
+非流式 VAD 切人声段 → 段合并（mergeGapMs=300）→ 贪心打包 ≤30s 窗口
+（两端 pad 200ms）→ 窗口间插 500ms 静音拼接后单次 mlx-whisper
+（默认 `mlx-community/whisper-large-v3-turbo`）转写 → 拼接轴时间经
+`build_concat_map`/`concat_to_source` 映射回原片毫秒。
+
+- 依赖为 optional extra `asr-local`（`fireredvad` + `mlx-whisper`），
+  lazy import；缺依赖抛 CapabilityUnavailableError → asr.json
+  status=skipped，符合降级矩阵。
+- VAD 模型默认从 HF 自动下载（`FireRedTeam/FireRedVAD` 的 `VAD/` 子目录，
+  约 2.2MB），`vad.modelDir` 可覆盖；whisper 模型由 mlx-whisper 自动拉取。
+- `localAsrVersion`（asr-local.v1）进入 asr 配置指纹，本地实现变更时
+  bump 即失效旧缓存；VAD/whisper 明细只进 rawExtras.local 命名空间。
+- CALIBRATION：mergeGapMs=300、windowSec=30、windowPadMs=200、
+  CONCAT_SILENCE_MS=500，待黄金视频校准（05-03）。
+
+理由：无真实 ASR 端点时本地链路即可产出可用 transcript；单次拼接转写避免
+逐窗重载 whisper 模型；静音分隔防止跨段词汇粘连。
+
+局限：whisper 段跨越拼接缝时端点分别映射，可能覆盖静音间隔；无说话人
+分离（speaker 恒为 null）。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

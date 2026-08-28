@@ -125,6 +125,26 @@ class TestRealTextModelSmoke:
         assert json.loads(text)["ok"] is True
 
 
+@pytest.mark.skipif(
+    not REAL_ENABLED or not os.environ.get("MEMOLOUPE_TEST_MEDIA"),
+    reason="本地 ASR 真实模型 smoke 未启用"
+    "（MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1 且 MEMOLOUPE_TEST_MEDIA=<视频路径>）",
+)
+def test_local_asr_real_models_smoke():
+    """本地 FireRedVAD + MLX Whisper 全链路 smoke（需 asr-local extra）。"""
+    pytest.importorskip("fireredvad")
+    pytest.importorskip("mlx_whisper")
+    from memoloupe.core.config import load_config
+    from memoloupe.services.asr import build_asr_service
+
+    config = load_config(env={"MEMOLOUPE_ASR__PROVIDER": "local-fireredvad-mlx"})
+    service = build_asr_service(config)
+    result = service.transcribe(Path(os.environ["MEMOLOUPE_TEST_MEDIA"]), ASRRequest())
+    for seg in result.segments:
+        assert seg["startMs"] < seg["endMs"]
+        assert seg["text"].strip()
+
+
 # ---------------------------------------------------------------------------
 # 脱敏 fixture 回归（无网络，始终运行）
 # ---------------------------------------------------------------------------

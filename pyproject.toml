@@ -12,6 +12,9 @@ dependencies = [
 [project.scripts]
 memoloupe = "memoloupe.cli.main:main"
 
+[project.optional-dependencies]
+asr-local = ["fireredvad", "mlx-whisper>=0.4.3"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

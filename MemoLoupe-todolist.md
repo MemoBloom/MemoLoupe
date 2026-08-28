@@ -133,6 +133,9 @@
   - [x] `memoloupe story --scaffold-only --strict` 与
     `memoloupe profile --skip-distill --strict`。
   - [x] `.env.example` 记录 `MEMOLOUPE_TEXTMODEL__*`、ASR、Unified 常用变量。
+  - [x] 本地 ASR provider `local-fireredvad-mlx`（2026-08-28，D-045）：
+    FireRedVAD 人声切分 + MLX whisper-large-v3-turbo 识别，
+    optional extra `asr-local`，缺依赖显式 skipped 降级。
   - [ ] ASR multipart/供应商扩展适配仍待确认。
 - [x] **T5.3 完整 `rules/vocabulary.json`** ✅（2026-08-26，1082 tests 全绿）
   - 闭集 = docs/07 全部受控字段（modelShot 22 + story 8），契约测试锁定；

@@ -39,6 +39,9 @@
   opt-in 校准测试（真实视频/标注到达后启用）。
 - Phase 05-04 已交付：`--skip`/`--dry-run`/`--render-only`/`--strict`/`--max-shots`。
 - Phase 05-05 已交付：`--env-file` 加载、`memoloupe config` 脱敏自检。
+- 本地 ASR provider 已交付（2026-08-28，决策 D-045）：
+  `asr.provider=local-fireredvad-mlx`，FireRedVAD 人声切分 +
+  MLX whisper-large-v3-turbo 识别，optional extra `asr-local`。
 - 全量测试：`1125 passed, 6 skipped`。
 
 已关闭的路线分歧：
@@ -498,6 +501,8 @@ Phase 03、04 与 05-01A~D、05-02、05-03 框架、05-04（CLI 调试）、05-0
 
 - **05-01 真实 smoke**：提供 UnifiedMLLM/ASR/文本模型端点与凭据后，置
   `MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1` 跑真实服务验证（opt-in 框架已就绪）；
+  ASR 另有本地路径：`asr.provider=local-fireredvad-mlx`（D-045，
+  `uv sync --extra asr-local`），无需远程端点；
 - **05-03 参数校准**：提供 2~5 支真实视频 + 人工标注
   （`tests/fixtures/golden/` 格式），逐项回调 A-001~A-007；
 - **05-06 HTML/性能/发布**：视觉原型与真实长视频到达后推进品牌/交互/
