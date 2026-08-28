@@ -254,3 +254,40 @@ class TestLoadEnvFile:
         loaded = load_env_file(env_path)
         config = load_config(env={**loaded, "MEMOLOUPE_ASR__BASEURL": "http://x"})
         assert config["asr"]["apiKey"] == "sk-from-env"
+
+
+class TestAsrLocalConfig:
+    def test_asr_local_config_defaults_present(self) -> None:
+        asr = DEFAULT_CONFIG["asr"]
+        assert asr["language"] is None
+        assert asr["localAsrVersion"] == "asr-local.v1"
+        assert asr["vad"]["speechThreshold"] == 0.4
+        assert asr["vad"]["modelDir"] is None
+        assert asr["whisper"]["model"] == "mlx-community/whisper-large-v3-turbo"
+        assert asr["whisper"]["wordTimestamps"] is True
+        assert asr["mergeGapMs"] == 300
+        assert asr["windowSec"] == 30
+        assert asr["windowPadMs"] == 200
+
+    def test_asr_local_env_override_nested(self) -> None:
+        config = load_config(
+            env={
+                "MEMOLOUPE_ASR__PROVIDER": "local-fireredvad-mlx",
+                "MEMOLOUPE_ASR__VAD__SPEECHTHRESHOLD": "0.5",
+                "MEMOLOUPE_ASR__WHISPER__MODEL": "mlx-community/whisper-tiny",
+                "MEMOLOUPE_ASR__MERGEGAPMS": "500",
+            }
+        )
+        assert config["asr"]["provider"] == "local-fireredvad-mlx"
+        assert config["asr"]["vad"]["speechThreshold"] == 0.5
+        assert config["asr"]["whisper"]["model"] == "mlx-community/whisper-tiny"
+        assert config["asr"]["mergeGapMs"] == 500
+
+    def test_asr_fingerprint_changes_with_local_config(self) -> None:
+        base = load_config(env={})
+        changed = load_config(
+            env={"MEMOLOUPE_ASR__WHISPER__MODEL": "mlx-community/whisper-tiny"}
+        )
+        assert config_fingerprint(base, ["asr"]) != config_fingerprint(
+            changed, ["asr"]
+        )

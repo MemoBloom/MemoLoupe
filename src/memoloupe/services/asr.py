@@ -272,12 +272,23 @@ def build_asr_service(config: dict) -> ASRService | None:
     asr_cfg = config.get("asr", {}) if isinstance(config, dict) else {}
     if not asr_cfg.get("enabled", True):
         return None
+    provider = str(asr_cfg.get("provider", PROVIDER_JSON))
+    if provider == "local-fireredvad-mlx":
+        # 本地 provider 无需 apiKey/baseUrl；依赖缺失在 transcribe 时抛
+        # CapabilityUnavailableError，由阶段层落 skipped。
+        from memoloupe.services.asr_local import LocalFireRedVadMlxASR
+
+        ffmpeg_cfg = config.get("ffmpeg", {}) if isinstance(config, dict) else {}
+        return LocalFireRedVadMlxASR(
+            asr_config=asr_cfg,
+            ffmpeg_path=str(ffmpeg_cfg.get("ffmpegPath", "ffmpeg")),
+            decode_timeout_sec=float(ffmpeg_cfg.get("scanTimeoutSec", 600.0)),
+        )
     api_key = asr_cfg.get("apiKey")
     base_url = asr_cfg.get("baseUrl")
     model = asr_cfg.get("model")
     if not (api_key and base_url and model):
         return None
-    provider = str(asr_cfg.get("provider", PROVIDER_JSON))
     timeout_sec = float(asr_cfg.get("timeoutSec", 120.0))
     if provider == PROVIDER_MULTIPART:
         return MultipartOpenAICompatibleASR(

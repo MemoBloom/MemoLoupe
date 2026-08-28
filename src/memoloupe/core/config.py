@@ -93,6 +93,29 @@ DEFAULT_CONFIG: dict = {
         "model": None,
         "fileField": "file",
         "timeoutSec": 120.0,
+        # None = 自动检测语言；本地与远程 provider 共用。
+        "language": None,
+        # 本地 provider（local-fireredvad-mlx）实现版本；bump 即失效旧缓存。
+        "localAsrVersion": "asr-local.v1",
+        "vad": {
+            # None = 首次运行从 HF 自动下载 FireRedTeam/FireRedVAD 的 VAD/ 子目录。
+            "modelDir": None,
+            "speechThreshold": 0.4,
+            "smoothWindowSize": 5,
+            "minSpeechFrame": 20,
+            "maxSpeechFrame": 2000,
+            "minSilenceFrame": 20,
+        },
+        "whisper": {
+            "model": "mlx-community/whisper-large-v3-turbo",
+            "wordTimestamps": True,
+        },
+        # CALIBRATION：相邻人声段合并阈值。
+        "mergeGapMs": 300,
+        # 单个 whisper 转写窗口上限（秒）。
+        "windowSec": 30,
+        # 窗口两端 padding（毫秒）。
+        "windowPadMs": 200,
     },
     "unifiedModel": {
         "baseUrl": None,
