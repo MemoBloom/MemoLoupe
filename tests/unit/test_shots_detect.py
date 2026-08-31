@@ -1,4 +1,4 @@
-"""media/shots 纯函数单元测试（合成内存帧，不跑 ffmpeg）。"""
+"""media/shots v2 纯函数单元测试。"""
 
 from __future__ import annotations
 
@@ -16,146 +16,133 @@ _CFG = DEFAULT_CONFIG["shots"]
 _W = _H = 16
 
 
-def _solid(value: int, w: int = _W, h: int = _H) -> bytes:
-    return bytes([value]) * (w * h)
+def _solid(rgb: tuple[int, int, int], w: int = _W, h: int = _H) -> bytes:
+    return bytes(rgb) * (w * h)
 
 
-def _texture(seed: int, w: int = _W, h: int = _H, base: int = 60, span: int = 120) -> bytes:
-    """确定性伪随机纹理帧，值落在 [base, base+span)。"""
-    return bytes(
-        base + (x * 73 + y * 151 + seed * 31) % span
-        for y in range(h)
-        for x in range(w)
-    )
-
-
-def _shift(frame: bytes, delta: int) -> bytes:
-    return bytes(min(255, b + delta) for b in frame)
+def _texture(seed: int, w: int = _W, h: int = _H) -> bytes:
+    values: list[int] = []
+    for y in range(h):
+        for x in range(w):
+            base = (x * 73 + y * 151 + seed * 31) % 180
+            values.extend(((base + 20) % 256, (base * 3 + 40) % 256, (base * 7 + 60) % 256))
+    return bytes(values)
 
 
 def _metrics(a: bytes, b: bytes) -> dict:
-    fa = frame_features(a, _W, _H, bins=_CFG["histogramBins"])
-    fb = frame_features(b, _W, _H, bins=_CFG["histogramBins"])
     return pair_metrics(
-        fa,
-        fb,
-        histogram_weight=_CFG["histogramWeight"],
+        frame_features(a, _W, _H),
+        frame_features(b, _W, _H),
         edge_weight=_CFG["edgeWeight"],
-        score_offset=_CFG["scoreOffset"],
     )
 
 
-def _scores_of(frames: list[bytes]) -> list[float]:
-    return [_metrics(a, b)["score"] for a, b in zip(frames, frames[1:])]
-
-
 class TestFrameFeatures:
-    def test_solid_frame(self):
-        f = frame_features(_solid(128), _W, _H, bins=254)
-        assert len(f.histogram) == 254
-        assert sum(f.histogram) == pytest.approx(1.0)
-        assert sum(1 for c in f.histogram if c > 0) == 1
-        assert f.histogram[128 * 254 // 256] == pytest.approx(1.0)
-        assert f.edge_density == 0.0
-        assert f.brightness == pytest.approx(128 / 255)
+    def test_solid_red_frame(self):
+        features = frame_features(_solid((255, 0, 0)), _W, _H)
+        assert features.hue.mean() == pytest.approx(0.0)
+        assert features.saturation.mean() == pytest.approx(1.0)
+        assert features.value.mean() == pytest.approx(1.0)
+        assert features.edges.max() == pytest.approx(0.0)
+        assert features.brightness == pytest.approx(1.0)
 
-    def test_rejects_wrong_size(self):
+    def test_rejects_wrong_rgb_size(self):
         with pytest.raises(ValueError):
             frame_features(b"\x00" * 10, _W, _H)
 
 
 class TestPairMetrics:
-    def test_identical_frames_score_is_offset(self):
-        m = _metrics(_texture(1), _texture(1))
-        assert m["histogramSimilarity"] == pytest.approx(1.0)
-        assert m["edgeSimilarity"] == pytest.approx(1.0)
-        assert m["brightnessDelta"] == pytest.approx(0.0)
-        assert m["score"] == pytest.approx(_CFG["scoreOffset"])
+    def test_identical_frames_have_zero_change(self):
+        metrics = _metrics(_texture(1), _texture(1))
+        assert metrics["histogramSimilarity"] == pytest.approx(1.0)
+        assert metrics["edgeSimilarity"] == pytest.approx(1.0)
+        assert metrics["changeValue"] == pytest.approx(0.0)
+        assert metrics["score"] == pytest.approx(0.0)
 
-    def test_direction_hard_cut_lower_than_mild_change(self):
-        base = _texture(1)
-        hard = _metrics(base, _solid(120))
-        mild = _metrics(base, _shift(base, 1))
-        # 方向不变量：越低越像硬切
-        assert hard["score"] < mild["score"]
-        assert hard["score"] < 0 < mild["score"]
-        assert 0.0 <= hard["histogramSimilarity"] <= 1.0
-        assert 0.0 <= hard["edgeSimilarity"] <= 1.0
+    def test_color_cut_scores_lower_than_mild_change(self):
+        cut = _metrics(_solid((255, 0, 0)), _solid((0, 0, 255)))
+        mild = _metrics(_solid((128, 128, 128)), _solid((130, 130, 130)))
+        assert cut["contentDelta"] > _CFG["minContentValue"]
+        assert cut["score"] < mild["score"]
+        assert 0.0 <= cut["histogramSimilarity"] <= 1.0
 
-    def test_solid_to_solid_cut_scores_positive(self):
-        # 锁定公式行为：两个无边缘纯色帧互切时 edgeSimilarity=1，
-        # score = offset - histogramWeight > 0，只能靠 adaptiveOutlier 入选。
-        m = _metrics(_solid(200), _solid(20))
-        assert m["histogramSimilarity"] == pytest.approx(0.0)
-        assert m["edgeSimilarity"] == pytest.approx(1.0)
-        assert m["score"] == pytest.approx(
-            _CFG["scoreOffset"] - _CFG["histogramWeight"]
+    def test_sobel_detects_structural_change(self):
+        flat = _solid((0, 0, 0))
+        checker = bytes(
+            channel
+            for y in range(_H)
+            for x in range(_W)
+            for channel in ((255, 255, 255) if (x + y) % 2 else (0, 0, 0))
         )
-        assert m["score"] > 0
+        metrics = _metrics(flat, checker)
+        assert metrics["edgeDelta"] > 0
+        assert metrics["edgeSimilarity"] < 1
 
 
 class TestSelectBoundaries:
-    def test_hard_cut_selected_raw_negative_high_confidence(self):
-        frames = [_texture(1)] * 6 + [_solid(120)] * 6
-        scores = _scores_of(frames)
-        cut_pair = 5  # frames[5]→frames[6] 之间突变
-        assert scores[cut_pair] == min(scores)
-        assert scores[cut_pair] < -2  # high confidence 区间
-        selected = select_boundaries(scores, minimum_frames=4, mad_k=3.0)
-        assert [c["pairIndex"] for c in selected] == [cut_pair]
+    def test_hard_cut_selected_high_confidence(self):
+        changes = [2.0] * 20
+        changes[9] = 65.0
+        selected = select_boundaries(changes, minimum_frames=8)
+        assert [item["pairIndex"] for item in selected] == [9]
         assert selected[0]["selectionReason"] == "rawNegativeScore"
         assert selected[0]["confidence"] == "high"
+        assert selected[0]["score"] == pytest.approx(-65.0)
 
-    def test_solid_to_solid_cut_selected_via_adaptive_outlier(self):
-        frames = [_solid(200)] * 10 + [_solid(20)] * 10
-        scores = _scores_of(frames)
-        cut_pair = 9
-        assert scores[cut_pair] > 0  # 不走 rawNegativeScore
-        selected = select_boundaries(scores, minimum_frames=8, mad_k=3.0)
-        assert [c["pairIndex"] for c in selected] == [cut_pair]
+    def test_local_adaptive_outlier_selected(self):
+        changes = [2.0] * 20
+        changes[9] = 20.0
+        selected = select_boundaries(changes, minimum_frames=8)
+        assert [item["pairIndex"] for item in selected] == [9]
         assert selected[0]["selectionReason"] == "adaptiveOutlier"
-        assert selected[0]["confidence"] == "low"  # score >= 0
+        assert selected[0]["adaptiveRatio"] == pytest.approx(10.0)
 
-    def test_slow_gradient_not_detected(self):
-        base = _texture(1)
-        frames = [_shift(base, k) for k in range(12)]
-        scores = _scores_of(frames)
-        assert all(s > 0 for s in scores)
-        assert select_boundaries(scores, minimum_frames=4, mad_k=3.0) == []
+    def test_global_fast_motion_without_local_outlier_is_not_selected(self):
+        changes = [20.0] * 20
+        assert select_boundaries(changes, minimum_frames=8) == []
 
-    def test_minimum_frames_dedup_keeps_lowest_score(self):
-        scores = [5.5] * 20
-        scores[3] = -1.0
-        scores[5] = -2.0  # 与 3 相距 2 < 8，只保留最低分
-        scores[14] = -1.5  # 与 5 相距 9 >= 8，保留
-        selected = select_boundaries(scores, minimum_frames=8, mad_k=3.0)
-        assert [c["pairIndex"] for c in selected] == [5, 14]
+    def test_short_segment_merge_preserves_suppressed_evidence(self):
+        changes = [2.0] * 20
+        changes[6] = 20.0
+        changes[9] = 25.0
+        selected, suppressed = select_boundaries(
+            changes, minimum_frames=8, adaptive_window=2, return_suppressed=True
+        )
+        assert [item["pairIndex"] for item in selected] == [9]
+        assert [item["pairIndex"] for item in suppressed] == [6]
+        assert suppressed[0]["suppressionReason"] == "shortSegmentMerge"
+        assert suppressed[0]["mergedIntoPairIndex"] == 9
 
-    def test_adaptive_outlier_path_synthetic(self):
-        scores = [5.0] * 19
-        scores[9] = 2.0  # > 0 但显著低于稳健分布
-        selected = select_boundaries(scores, minimum_frames=8, mad_k=3.0)
-        assert [c["pairIndex"] for c in selected] == [9]
-        assert selected[0]["selectionReason"] == "adaptiveOutlier"
-        assert selected[0]["confidence"] == "low"
+    def test_two_strong_rapid_cuts_are_preserved(self):
+        changes = [2.0] * 20
+        changes[5] = 65.0
+        changes[9] = 70.0
+        selected = select_boundaries(
+            changes, minimum_frames=10, rapid_cut_minimum_frames=3
+        )
+        assert [item["pairIndex"] for item in selected] == [5, 9]
 
-    def test_first_and_last_pair_not_candidates(self):
-        scores = [-9.0] + [5.0] * 17 + [-9.0]
-        assert select_boundaries(scores, minimum_frames=8, mad_k=3.0) == []
+    def test_ssim_rejects_ambiguous_adaptive_candidate(self):
+        changes = [2.0] * 20
+        changes[9] = 20.0
+        ssim = [None] * 20
+        ssim[9] = 0.98
+        selected, suppressed = select_boundaries(
+            changes,
+            minimum_frames=8,
+            ssim_values=ssim,
+            return_suppressed=True,
+        )
+        assert selected == []
+        assert suppressed[0]["suppressionReason"] == "ssimSimilarityRejected"
+
+    def test_first_and_last_pairs_are_not_candidates(self):
+        changes = [99.0] + [2.0] * 17 + [99.0]
+        assert select_boundaries(changes, minimum_frames=8) == []
 
     def test_short_sequence_yields_no_candidates(self):
-        scores = [-5.0, 5.0, -5.0]  # 4 帧 < minimumFrames=8
-        assert select_boundaries(scores, minimum_frames=8, mad_k=3.0) == []
-
-    def test_confidence_bands(self):
-        scores = [5.5] * 20
-        scores[4] = -2.5  # high
-        scores[12] = -0.5  # medium
-        selected = select_boundaries(scores, minimum_frames=8, mad_k=3.0)
-        by_pair = {c["pairIndex"]: c for c in selected}
-        assert by_pair[4]["confidence"] == "high"
-        assert by_pair[12]["confidence"] == "medium"
+        assert select_boundaries([55.0], minimum_frames=8) == []
 
 
 def test_algorithm_version_constant():
-    assert SHOT_DETECTION_VERSION == "shots.v1"
+    assert SHOT_DETECTION_VERSION == "shots.v2"

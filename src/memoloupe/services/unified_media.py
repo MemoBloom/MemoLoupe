@@ -53,7 +53,7 @@ class ModelClip:
 class AnalysisGroup:
     """一组字段分析任务；prompt 已注入词表，fingerprint 由编排器计算。"""
 
-    name: str  # "visual" | "audio" | "editing_function"
+    name: str  # "visual" | "audio" | "function"
     fields: tuple[str, ...]
     prompt: str
     schema: dict
@@ -73,7 +73,8 @@ class OpenAICompatibleUnifiedMedia:
     """OpenAI chat/completions 兼容的视频理解适配器。
 
     请求构造：每个 clip 读文件转 base64 ``video/mp4`` Data URI，作为
-    ``video_url`` content part 与 prompt 一起放入单条 user 消息；
+    ``video_url`` content part 与 prompt 一起放入单条 user 消息；视频 part
+    携带 MiMo/OpenAI 兼容扩展 ``fps`` 与 ``media_resolution``；
     ``temperature`` 取最低（0.0），并声明 ``response_format=json_object``。
 
     文本提取顺序（docs/03 §2.12 的 1–2 步）：
@@ -89,6 +90,10 @@ class OpenAICompatibleUnifiedMedia:
         model: str,
         fallback_model: str | None = None,
         timeout_sec: float = 300.0,
+        video_fps: float = 10.0,
+        media_resolution: str = "default",
+        max_completion_tokens: int | None = None,
+        thinking_mode: str | None = None,
     ) -> None:
         if not api_key:
             raise CapabilityUnavailableError("unifiedModel", "未配置 api_key")
@@ -97,6 +102,20 @@ class OpenAICompatibleUnifiedMedia:
         self._model = model
         self._fallback_model = fallback_model
         self._timeout_sec = timeout_sec
+        if not 0.1 <= float(video_fps) <= 10.0:
+            raise ValueError("video_fps 必须在 [0.1, 10] 范围内")
+        if media_resolution not in {"default", "max"}:
+            raise ValueError("media_resolution 必须是 default 或 max")
+        self._video_fps = float(video_fps)
+        self._media_resolution = media_resolution
+        if max_completion_tokens is not None and int(max_completion_tokens) < 1:
+            raise ValueError("max_completion_tokens 必须为正整数或 None")
+        if thinking_mode not in {None, "enabled", "disabled"}:
+            raise ValueError("thinking_mode 必须是 enabled、disabled 或 None")
+        self._max_completion_tokens = (
+            int(max_completion_tokens) if max_completion_tokens is not None else None
+        )
+        self._thinking_mode = thinking_mode
 
     @property
     def model(self) -> str:
@@ -121,12 +140,18 @@ class OpenAICompatibleUnifiedMedia:
             model=model,
             fallback_model=self._fallback_model,
             timeout_sec=self._timeout_sec,
+            video_fps=self._video_fps,
+            media_resolution=self._media_resolution,
+            max_completion_tokens=self._max_completion_tokens,
+            thinking_mode=self._thinking_mode,
         )
 
     def analyze_batch(
         self, clips: Sequence[ModelClip], group: AnalysisGroup
     ) -> str:
-        content: list[dict] = [{"type": "text", "text": group.prompt}]
+        # MiMo 官方视频示例以 video parts 在前、text part 在后；保持该顺序，
+        # 同时把 fps/media_resolution 放在 video_url 的同级。
+        content: list[dict] = []
         total_bytes = 0
         for clip in clips:
             try:
@@ -143,14 +168,32 @@ class OpenAICompatibleUnifiedMedia:
                         "url": f"data:{_VIDEO_MIME};base64,"
                         + base64.b64encode(data).decode("ascii")
                     },
+                    "fps": self._video_fps,
+                    "media_resolution": self._media_resolution,
                 }
             )
+        shot_mapping = "\n".join(
+            f"- 第 {index} 个 video_url = {clip.shot_id}"
+            for index, clip in enumerate(clips, 1)
+        )
+        request_prompt = (
+            f"{group.prompt}\n"
+            "本批次输入视频与 shotID 的唯一映射如下（严格按 content 顺序）：\n"
+            f"{shot_mapping}\n"
+            "不要把视频内部时间点当成镜头；shots 数组只能使用上述 shotID，"
+            "并且每个 shotID 恰好返回一次。"
+        )
+        content.append({"type": "text", "text": request_prompt})
         payload = {
             "model": self._model,
             "temperature": _TEMPERATURE,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "user", "content": content}],
         }
+        if self._max_completion_tokens is not None:
+            payload["max_completion_tokens"] = self._max_completion_tokens
+        if self._thinking_mode is not None:
+            payload["thinking"] = {"type": self._thinking_mode}
         shot_ids = [c.shot_id for c in clips]
         started = time.monotonic()
         try:

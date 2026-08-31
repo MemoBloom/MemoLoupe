@@ -102,11 +102,11 @@ class TestRenderWithoutModelArtifacts:
             assert f'scope="col" data-shot-id="{shot_id}"' in html
         # 模型字段 state=unknown。
         assert (
-            'data-field="visual.content" data-shot-id="SH0001" '
+            'data-field="visual.contentSummary" data-shot-id="SH0001" '
             'data-value-state="unknown"' in html
         )
         assert (
-            'data-field="editing.transition" data-shot-id="SH0003" '
+            'data-field="function.shotTone" data-shot-id="SH0003" '
             'data-value-state="unknown"' in html
         )
         # 确定性字段按 resolver 结果渲染。
@@ -167,13 +167,13 @@ class TestRenderWithModelArtifacts:
         assert _errors(out, work) == []
         html = out.read_text(encoding="utf-8")
         assert (
-            'data-field="visual.content" data-shot-id="SH0001" '
+            'data-field="visual.contentSummary" data-shot-id="SH0001" '
             'data-value-state="value"' in html
         )
-        assert "机场出发画面" in html
+        assert "旅行者；拖行李走动；机场出发大厅；行李箱" in html
         # 模型声称“无” -> absent-claimed，与确定性 absent 文案不同。
         assert (
-            'data-field="components.compositingEvents" data-shot-id="SH0001" '
+            'data-field="components.nonTextOverlayEvents" data-shot-id="SH0001" '
             'data-value-state="absent-claimed"' in html
         )
         assert "模型声称无" in html
@@ -183,7 +183,7 @@ class TestRenderWithModelArtifacts:
         poison = '<script>alert("x")</script>\n"引号" <b>中文</b>'
         unified = work / "raw" / "unified-media.json"
         data = json.loads(unified.read_text(encoding="utf-8"))
-        data["batches"][0]["response"]["shots"][0]["visual"]["content"] = poison
+        data["batches"][0]["response"]["shots"][0]["visual"]["subjects"] = poison
         unified.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
         out = render_shot_html(work)
@@ -284,7 +284,7 @@ class TestEditingControls:
     def test_free_text_field_renders_input(self, tmp_path):
         work = _copy_fixture(tmp_path)
         html = render_shot_html(work).read_text(encoding="utf-8")
-        assert '<input type="text" class="cell-edit" data-field="visual.content"' in html
+        assert '<input type="text" class="cell-edit" data-field="visual.contentSummary"' in html
 
     def test_verified_checkbox_has_accessible_label(self, tmp_path):
         work = _copy_fixture(tmp_path)

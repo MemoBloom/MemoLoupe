@@ -92,10 +92,48 @@ class TestEnvFileAndConfigCommand:
     def test_config_print_redacts_secrets(self, capsys, monkeypatch):
         monkeypatch.setenv("MEMOLOUPE_ASR__APIKEY", "sk-print-secret")
         assert main(["config"]) == EXIT_OK
-        report = json.loads(capsys.readouterr().out)
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
         assert report["asr"]["apiKey"] == "***"
-        assert "sk-print-secret" not in capsys.readouterr().err + json.dumps(report)
-        assert "未配置的真实服务" in capsys.readouterr().err or True
+        assert "sk-print-secret" not in captured.err + json.dumps(report)
+
+    def test_config_print_accepts_local_asr_without_remote_credentials(
+        self, capsys, monkeypatch
+    ):
+        monkeypatch.setenv(
+            "MEMOLOUPE_ASR__PROVIDER", "local-fireredvad-mlx"
+        )
+        monkeypatch.setenv("MEMOLOUPE_ASR__ENABLED", "true")
+        monkeypatch.setenv(
+            "MEMOLOUPE_ASR__WHISPER__MODEL",
+            "mlx-community/whisper-large-v3-turbo",
+        )
+        for key in (
+            "MEMOLOUPE_ASR__BASEURL",
+            "MEMOLOUPE_ASR__APIKEY",
+            "MEMOLOUPE_ASR__MODEL",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        assert main(["config"]) == EXIT_OK
+
+        captured = capsys.readouterr()
+        assert "ASR" not in captured.err
+
+    def test_config_print_reports_local_asr_without_whisper_model(
+        self, capsys, monkeypatch
+    ):
+        monkeypatch.setenv(
+            "MEMOLOUPE_ASR__PROVIDER", "local-fireredvad-mlx"
+        )
+        monkeypatch.setenv("MEMOLOUPE_ASR__ENABLED", "true")
+        monkeypatch.setenv("MEMOLOUPE_ASR__WHISPER__MODEL", "")
+
+        assert main(["config"]) == EXIT_OK
+
+        captured = capsys.readouterr()
+        assert "未配置的真实服务：" in captured.err
+        assert "ASR" in captured.err
 
     def test_env_file_feeds_story_gate(self, tmp_path, capsys):
         # story 输入门禁不读 API key；用 config 子命令验证 --env-file 生效。

@@ -92,7 +92,14 @@ def _group(name: str = "visual") -> AnalysisGroup:
 
 def _make(server, **kwargs) -> OpenAICompatibleUnifiedMedia:
     return OpenAICompatibleUnifiedMedia(
-        base_url=server.url, api_key=API_KEY, model="ml-pro", **kwargs
+        base_url=server.url,
+        api_key=API_KEY,
+        model="ml-pro",
+        video_fps=7.5,
+        media_resolution="max",
+        max_completion_tokens=2048,
+        thinking_mode="disabled",
+        **kwargs,
     )
 
 
@@ -176,11 +183,19 @@ class TestAnalyzeBatch:
         assert payload["model"] == "ml-pro"
         assert 0.0 <= payload["temperature"] <= 0.2
         assert payload["response_format"] == {"type": "json_object"}
+        assert payload["max_completion_tokens"] == 2048
+        assert payload["thinking"] == {"type": "disabled"}
         content = payload["messages"][0]["content"]
-        assert content[0] == {"type": "text", "text": "分析镜头并输出 JSON"}
+        request_text = content[-1]
+        assert request_text["type"] == "text"
+        assert request_text["text"].startswith("分析镜头并输出 JSON")
+        assert "第 1 个 video_url = SH0001" in request_text["text"]
+        assert "第 2 个 video_url = SH0002" in request_text["text"]
         video_parts = [p for p in content if p["type"] == "video_url"]
         assert len(video_parts) == 2
         for clip, part in zip(clips, video_parts):
+            assert part["fps"] == 7.5
+            assert part["media_resolution"] == "max"
             url = part["video_url"]["url"]
             assert url.startswith("data:video/mp4;base64,")
             assert base64.b64decode(url.split(",", 1)[1]) == clip.proxy_path.read_bytes()

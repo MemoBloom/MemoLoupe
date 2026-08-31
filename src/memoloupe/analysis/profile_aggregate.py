@@ -13,8 +13,9 @@ music-flags/audio-cuts/camera-motion/unified-media/story-blocks）计算
   "unknown"）、slotPacing、audioBoundaryBySlot（同步切边界占可判定边界
   比例 >= AUDIO_ALIGN_THRESHOLD）、musicAlignment（确定性信号，见
   :func:`_music_alignment`）；
-- style：transitions/framing/lighting 分布（unified 模型值经受控词表归一化，
-  unknown/unmapped 不入分布）、cameraMovement 分布（camera-motion.json 的
+- style：transitions 从 shots 边界确定性派生；framing/lighting 分布由
+  unified 模型值经受控词表归一化（unknown/unmapped 不入分布）；
+  cameraMovement 分布（camera-motion.json 的
   Apple Vision 确定性值，不映射为摄影术语，docs/02 §4.8）、textOverlay/
   bgm/voiceMix coverage（时间并集计权）、hostedCoverage（明确人物词才计入，
   否则 0.0——保守可解释值）；
@@ -59,9 +60,8 @@ HOSTED_KEYWORDS: tuple[str, ...] = (
 
 #: style 分布字段：unified 字段路径 -> 受控词表字段名。
 _DISTRIBUTION_FIELDS: dict[str, tuple[str, str]] = {
-    "transitions": ("editing", "transition", "editing.transition"),
     "framing": ("visual", "framing", "visual.framing"),
-    "lighting": ("visual", "lightingType", "visual.lightingType"),
+    "lighting": ("visual", "lightingSource", "visual.lightingSource"),
 }
 
 _BLOCK_RELATION_REF_RE = re.compile(r"^\s*(.+?)\s*→\s*(B\d{4})\s*$")
@@ -528,6 +528,18 @@ def _camera_distribution(camera: Mapping | None) -> dict:
     return {key: _ratio(count / total) for key, count in counts.items()}
 
 
+def _transition_distribution(shots: list[dict]) -> dict:
+    """从 shots.json 的入边界统计已确认转场；sourceStart 不计入分布。"""
+    counts: Counter[str] = Counter()
+    for shot in shots:
+        boundary = shot.get("boundaryIn")
+        boundary_type = boundary.get("type") if isinstance(boundary, dict) else None
+        if boundary_type == "hardCutCandidate":
+            counts["硬切"] += 1
+    total = sum(counts.values())
+    return {key: _ratio(count / total) for key, count in counts.items()} if total else {}
+
+
 def _interval_union_ms(
     intervals: Iterable[tuple[int, int]],
     clip: tuple[int, int] | None = None,
@@ -703,7 +715,9 @@ def _style(
     analyzed_range: tuple[int, int] | None,
     vocabulary: Vocabulary,
 ) -> dict:
-    style: dict[str, dict | float] = {}
+    style: dict[str, dict | float] = {
+        "transitions": _transition_distribution(shots),
+    }
     for key, (section, field, vocab_field) in _DISTRIBUTION_FIELDS.items():
         style[key] = _style_distribution(
             unified, shots, section, field, vocab_field, vocabulary

@@ -45,7 +45,7 @@ def _satisfied_observations() -> list[Observation]:
     """两个镜头、requiredFields 全部为 value 的观察集。"""
     obs: list[Observation] = []
     for sid in ("SH0001", "SH0002"):
-        for field in ("visual.content", "visual.framing", "audio.speech"):
+        for field in ("visual.contentSummary", "visual.framing", "audio.speech"):
             obs.append(_value_obs(field, sid))
     return obs
 
@@ -107,7 +107,7 @@ class TestEvaluateCompletion:
 
     def test_unknown_allowed_when_allow_unknown_true(self):
         obs = _satisfied_observations()
-        obs.append(unknown_observation("visual.texture", "SH0001"))
+        obs.append(unknown_observation("visual.imageTexture", "SH0001"))
         report = evaluate_completion("shotAnalysis", obs, RULES)
         assert report.satisfied is True
 
@@ -115,14 +115,14 @@ class TestEvaluateCompletion:
         rules = json.loads(json.dumps(RULES))
         rules["documents"]["shotAnalysis"]["allowUnknown"] = False
         obs = _satisfied_observations()
-        obs[0] = unknown_observation("visual.content", "SH0001")
+        obs[0] = unknown_observation("visual.contentSummary", "SH0001")
         report = evaluate_completion("shotAnalysis", obs, rules)
         assert report.satisfied is False
-        assert any("visual.content" in u and "SH0001" in u for u in report.unmet)
+        assert any("visual.contentSummary" in u and "SH0001" in u for u in report.unmet)
 
     def test_unknown_required_field_allowed_when_allow_unknown_true(self):
         obs = _satisfied_observations()
-        obs[0] = unknown_observation("visual.content", "SH0001")
+        obs[0] = unknown_observation("visual.contentSummary", "SH0001")
         report = evaluate_completion("shotAnalysis", obs, RULES)
         assert report.satisfied is True
 
@@ -130,16 +130,16 @@ class TestEvaluateCompletion:
         obs = _satisfied_observations()
         obs.append(
             model_value_observation(
-                "visual.content", "SH0001", "重复行", evidence_refs=("/abs/path#x",)
+                "visual.contentSummary", "SH0001", "重复行", evidence_refs=("/abs/path#x",)
             )
         )
         report = evaluate_completion("shotAnalysis", obs, RULES)
         assert report.satisfied is False
-        assert any("SH0001" in u and "visual.content" in u for u in report.unmet)
+        assert any("SH0001" in u and "visual.contentSummary" in u for u in report.unmet)
 
     def test_unknown_state_exempt_from_evidence_ref_check(self):
         obs = _satisfied_observations()
-        obs.append(unknown_observation("visual.texture", "SH0001"))
+        obs.append(unknown_observation("visual.imageTexture", "SH0001"))
         report = evaluate_completion("shotAnalysis", obs, RULES)
         assert report.satisfied is True
 
@@ -157,12 +157,12 @@ class TestEvaluateCompletion:
 class TestConfirmDocument:
     def test_confirm_happy_path_writes_confirmed_fields(self, tmp_path):
         work = _copy_fixture(tmp_path)
-        # 人工核实三个镜头的 absent-claimed（components.compositingEvents），
+        # 人工核实三个镜头的 absent-claimed（components.nonTextOverlayEvents），
         # 使 completion 满足后再确认。
         changes = [
             {
                 "entityID": sid,
-                "field": "components.compositingEvents",
+                "field": "components.nonTextOverlayEvents",
                 "oldValue": None,
                 "newValue": None,
                 "state": "absent-claimed",

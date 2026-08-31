@@ -130,6 +130,28 @@ def _cmd_validate(target: Path, *, strict: bool, json_report: bool) -> int:
     return EXIT_VALIDATION_FAILED if errors else EXIT_OK
 
 
+def _remote_service_is_configured(config: object) -> bool:
+    """远程 OpenAI-compatible 服务需要 endpoint、凭据和模型名。"""
+    return isinstance(config, dict) and all(
+        config.get(key) for key in ("apiKey", "baseUrl", "model")
+    )
+
+
+def _asr_is_configured(config: object) -> bool:
+    """按 ASR provider 判断配置是否足以构造服务。
+
+    本地 FireRedVAD + MLX Whisper 不使用远程 ``baseUrl``/``apiKey``/
+    ``model``；其模型名位于 ``asr.whisper.model``。可选依赖和 Metal 能力在
+    实际转写时检查，不属于静态配置完整性判断。
+    """
+    if not isinstance(config, dict):
+        return False
+    if config.get("provider") == "local-fireredvad-mlx":
+        whisper = config.get("whisper")
+        return isinstance(whisper, dict) and bool(whisper.get("model"))
+    return _remote_service_is_configured(config)
+
+
 def _cmd_config_print() -> int:
     """``memoloupe config``：输出脱敏后的有效配置并标出未配置的真实服务项。"""
     from memoloupe.core.config import load_config, redacted_snapshot
@@ -139,14 +161,13 @@ def _cmd_config_print() -> int:
     json.dump(snapshot, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
     missing: list[str] = []
+    if not _asr_is_configured(config.get("asr", {})):
+        missing.append("ASR")
     for name, cfg in (
-        ("ASR", config.get("asr", {})),
         ("UnifiedMLLM", config.get("unifiedModel", {})),
         ("TextModel", config.get("textModel", {})),
     ):
-        if not (
-            cfg.get("apiKey") and cfg.get("baseUrl") and cfg.get("model")
-        ):
+        if not _remote_service_is_configured(cfg):
             missing.append(name)
     if missing:
         print(f"未配置的真实服务：{'、'.join(missing)}", file=sys.stderr)

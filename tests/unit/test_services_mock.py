@@ -145,7 +145,7 @@ class TestMockUnifiedMediaService:
 class TestDefaultMockUnified:
     def test_all_groups_return_valid_json(self):
         svc = default_mock_unified(["SH0001", "SH0002"])
-        for name in ("visual", "audio", "editing_function"):
+        for name in ("visual", "audio", "function"):
             text = svc.analyze_batch(_clips("SH0001", "SH0002"), _group(name))
             data = json.loads(text)
             assert [s["shotID"] for s in data["shots"]] == ["SH0001", "SH0002"]
@@ -166,26 +166,25 @@ class TestDefaultMockUnified:
         svc = default_mock_unified(["SH0001"])
         shot = json.loads(svc.analyze_batch(_clips("SH0001"), _group("visual")))["shots"][0]
         for field in (
-            "content", "subjects", "actions", "setting", "props", "framing",
-            "subjectCoverage", "cameraAngle", "composition", "perspective",
-            "lensFeel", "cameraMovement", "movementIntensity", "brightness",
-            "contrast", "lightingType", "colorTemperature", "dominantColor",
-            "saturation", "depthOfField", "texture",
+            "subjects", "actions", "setting", "props", "framing",
+            "cameraAngle", "composition", "viewpoint", "perceivedLensFeel",
+            "cameraMovement", "brightness", "contrast", "lightingSource",
+            "perceivedColorTemperature", "dominantColor", "saturation",
+            "depthOfField", "imageTexture",
         ):
             assert field in shot["visual"], field
         assert isinstance(shot["components"]["texts"], list)
-        assert isinstance(shot["components"]["compositingEvents"], str)
+        assert isinstance(shot["components"]["nonTextOverlayEvents"], str)
 
-    def test_audio_and_editing_fields(self):
+    def test_audio_and_function_fields(self):
         svc = default_mock_unified(["SH0001"])
         audio = json.loads(svc.analyze_batch(_clips("SH0001"), _group("audio")))["shots"][0]
-        assert set(audio["audio"]) == {"speech", "bgmStyle", "soundEffects"}
-        editing = json.loads(
-            svc.analyze_batch(_clips("SH0001"), _group("editing_function"))
+        assert set(audio["audio"]) == {"bgmStyle", "soundEvents"}
+        function = json.loads(
+            svc.analyze_batch(_clips("SH0001"), _group("function"))
         )["shots"][0]
-        assert set(editing["function"]) == {"sourceMedium", "subjectEmotion", "shotTone"}
-        assert set(editing["editing"]) == {"transition", "continuity"}
-        assert editing["confidence"]["overall"] in {"high", "medium", "low", "unknown"}
+        assert set(function["function"]) == {"sourceMedium", "subjectEmotion", "shotTone"}
+        assert set(function["confidence"]) == {"function"}
 
     def test_groups_do_not_overlap(self):
         owners: dict[str, str] = {}

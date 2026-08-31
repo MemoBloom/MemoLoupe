@@ -73,6 +73,9 @@ class TestDefaultConfig:
         assert DEFAULT_CONFIG["shots"]["histogramBins"] == 254
         assert DEFAULT_CONFIG["shots"]["analysisSize"] == 128
         assert DEFAULT_CONFIG["shots"]["minimumFrames"] == 8
+        assert DEFAULT_CONFIG["shots"]["fullFrameRate"] is True
+        assert DEFAULT_CONFIG["shots"]["minimumShotMs"] == 500
+        assert DEFAULT_CONFIG["shots"]["adaptiveThreshold"] == 3.5
 
 
 class TestDeepMerge:

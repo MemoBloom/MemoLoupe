@@ -340,8 +340,8 @@ class TestCells:
         # 保留原有带证据的单元格，另加一行 unknown 且 refs 为空的单元格。
         doc = VALID_DOC.replace(
             "</tr>\n  </tbody>",
-            '</tr><tr><th scope="row">visual.content</th>'
-            '<td data-field="visual.content" data-shot-id="SH0001" data-value-state="unknown"'
+            '</tr><tr><th scope="row">visual.contentSummary</th>'
+            '<td data-field="visual.contentSummary" data-shot-id="SH0001" data-value-state="unknown"'
             ' data-confidence="unknown" data-source="fallback" data-verified="false"'
             ' data-evidence-refs="">未知</td></tr>\n  </tbody>',
         )

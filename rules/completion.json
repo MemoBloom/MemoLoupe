@@ -2,7 +2,7 @@
   "version": 1,
   "documents": {
     "shotAnalysis": {
-      "requiredFields": ["visual.content", "visual.framing", "audio.speech"],
+      "requiredFields": ["visual.contentSummary", "visual.framing", "audio.speech"],
       "requireVerifiedStates": ["unmapped", "absent-claimed"],
       "allowUnknown": true,
       "requireValidEvidenceRefs": true

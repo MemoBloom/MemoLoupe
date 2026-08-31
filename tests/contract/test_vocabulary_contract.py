@@ -36,27 +36,23 @@ VOCAB_PATH = REPO_ROOT / "rules" / "vocabulary.json"
 #: docs/07 §modelShot 声明的受控词表字段（视觉/功能/声音/文字/剪辑）。
 MODELSHOT_CONTROLLED_FIELDS: tuple[str, ...] = (
     "visual.framing",
-    "visual.subjectCoverage",
     "visual.cameraAngle",
     "visual.composition",
-    "visual.perspective",
-    "visual.lensFeel",
+    "visual.viewpoint",
+    "visual.perceivedLensFeel",
     "visual.cameraMovement",
-    "visual.movementIntensity",
     "visual.brightness",
     "visual.contrast",
-    "visual.lightingType",
-    "visual.colorTemperature",
+    "visual.lightingSource",
+    "visual.perceivedColorTemperature",
     "visual.saturation",
     "visual.depthOfField",
-    "visual.texture",
+    "visual.imageTexture",
     "function.sourceMedium",
     "function.subjectEmotion",
     "function.shotTone",
     "components.texts.textType",
     "components.texts.textAnimation",
-    "editing.transition",
-    "editing.continuity",
 )
 
 #: docs/07 §story-blocks 受控集合。
@@ -184,10 +180,10 @@ class TestStoryPromptsConsistency:
         self._assert_equal(SLOT_TYPES, "slotType", vocab)
 
     def test_story_prompts_unknown_only_placeholders(self, vocab):
-        # unknown 占位只允许出现在 story 字段与 movementIntensity
+        # unknown 占位只允许出现在 story scaffold 字段。
         # （docs/07：模型/检测器兜底字段，unknown 是合法枚举值）。
         story_fields = set(STORY_CONTROLLED_FIELDS)
-        allowed_unknown = story_fields | {"visual.movementIntensity"}
+        allowed_unknown = story_fields
         for field, rule in vocab.fields.items():
             has_unknown = "unknown" in rule.values
             if has_unknown:

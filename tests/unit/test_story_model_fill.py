@@ -99,10 +99,9 @@ class TestStoryPrompt:
             "batches": [
                 {"response": {"shots": [{
                     "shotID": "SH0001",
-                    "visual": {"content": "机场画面", "subjects": "旅客",
-                               "actions": "走动", "setting": "机场"},
+                    "visual": {"subjects": "机场旅客", "actions": "走动",
+                               "setting": "机场", "props": "行李箱"},
                     "components": {"texts": [{"textContent": "DAY 1"}]},
-                    "editing": {"transition": "硬切"},
                     "evidenceRefs": ["evidence/frames/F_SH0001_MAIN.jpg"],
                 }]}}
             ],
@@ -114,7 +113,7 @@ class TestStoryPrompt:
 
     def test_prompt_contains_summaries_and_vocab(self):
         prompt = self._prompt_material()
-        assert "机场画面" in prompt
+        assert "机场旅客；走动；机场；行李箱" in prompt
         assert "出发解说。" in prompt
         assert "DAY 1" in prompt
         assert "B0001" in prompt and "B0002" in prompt

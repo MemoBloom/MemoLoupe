@@ -38,7 +38,7 @@
         "crossfade": "淡入淡出",
         "fade": "淡入淡出",
         "fade in": "淡入",
-        "none": "无",
+        "none": "静态",
         "pop": "弹出",
         "scroll": "滚动",
         "typewriter": "打字机"
@@ -46,7 +46,7 @@
       "allowTransitions": false,
       "multiValueSeparator": "、",
       "values": [
-        "无",
+        "静态",
         "淡入",
         "淡入淡出",
         "弹出",
@@ -85,22 +85,6 @@
         "unknown"
       ]
     },
-    "editing.continuity": {
-      "aliases": {
-        "continuous action": "动作连续",
-        "continuous scene": "场景连续",
-        "discontinuous": "不连续",
-        "jump cut": "跳跃"
-      },
-      "allowTransitions": false,
-      "multiValueSeparator": "、",
-      "values": [
-        "动作连续",
-        "场景连续",
-        "跳跃",
-        "不连续"
-      ]
-    },
     "editing.transition": {
       "aliases": {
         "crossfade": "叠化",
@@ -116,8 +100,7 @@
       "values": [
         "硬切",
         "淡入淡出",
-        "叠化",
-        "无"
+        "叠化"
       ]
     },
     "function.shotTone": {
@@ -305,7 +288,7 @@
         "手持"
       ]
     },
-    "visual.colorTemperature": {
+    "visual.perceivedColorTemperature": {
       "aliases": {
         "cool": "冷",
         "neutral": "中性",
@@ -387,7 +370,7 @@
         "特写"
       ]
     },
-    "visual.lensFeel": {
+    "visual.perceivedLensFeel": {
       "aliases": {
         "fisheye": "鱼眼",
         "long lens": "长焦压缩感",
@@ -404,11 +387,9 @@
         "鱼眼"
       ]
     },
-    "visual.lightingType": {
+    "visual.lightingSource": {
       "aliases": {
         "artificial": "人工光",
-        "low light": "低照度",
-        "low-light": "低照度",
         "mixed": "混合光",
         "natural": "自然光"
       },
@@ -417,23 +398,10 @@
       "values": [
         "自然光",
         "人工光",
-        "混合光",
-        "低照度"
+        "混合光"
       ]
     },
-    "visual.movementIntensity": {
-      "aliases": {},
-      "allowTransitions": false,
-      "multiValueSeparator": "、",
-      "values": [
-        "static",
-        "low",
-        "medium",
-        "high",
-        "unknown"
-      ]
-    },
-    "visual.perspective": {
+    "visual.viewpoint": {
       "aliases": {
         "first person": "第一人称",
         "pov": "主观视角",
@@ -464,26 +432,7 @@
         "高"
       ]
     },
-    "visual.subjectCoverage": {
-      "aliases": {
-        "full body": "全身",
-        "group shot": "群体",
-        "half body": "半身",
-        "head and shoulders": "头部以上",
-        "headshot": "头部以上",
-        "part": "局部"
-      },
-      "allowTransitions": false,
-      "multiValueSeparator": "、",
-      "values": [
-        "全身",
-        "半身",
-        "头部以上",
-        "局部",
-        "群体"
-      ]
-    },
-    "visual.texture": {
+    "visual.imageTexture": {
       "aliases": {
         "filmic": "胶片感",
         "grainy": "颗粒感",
@@ -511,5 +460,5 @@
       ]
     }
   },
-  "version": 2
+  "version": 3
 }

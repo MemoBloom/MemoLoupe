@@ -118,7 +118,27 @@ class StoryAnalysisRequest:
 # ---------------------------------------------------------------------------
 
 #: 摘要的视觉白名单字段：只复制文本语义，绝不携带路径/二进制/引用。
-_SUMMARY_VISUAL_FIELDS = ("content", "subjects", "actions", "setting")
+_SUMMARY_VISUAL_FIELDS = ("subjects", "actions", "setting", "props")
+
+
+def _content_summary(visual: Mapping[str, object]) -> str:
+    """从原子视觉语义生成稳定摘要；忽略空值、unknown 与模型缺席声称。"""
+    values: list[str] = []
+    for field in _SUMMARY_VISUAL_FIELDS:
+        value = visual.get(field)
+        if not isinstance(value, str):
+            continue
+        text = value.strip()
+        if text and text.casefold() not in {"unknown", "无", "没有", "none"}:
+            values.append(text)
+    return "；".join(values)
+
+
+def _transition_from_boundary(shot: Mapping[str, object]) -> str:
+    """从镜头入边界派生转场；当前确定性检测只授权确认硬切。"""
+    boundary = shot.get("boundaryIn")
+    boundary_type = boundary.get("type") if isinstance(boundary, dict) else None
+    return "硬切" if boundary_type == "hardCutCandidate" else ""
 
 
 def _model_shots_by_id(unified: dict | None) -> dict[str, dict]:
@@ -170,8 +190,8 @@ def _shot_speech(asr: dict | None, start_ms: int, end_ms: int) -> str:
 def build_shot_summaries(raws: Mapping[str, dict | None]) -> list[dict]:
     """从稳定 JSON 构造每镜头文本摘要（docs/03 §3.1）。
 
-    白名单复制：shotID/final 时间、visual.content/subjects/actions/setting、
-    ASR speech、text overlays、transition/continuity、camera-motion 分类。
+    白名单复制：shotID/final 时间、原子视觉语义及其派生 contentSummary、
+    ASR speech、text overlays、shots 边界派生 transition、camera-motion 分类。
     结构上不接触 clip 路径、帧引用、Data URI、源视频路径或模型代理路径。
     """
     shots_doc = raws.get("shots")
@@ -198,8 +218,6 @@ def build_shot_summaries(raws: Mapping[str, dict | None]) -> list[dict]:
         model = model_shots.get(shot_id, {})
         visual_raw = model.get("visual")
         visual_raw = visual_raw if isinstance(visual_raw, dict) else {}
-        editing_raw = model.get("editing")
-        editing_raw = editing_raw if isinstance(editing_raw, dict) else {}
         components_raw = model.get("components")
         components_raw = components_raw if isinstance(components_raw, dict) else {}
         texts_raw = components_raw.get("texts")
@@ -215,14 +233,16 @@ def build_shot_summaries(raws: Mapping[str, dict | None]) -> list[dict]:
                 "startMs": start_ms,
                 "endMs": end_ms,
                 "visual": {
-                    field: str(visual_raw.get(field, ""))
-                    for field in _SUMMARY_VISUAL_FIELDS
+                    "contentSummary": _content_summary(visual_raw),
+                    **{
+                        field: str(visual_raw.get(field, ""))
+                        for field in _SUMMARY_VISUAL_FIELDS
+                    },
                 },
                 "speech": _shot_speech(raws.get("asr"), start_ms, end_ms),
                 "texts": texts,
                 "editing": {
-                    "transition": str(editing_raw.get("transition", "")),
-                    "continuity": str(editing_raw.get("continuity", "")),
+                    "transition": _transition_from_boundary(shot),
                 },
                 "cameraMovement": str(camera.get("cameraMovement", "unknown")),
             }

@@ -125,15 +125,14 @@ class TestShotSummaries:
                             {
                                 "shotID": "SH0001",
                                 "visual": {
-                                    "content": "机场出发画面",
                                     "subjects": "旅客",
                                     "actions": "拖行李走动",
                                     "setting": "机场",
+                                    "props": "行李箱",
                                 },
                                 "components": {
                                     "texts": [{"textContent": "DAY 1"}]
                                 },
-                                "editing": {"transition": "硬切", "continuity": "动作连续"},
                             }
                         ]
                     }
@@ -150,7 +149,7 @@ class TestShotSummaries:
         s = summaries[0]
         assert s["shotID"] == "SH0001"
         assert s["startMs"] == 0 and s["endMs"] == 3203
-        assert s["visual"]["content"] == "机场出发画面"
+        assert s["visual"]["contentSummary"] == "旅客；拖行李走动；机场；行李箱"
         assert s["visual"]["subjects"] == "旅客"
         assert s["visual"]["actions"] == "拖行李走动"
         assert s["visual"]["setting"] == "机场"
@@ -173,9 +172,13 @@ class TestShotSummaries:
                         "shots": [
                             {
                                 "shotID": "SH0001",
-                                "visual": {"content": "机场"},
+                                "visual": {
+                                    "subjects": "旅客",
+                                    "actions": "行走",
+                                    "setting": "机场",
+                                    "props": "行李箱",
+                                },
                                 "components": {"texts": []},
-                                "editing": {"transition": "硬切"},
                                 "evidenceRefs": [
                                     "raw/shots.json#shots[0]",
                                     "evidence/frames/F_SH0001_MAIN.jpg",

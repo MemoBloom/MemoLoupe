@@ -414,9 +414,14 @@ def build_camera_motion_stub(shots: list[dict], media: dict, config: dict) -> di
 
 
 def unified_stub_schema_fingerprint() -> str:
-    """unified-media stub 的 schemaFingerprint（M1 无真实 prompt/schema 版本）。"""
+    """unified-media v2 stub 指纹（无真实模型时仍必须随契约失效）。"""
     return fingerprint(
-        {"prompt": "none-m1", "schema": "unified-media", "vocab": 1, "parser": 1}
+        {
+            "prompt": "none",
+            "schema": "unified-media.v2",
+            "vocab": 3,
+            "parser": "groups.v2",
+        }
     )
 
 
@@ -425,6 +430,7 @@ def build_unified_media_stub(clips: list[dict], media: dict, config: dict) -> di
     model_cfg = config.get("unifiedModel", {})
     shot_statuses = {clip["shotID"]: "pending" for clip in clips}
     return {
+        "schemaVersion": 2,
         "service": "unifiedAudioVideo",
         "schemaFingerprint": unified_stub_schema_fingerprint(),
         "request": {
@@ -504,6 +510,10 @@ def _build_unified_service(
         model=str(model),
         fallback_model=str(fallback) if isinstance(fallback, str) and fallback else None,
         timeout_sec=float(model_cfg.get("timeoutSec", 300.0)),
+        video_fps=float(model_cfg.get("videoFPS", 10.0)),
+        media_resolution=str(model_cfg.get("mediaResolution", "default")),
+        max_completion_tokens=int(model_cfg.get("maxCompletionTokens", 4096)),
+        thinking_mode=str(model_cfg.get("thinkingMode", "disabled")),
     )
 
 

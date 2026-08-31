@@ -109,7 +109,7 @@
 
 ### D-018：切镜相似度公式与入选路径实证（M1，CALIBRATION）
 
-决策：histogramSimilarity=直方图相交 sum(min)；edgeSimilarity=`1-min(1,|eA-eB|/max(eA,eB,1e-6))`；adaptiveOutlier 增加最小绝对偏离 0.5 防 MAD≈0 噪声；边界置信度 high=score<-2、medium=score<0、low=其余。  
+历史决策（已被 D-047 / `shots.v2` 取代）：histogramSimilarity=直方图相交 sum(min)；edgeSimilarity=`1-min(1,|eA-eB|/max(eA,eB,1e-6))`；adaptiveOutlier 增加最小绝对偏离 0.5 防 MAD≈0 噪声；边界置信度 high=score<-2、medium=score<0、low=其余。
 实证：纯色→纯色硬切两帧 edge_density 均为 0，score≈+0.87>0，**只能走 adaptiveOutlier**；纯绿与纯红灰度亮度接近（≈0.295 vs 0.298），灰度直方图法无法区分——属检测器已知局限，e2e 合成视频因此采用红/白/蓝。分析参数 analysisFps=2.0 + minimumFrames=8 意味着最小镜头约 4s，快切合成样片检不出属预期。
 
 ### D-019：pipeline 状态文件与 force 语义（M1）
@@ -145,10 +145,14 @@
 
 ### D-025：BGM 存在性字段归属确认（M3 路线确认）
 
+状态：模型 audio 字段形状已由 D-046 取代；BGM 存在性归属规则继续有效。
+
 决策：稳定 `unified-media.json` 的模型 audio 字段保持 `speech/bgmStyle/soundEffects`，不增加 `bgm`。BGM 是否存在只由 `music-flags.json` 的确定性检测器负责；模型只在可听到音乐时描述 `bgmStyle`。若未来需要模型交叉验证存在性，只能作为诊断证据，不得改变稳定字段或直接产生确定性 `absent`。
 理由：docs/07 明确规定 music-flags 负责“有没有 BGM”，modelShot audio 字段表不含 bgm；符合确定性优先和模型“无”降级不变量。
 
 ### D-026：UnifiedMLLM 三组结构确认（M3 路线确认）
+
+状态：已由 D-046 的 `visual/audio/function` v2 分组取代。
 
 决策：继续使用 `visual/audio/editing_function` 三组内部字段所有权、自检和 checkpoint；组结构不属于稳定下游契约，最终只输出合并后的 `unified-media.json` modelShot。下游不得依赖原版两组调用次数或内部组名。
 理由：docs/07 只规定最终 batches/response.shots 结构；D-004 已区分内部 groups 与传输 batches。三组字段无重叠属于实现改进，不破坏数据契约。
@@ -215,6 +219,9 @@
 要求 + 保持与 shot 页面一致的机器语义与校验闭环。
 
 ### D-034：profile 确定性聚合规则（04-01）
+
+状态：D-046 起 transitions 改从 shots 边界派生，lighting 字段改名为
+`visual.lightingSource`；其余聚合规则继续有效。
 
 决策：`analysis/profile_aggregate.py` 为纯函数友好模块，不导入/调用任何模型
 服务。聚合规则：
@@ -331,6 +338,8 @@ intendedReaction 允许 null 一致。
 以及重跑 story 后遗留陈旧 profile。
 
 ### D-040：完整受控词表与版本化失效（05-02）
+
+状态：闭集清单与词表版本已由 D-046 的 v2/v3 定义取代；版本化失效机制继续有效。
 
 决策：
 
@@ -482,6 +491,64 @@ maxTokens`），`memoloupe story` 与 `memoloupe profile` 在非 mock、非显�
 
 局限：whisper 段跨越拼接缝时端点分别映射，可能覆盖静音间隔；无说话人
 分离（speaker 恒为 null）。
+
+### D-046：UnifiedMLLM v2 精简与职责去重（MiMo 接入前）
+
+决策：`unified-media.json` 提升为 `schemaVersion=2`，内部请求组调整为
+`visual/audio/function`。模型协议删除 `visual.content`、
+`visual.subjectCoverage`、`visual.movementIntensity`、`audio.speech`、
+`editing.transition`、`editing.continuity` 和 `confidence.overall`；采用
+`viewpoint`、`perceivedLensFeel`、`lightingSource`、
+`perceivedColorTemperature`、`imageTexture`、`soundEvents`、
+`nonTextOverlayEvents` 等边界更明确的名称。
+
+删除字段的产品职责不被静默丢弃：`visual.contentSummary` 由
+subjects/actions/setting/props 聚合，speech 只取 ASR，movementIntensity
+只取 camera-motion，硬切 transition 从 shots.boundaryIn 派生；continuity
+必须等待相邻镜头关系分析器，不再让单镜头 clip 猜测。`lightingSource` 词表
+移除与 brightness 重叠的“低照度”，文字动画的“无”改为“静态”；词表升 v3。
+
+迁移：`upgrade_unified_media_v1_to_v2` 为纯函数；文件迁移先保留
+`raw/unified-media.v1.json`，再原子写回 v2。被删除的 v1 值进入每镜头
+`extensions.legacyV1`，不伪装成 v2 当前值。group parser、unified 版本和
+vocab 版本均进入 fingerprint，因此旧 checkpoint/cache 自动失效；schema、
+fixtures、Resolver、story/profile/HTML 消费者和契约测试在同一变更更新。
+
+理由：MiMo 同时具备音视频理解能力，但“能输出”不等于“应成为该事实的拥有
+者”。去掉可派生字段和错误分析粒度可减少提示词负担、内部矛盾与人工复核噪声，
+同时保留稳定产品属性和全链路证据。
+
+### D-047：全帧率自适应彩色镜头检测（shots.v2，CALIBRATION）
+
+决策：默认按源帧率（上限 60fps）解码 128px 宽 RGB24 分析帧；以逐像素
+HSV 内容变化为主信号、Sobel 边缘变化（权重 0.25）为辅，使用前后各 3 帧
+的局部 adaptive ratio。强切阈值 60，自适应候选门槛 15 / ratio 3.5；SSIM
+只复核弱候选。短段默认 500ms，两个高置信快速剪辑允许至 200ms；被合并或
+SSIM 拒绝的候选写入 `suppressedBoundaries`，不静默丢弃。
+
+实证：`video/disney.MP4`（56.567s/30fps）检测得到 62 个边界；其中 60 个
+逐帧匹配 ffmpeg scene>0.4 的强变化点，额外 14.000s 与 42.967s 经接触表
+人工确认均为真实画面转场。阈值 45 会额外产生 6 个局部比率仅 1.2–1.5 的
+运动误报，因此提升至 60。算法版本升为 `shots.v2`，shots 配置指纹使旧缓存
+失效；JSON 稳定字段名和 score 越低越像硬切的方向保持兼容。
+
+### D-048：MiMo 视频代理音画等长与官方扩展字段
+
+决策：短于 800ms 的有声模型代理不再只用 `tpad` 补画面，而是同时用
+`apad` 补静音到 2000ms，并用 `-shortest` 保证音画等长；代理采用
+`+faststart` 封装，clip 构建版本升为 `clips.v2` 使旧代理缓存失效。
+UnifiedMLLM 适配器按 MiMo 官方 OpenAI 兼容格式，在每个 `video_url`
+content part 同级显式传递 `fps` 和 `media_resolution`，视频 parts 位于
+prompt text 之前；结构化提取关闭深度思考并把最大完成长度限制为 4096
+tokens，避免 MiMo 默认启用推理和 32K 输出上限造成批请求长期占用连接。
+请求 prompt 还必须逐项注入 `video_url` 顺序到 `SHxxxx` 的唯一映射；传输/
+checkpoint 版本升为 `unified.v3`，使旧的无映射 checkpoint 失效。
+
+实证：原 `disney.MP4` 首镜头代理的视频轨为 2.000s、音频轨为 0.467s，
+MiMo `mimo-v2.5` 返回 HTTP 400 `Invalid request parameters`；仅调整
+faststart 仍失败。补齐音频使两轨均为 2.000s 后，同一 Base64 clip 请求
+成功并正确识别 Disney 气球画面。该调整只影响模型输入代理，不改变证据
+clip、detected/final 镜头边界或稳定 JSON 时间字段。
 
 ## 3. 推荐技术默认值
 

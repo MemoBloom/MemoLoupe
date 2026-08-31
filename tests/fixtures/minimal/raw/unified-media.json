@@ -7,11 +7,10 @@
           {
             "audio": {
               "bgmStyle": "轻快 电子",
-              "soundEffects": "行李轮声",
-              "speech": "无"
+              "soundEvents": "行李轮声"
             },
             "components": {
-              "compositingEvents": "无",
+              "nonTextOverlayEvents": "无",
               "texts": [
                 {
                   "textAnimation": "淡入",
@@ -23,13 +22,20 @@
             },
             "confidence": {
               "audio": "medium",
-              "editing": "medium",
-              "overall": "medium",
+              "function": "medium",
               "visual": "medium"
             },
-            "editing": {
-              "continuity": "动作连续",
-              "transition": "硬切"
+            "extensions": {
+              "legacyV1": {
+                "audio.speech": "无",
+                "confidence.editing": "medium",
+                "confidence.overall": "medium",
+                "editing.continuity": "动作连续",
+                "editing.transition": "硬切",
+                "visual.content": "机场出发画面",
+                "visual.movementIntensity": "medium",
+                "visual.subjectCoverage": "全身"
+              }
             },
             "function": {
               "shotTone": "轻快",
@@ -42,23 +48,20 @@
               "brightness": "明亮",
               "cameraAngle": "平视",
               "cameraMovement": "跟",
-              "colorTemperature": "冷",
               "composition": "居中",
-              "content": "机场出发画面",
               "contrast": "中",
               "depthOfField": "深景深",
               "dominantColor": "蓝白",
               "framing": "全景",
-              "lensFeel": "广角感",
-              "lightingType": "自然光",
-              "movementIntensity": "medium",
-              "perspective": "第三人称观察",
+              "imageTexture": "清晰",
+              "lightingSource": "自然光",
+              "perceivedColorTemperature": "冷",
+              "perceivedLensFeel": "广角感",
               "props": "行李箱",
               "saturation": "中",
               "setting": "机场出发大厅",
-              "subjectCoverage": "全身",
               "subjects": "旅行者",
-              "texture": "清晰"
+              "viewpoint": "第三人称观察"
             }
           }
         ]
@@ -100,7 +103,8 @@
     "fallbackFromBatchToSingleShot": true,
     "maxRetries": 3
   },
-  "schemaFingerprint": "86ad19c6afbf1a02",
+  "schemaFingerprint": "ac7589aacd9be2c2",
+  "schemaVersion": 2,
   "service": "unifiedAudioVideo",
   "shotStatuses": {
     "SH0001": "succeeded"

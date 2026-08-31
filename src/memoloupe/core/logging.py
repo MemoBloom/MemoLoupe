@@ -26,6 +26,16 @@ _DEFAULT_CONTEXT = {
 _formatter_installed = False
 
 
+class _ContextDefaultsFilter(logging.Filter):
+    """为不经过 MemoLoupe LoggerAdapter 的第三方记录补齐格式字段。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        for key, value in _DEFAULT_CONTEXT.items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
+        return True
+
+
 def _ensure_formatter() -> None:
     """确保 root logger 至少有一个带上下文字段格式的 handler。"""
     global _formatter_installed
@@ -34,6 +44,7 @@ def _ensure_formatter() -> None:
     root = logging.getLogger()
     if not root.handlers:
         handler = logging.StreamHandler()
+        handler.addFilter(_ContextDefaultsFilter())
         handler.setFormatter(logging.Formatter(_LOG_FORMAT))
         root.addHandler(handler)
     root.setLevel(logging.INFO)

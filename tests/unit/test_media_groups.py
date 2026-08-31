@@ -38,23 +38,32 @@ class TestGroupDefinitions:
     def test_field_ownership(self, vocab, config):
         groups = {g.name: g for g in build_groups(vocab, config)}
         visual = groups["visual"].fields
-        # visual 组：21 个 visual.* + components.* 2 个 + confidence.visual
-        assert len([f for f in visual if f.startswith("visual.")]) == 21
+        # v2：模型只描述不可由其它阶段稳定派生的视听语义。
+        assert len([f for f in visual if f.startswith("visual.")]) == 18
+        assert "visual.content" not in visual
+        assert "visual.subjectCoverage" not in visual
+        assert "visual.movementIntensity" not in visual
+        assert "visual.viewpoint" in visual
+        assert "visual.perceivedLensFeel" in visual
+        assert "visual.lightingSource" in visual
+        assert "visual.perceivedColorTemperature" in visual
+        assert "visual.imageTexture" in visual
         assert "components.texts" in visual
-        assert "components.compositingEvents" in visual
+        assert "components.nonTextOverlayEvents" in visual
         assert "confidence.visual" in visual
         assert groups["audio"].fields == (
-            "audio.speech",
             "audio.bgmStyle",
-            "audio.soundEffects",
+            "audio.soundEvents",
             "confidence.audio",
         )
-        editing = groups["editing_function"].fields
-        assert "function.sourceMedium" in editing
-        assert "editing.transition" in editing
-        assert "editing.continuity" in editing
-        assert "confidence.editing" in editing
-        assert "confidence.overall" in editing
+        function = groups["function"].fields
+        assert "function.sourceMedium" in function
+        assert "function.subjectEmotion" in function
+        assert "function.shotTone" in function
+        assert "editing.transition" not in function
+        assert "editing.continuity" not in function
+        assert "confidence.function" in function
+        assert "confidence.overall" not in function
 
     def test_no_field_overlap_across_groups(self, vocab, config):
         groups = build_groups(vocab, config)
@@ -66,8 +75,8 @@ class TestGroupDefinitions:
 
     def test_overlap_self_check_raises(self, vocab, config, monkeypatch):
         broken = copy.deepcopy(GROUP_OWNED_SECTIONS)
-        # 制造真实重叠：audio 组抢走 visual.content
-        broken["audio"]["visual"] = ("content",)
+        # 制造真实重叠：audio 组抢走 visual.subjects
+        broken["audio"]["visual"] = ("subjects",)
         monkeypatch.setattr(media_groups, "GROUP_OWNED_SECTIONS", broken)
         with pytest.raises(ConfigError):
             build_groups(vocab, config)
@@ -78,8 +87,8 @@ class TestPrompt:
         groups = {g.name: g for g in build_groups(vocab, config)}
         framing_value = vocab.fields["visual.framing"].values[0]
         assert framing_value in groups["visual"].prompt
-        transition_value = vocab.fields["editing.transition"].values[0]
-        assert transition_value in groups["editing_function"].prompt
+        tone_value = vocab.fields["function.shotTone"].values[0]
+        assert tone_value in groups["function"].prompt
         # 词表版本进入指纹，prompt 中含允许值说明
         assert "允许值" in groups["visual"].prompt
 
@@ -96,6 +105,18 @@ class TestPrompt:
         prompt = groups["visual"].prompt
         assert "textContent" in prompt
         assert "textType" in prompt
+
+    def test_prompt_contains_nested_json_template(self, vocab, config):
+        groups = {g.name: g for g in build_groups(vocab, config)}
+        audio = groups["audio"].prompt
+        assert '"audio": {' in audio
+        assert '"bgmStyle": "unknown"' in audio
+        assert '"confidence": {' in audio
+        assert '"audio.bgmStyle"' not in audio.split("JSON 结构模板：", 1)[1]
+
+        function = groups["function"].prompt
+        assert '"function": {' in function
+        assert '"sourceMedium": "unknown"' in function
 
 
 class TestGroupSchema:
@@ -141,9 +162,9 @@ class TestFingerprint:
         assert len(set(fps)) == 3
 
     def test_flatten_fields_dotted_paths(self):
-        sections = {"visual": ("content", "framing"), "confidence": ("visual",)}
+        sections = {"visual": ("subjects", "framing"), "confidence": ("visual",)}
         assert flatten_fields(sections) == (
-            "visual.content",
+            "visual.subjects",
             "visual.framing",
             "confidence.visual",
         )

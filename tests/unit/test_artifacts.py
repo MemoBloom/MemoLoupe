@@ -13,7 +13,11 @@ from memoloupe.artifacts.manifest import (
     record_artifact,
     set_source_revision,
 )
-from memoloupe.artifacts.migrations import migrate_legacy_names
+from memoloupe.artifacts.migrations import (
+    migrate_legacy_names,
+    migrate_unified_media_v1,
+    upgrade_unified_media_v1_to_v2,
+)
 from memoloupe.artifacts.schemas import (
     SCHEMA_DIR,
     ArtifactName,
@@ -369,6 +373,117 @@ class TestManifest:
 
 
 class TestMigrations:
+    @staticmethod
+    def _unified_v1() -> dict:
+        return {
+            "service": "unifiedAudioVideo",
+            "schemaFingerprint": "legacy-fingerprint",
+            "request": {},
+            "retryPolicy": {},
+            "clips": [],
+            "batches": [
+                {
+                    "batchID": "B0001",
+                    "shotIDs": ["SH0001"],
+                    "status": "complete",
+                    "response": {
+                        "shots": [
+                            {
+                                "shotID": "SH0001",
+                                "visual": {
+                                    "content": "旅客在机场出发",
+                                    "subjects": "旅客",
+                                    "actions": "行走",
+                                    "setting": "机场",
+                                    "props": "行李箱",
+                                    "framing": "全景",
+                                    "subjectCoverage": "全身",
+                                    "cameraAngle": "平视",
+                                    "composition": "居中",
+                                    "perspective": "第三人称观察",
+                                    "lensFeel": "标准感",
+                                    "cameraMovement": "固定",
+                                    "movementIntensity": "static",
+                                    "brightness": "明亮",
+                                    "contrast": "中",
+                                    "lightingType": "自然光",
+                                    "colorTemperature": "中性",
+                                    "dominantColor": "蓝色",
+                                    "saturation": "中",
+                                    "depthOfField": "深景深",
+                                    "texture": "清晰",
+                                },
+                                "function": {
+                                    "sourceMedium": "实拍素材",
+                                    "subjectEmotion": "平静",
+                                    "shotTone": "沉稳",
+                                },
+                                "audio": {
+                                    "speech": "准备出发",
+                                    "bgmStyle": "轻快",
+                                    "soundEffects": "环境声",
+                                },
+                                "components": {
+                                    "texts": [],
+                                    "compositingEvents": "无",
+                                },
+                                "editing": {
+                                    "transition": "硬切",
+                                    "continuity": "动作连续",
+                                },
+                                "confidence": {
+                                    "visual": "high",
+                                    "audio": "medium",
+                                    "editing": "low",
+                                    "overall": "medium",
+                                },
+                            }
+                        ]
+                    },
+                }
+            ],
+            "shotStatuses": {"SH0001": "succeeded"},
+            "status": "complete",
+        }
+
+    def test_unified_v1_upgrade_is_explicit_and_preserves_legacy_values(self) -> None:
+        upgraded = upgrade_unified_media_v1_to_v2(self._unified_v1())
+        shot = upgraded["batches"][0]["response"]["shots"][0]
+        assert upgraded["schemaVersion"] == 2
+        assert upgraded["schemaFingerprint"] != "legacy-fingerprint"
+        assert "content" not in shot["visual"]
+        assert "subjectCoverage" not in shot["visual"]
+        assert "movementIntensity" not in shot["visual"]
+        assert shot["visual"]["viewpoint"] == "第三人称观察"
+        assert shot["visual"]["perceivedLensFeel"] == "标准感"
+        assert shot["visual"]["lightingSource"] == "自然光"
+        assert shot["visual"]["perceivedColorTemperature"] == "中性"
+        assert shot["visual"]["imageTexture"] == "清晰"
+        assert "speech" not in shot["audio"]
+        assert shot["audio"]["soundEvents"] == "环境声"
+        assert "editing" not in shot
+        assert shot["confidence"] == {
+            "visual": "high",
+            "audio": "medium",
+            "function": "low",
+        }
+        assert shot["extensions"]["legacyV1"]["visual.content"] == "旅客在机场出发"
+        assert shot["extensions"]["legacyV1"]["audio.speech"] == "准备出发"
+        assert shot["extensions"]["legacyV1"]["editing.transition"] == "硬切"
+
+    def test_unified_file_migration_keeps_v1_backup_and_is_idempotent(
+        self, tmp_path: Path
+    ) -> None:
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir()
+        current = raw_dir / "unified-media.json"
+        current.write_text(json.dumps(self._unified_v1()), encoding="utf-8")
+
+        assert migrate_unified_media_v1(tmp_path)
+        assert (raw_dir / "unified-media.v1.json").is_file()
+        assert json.loads(current.read_text())["schemaVersion"] == 2
+        assert migrate_unified_media_v1(tmp_path) is None
+
     def test_legacy_shot_candidates_copied(self, tmp_path: Path) -> None:
         raw_dir = tmp_path / "raw"
         raw_dir.mkdir()

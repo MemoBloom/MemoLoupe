@@ -1,8 +1,8 @@
 """证据 clip 与模型代理构建（docs/03 §2.6，unified-media.json 的 clips[]）。
 
 - 证据 clip：按 final 区间精确重编码（libx264/aac），避免 keyframe copy 漂移；
-- 模型代理：统一宽 720、fps 10；短于 800ms 的 clip 用 tpad 补帧到至少
-  2000ms（只影响模型输入，不改变证据 clip 和镜头边界）。
+- 模型代理：统一宽 720、fps 10；短于 800ms 的 clip 同时用 tpad/apad
+  补齐画面与音频到 2000ms（只影响模型输入，不改变证据 clip 和镜头边界）。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from memoloupe.core.hashing import content_revision_id
 from memoloupe.core.ids import validate_shot_id
 from memoloupe.core.time_ranges import seconds_to_ms
 
-CLIP_BUILD_VERSION = "clips.v1"
+CLIP_BUILD_VERSION = "clips.v2"
 
 # 模型代理统一参数（docs/03 §2.6 恢复策略）
 PROXY_WIDTH = 720
@@ -74,7 +74,7 @@ def model_proxy_argv(
     has_audio: bool,
     pad_sec: float,
 ) -> list[str]:
-    """模型代理：宽 720（-2 保持纵横比且高度为偶数）、fps 10，可选 tpad 补帧。"""
+    """模型代理：宽 720、fps 10，短镜头强制音画等长后输出 faststart MP4。"""
     vf = f"scale={PROXY_WIDTH}:-2,fps={PROXY_FPS}"
     if pad_sec > 0:
         vf += f",tpad=stop_mode=clone:stop_duration={pad_sec:g}"
@@ -86,9 +86,16 @@ def model_proxy_argv(
         "-pix_fmt", "yuv420p",
     ]
     if has_audio:
+        if pad_sec > 0:
+            # 只补视频会产生 video=2s、audio=<800ms 的不等长 MP4；MiMo 的
+            # Base64 视频入口会将其判为 Invalid request parameters。
+            argv += ["-af", f"apad=whole_dur={PADDED_MIN_MS / 1000:g}"]
         argv += ["-c:a", "aac", "-b:a", "96k"]
+        if pad_sec > 0:
+            argv += ["-shortest"]
     else:
         argv += ["-an"]
+    argv += ["-movflags", "+faststart"]
     argv.append(out_path)
     return argv
 
@@ -96,7 +103,7 @@ def model_proxy_argv(
 def model_normalization(*, cache_key: str, file: str, padded: bool) -> dict:
     strategy = f"reencode-w{PROXY_WIDTH}-fps{PROXY_FPS}"
     if padded:
-        strategy += f"+tpad-clone-{PADDED_MIN_MS}ms"
+        strategy += f"+tpad-clone-apad-{PADDED_MIN_MS}ms-avsync"
     return {
         "strategy": strategy,
         "cacheKey": cache_key,

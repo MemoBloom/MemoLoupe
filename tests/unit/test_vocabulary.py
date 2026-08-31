@@ -51,9 +51,9 @@ class TestNormalizeDirectHit:
         assert r.value == "全景"
 
     def test_english_enum_value_hit(self, vocab):
-        r = vocab.normalize("visual.movementIntensity", "medium")
+        r = vocab.normalize("primaryRole", "hook")
         assert r.status == "value"
-        assert r.value == "medium"
+        assert r.value == "hook"
 
     def test_value_with_whitespace_is_stripped(self, vocab):
         r = vocab.normalize("visual.cameraAngle", " 平视 ")

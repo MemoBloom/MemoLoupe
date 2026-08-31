@@ -24,6 +24,9 @@
         "sampleHeight": { "type": "integer", "minimum": 1 },
         "durationMs": { "type": "integer", "minimum": 0 },
         "selectedBoundaryCount": { "type": "integer", "minimum": 0 },
+        "rawCandidateCount": { "type": "integer", "minimum": 0 },
+        "suppressedBoundaryCount": { "type": "integer", "minimum": 0 },
+        "minimumShotMs": { "type": "integer", "minimum": 0 },
         "limitations": {
           "type": "array",
           "items": { "type": "string" }
@@ -50,6 +53,11 @@
           "edgeSimilarity": { "type": "number" },
           "brightness": { "type": "number" },
           "brightnessDelta": { "type": "number" },
+          "contentDelta": { "type": "number", "minimum": 0 },
+          "edgeDelta": { "type": "number", "minimum": 0 },
+          "changeValue": { "type": "number", "minimum": 0 },
+          "adaptiveRatio": { "type": "number", "minimum": 0 },
+          "ssim": { "type": "number", "minimum": -1, "maximum": 1 },
           "frameIndex": { "type": "integer", "minimum": 0 },
           "type": { "type": "string" },
           "confidence": {
@@ -59,6 +67,22 @@
           "selectionReason": {
             "type": "string",
             "enum": ["rawNegativeScore", "adaptiveOutlier"]
+          }
+        }
+      }
+    },
+    "suppressedBoundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["timeSec", "score", "suppressionReason"],
+        "properties": {
+          "timeSec": { "type": "number" },
+          "score": { "type": "number" },
+          "suppressionReason": {
+            "type": "string",
+            "enum": ["shortSegmentMerge", "ssimSimilarityRejected"]
           }
         }
       }

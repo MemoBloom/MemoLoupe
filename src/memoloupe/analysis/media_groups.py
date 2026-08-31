@@ -1,18 +1,19 @@
-"""analysis.media_groups — UnifiedMLLM 三组字段分组、prompt 与组 schema（docs/03 §2.12）。
+"""analysis.media_groups — unified-media v2 三组字段分组与严格响应契约。
 
 三组字段所有权的单一事实源是 ``services.mock.GROUP_OWNED_SECTIONS``
 （mock 响应生成器与本模块共用同一张表，保证 mock 输出必然过组 schema）：
 
-- ``visual``：visual.* 全部 21 字段 + components.*（文字项/合成事件）+ confidence.visual
-- ``audio``：audio.speech/bgmStyle/soundEffects + confidence.audio
-- ``editing_function``：function.* 3 字段 + editing.transition/continuity
-  + confidence.editing/overall
+- ``visual``：视觉原子语义 + 画面图层事件 + confidence.visual；
+- ``audio``：BGM 风格/声音事件 + confidence.audio（speech 归 ASR）；
+- ``function``：素材形态/人物情绪/镜头语气 + confidence.function。
 
 不变量：两组不得拥有同一字段；:func:`build_groups` 启动时自检，重叠直接 raise
 （docs/03 §2.12：字段重叠视为 schema 编程错误）。
 """
 
 from __future__ import annotations
+
+import json
 
 from memoloupe.analysis.vocabulary import Vocabulary
 from memoloupe.core.errors import ConfigError
@@ -21,10 +22,10 @@ from memoloupe.services.mock import GROUP_OWNED_SECTIONS
 from memoloupe.services.unified_media import AnalysisGroup
 
 #: 响应解析器实现版本，进入组 fingerprint（docs/03 §5 失效矩阵）。
-PARSER_VERSION = "groups.v1"
+PARSER_VERSION = "groups.v3"
 
 #: 组的固定执行/合并顺序。
-GROUP_ORDER: tuple[str, ...] = ("visual", "audio", "editing_function")
+GROUP_ORDER: tuple[str, ...] = ("visual", "audio", "function")
 
 _CONFIDENCE_ENUM = ["high", "medium", "low", "unknown"]
 
@@ -32,41 +33,34 @@ _TEXT_ITEM_FIELDS = ("textContent", "textType", "textStyle", "textAnimation")
 
 #: 字段中文说明（注入 prompt；键为 ``<section>.<field>`` 点路径）。
 _FIELD_LABELS: dict[str, str] = {
-    "visual.content": "画面内容概述",
     "visual.subjects": "画面主体",
     "visual.actions": "主体动作",
     "visual.setting": "场景环境",
     "visual.props": "道具",
     "visual.framing": "景别",
-    "visual.subjectCoverage": "主体在画面中的覆盖程度",
     "visual.cameraAngle": "摄影机角度",
     "visual.composition": "构图",
-    "visual.perspective": "观看关系/视角",
-    "visual.lensFeel": "镜头透视感",
+    "visual.viewpoint": "叙事观看关系/视角",
+    "visual.perceivedLensFeel": "感知到的镜头透视感（非焦段事实）",
     "visual.cameraMovement": "运镜现象",
-    "visual.movementIntensity": "运动强度",
     "visual.brightness": "亮度",
     "visual.contrast": "对比度",
-    "visual.lightingType": "光线类型",
-    "visual.colorTemperature": "色温",
+    "visual.lightingSource": "光源来源",
+    "visual.perceivedColorTemperature": "感知色温",
     "visual.dominantColor": "主色",
     "visual.saturation": "饱和度",
     "visual.depthOfField": "景深",
-    "visual.texture": "质感",
+    "visual.imageTexture": "成像质感",
     "components.texts": "画面文字/后期文字",
-    "components.compositingEvents": "后期图层/合成事件",
-    "audio.speech": "clip 内可听语音原文",
+    "components.nonTextOverlayEvents": "非文字后期图层/合成事件",
     "audio.bgmStyle": "BGM 风格（只描述风格，不判断有无）",
-    "audio.soundEffects": "音效",
+    "audio.soundEvents": "可听声音事件",
     "function.sourceMedium": "素材形态",
     "function.subjectEmotion": "人物情绪",
     "function.shotTone": "镜头语气",
-    "editing.transition": "转场",
-    "editing.continuity": "连续性",
     "confidence.visual": "视觉字段自评置信度",
     "confidence.audio": "声音字段自评置信度",
-    "confidence.editing": "剪辑字段自评置信度",
-    "confidence.overall": "总体自评置信度",
+    "confidence.function": "功能语义字段自评置信度",
 }
 
 
@@ -107,10 +101,10 @@ def _section_schema(group_name: str, section: str) -> dict:
         return {
             "type": "object",
             "additionalProperties": False,
-            "required": ["texts", "compositingEvents"],
+            "required": ["texts", "nonTextOverlayEvents"],
             "properties": {
                 "texts": {"type": "array", "items": _text_item_schema()},
-                "compositingEvents": {"type": "string"},
+                "nonTextOverlayEvents": {"type": "string"},
             },
         }
     if section == "confidence":
@@ -159,6 +153,17 @@ def shot_item_schema(group: AnalysisGroup) -> dict:
     return group.schema["properties"]["shots"]["items"]
 
 
+def _response_template(group_name: str) -> str:
+    """生成嵌套 section 示例，避免模型把点路径误当作 JSON key。"""
+    shot: dict = {"shotID": "SH0001"}
+    for section, fields in GROUP_OWNED_SECTIONS[group_name].items():
+        if section == "components":
+            shot[section] = {"texts": [], "nonTextOverlayEvents": "unknown"}
+        else:
+            shot[section] = {field: "unknown" for field in fields}
+    return json.dumps({"shots": [shot]}, ensure_ascii=False, indent=2)
+
+
 def _prompt(group_name: str, vocab: Vocabulary, config: dict) -> str:
     model_cfg = config.get("unifiedModel", {}) if isinstance(config, dict) else {}
     video_fps = model_cfg.get("videoFPS", 10.0)
@@ -185,8 +190,10 @@ def _prompt(group_name: str, vocab: Vocabulary, config: dict) -> str:
         )
     lines += [
         "输出要求：",
-        '- 只输出一个 JSON 对象：{"shots": [{"shotID": "...", 本组字段...}, ...]}；'
-        "禁止 Markdown 代码围栏和任何额外文字。",
+        "- 严格使用下面的嵌套 JSON 结构模板；点号只表示字段路径，绝对不能"
+        "把 audio.bgmStyle、function.sourceMedium 等点路径当作 JSON key。",
+        f"JSON 结构模板：\n{_response_template(group_name)}",
+        "- 只输出一个 JSON 对象；禁止 Markdown 代码围栏和任何额外文字。",
         "- shotID 必须原样返回；每个输入镜头在 shots 中恰好出现一次，"
         "不得遗漏，不得返回未请求的镜头。",
         '- 没有的内容写 "无"；无法判断的写 "unknown"；'

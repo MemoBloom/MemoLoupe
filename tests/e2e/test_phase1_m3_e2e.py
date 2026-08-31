@@ -49,7 +49,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _group_payload(group_name: str, shot_ids: list[str]) -> str:
-    """与 default mock 同构，但 visual.framing/content 给具体值（便于修正断言）。"""
+    """与 default mock 同构，但 visual.framing/原子语义给具体值。"""
     shots = []
     for sid in shot_ids:
         shot: dict = {"shotID": sid}
@@ -57,12 +57,15 @@ def _group_payload(group_name: str, shot_ids: list[str]) -> str:
             if section == "confidence":
                 shot["confidence"] = {name: "medium" for name in fields}
             elif section == "components":
-                shot["components"] = {"texts": [], "compositingEvents": "无"}
+                shot["components"] = {"texts": [], "nonTextOverlayEvents": "无"}
             else:
                 shot[section] = {name: "无" for name in fields}
         if group_name == "visual":
             shot["visual"]["framing"] = "全景"
-            shot["visual"]["content"] = "机场出发画面"
+            shot["visual"]["subjects"] = "旅客"
+            shot["visual"]["actions"] = "拖着行李出发"
+            shot["visual"]["setting"] = "机场"
+            shot["visual"]["props"] = "行李箱"
         shots.append(shot)
     return json.dumps({"shots": shots}, ensure_ascii=False)
 
@@ -112,7 +115,9 @@ def _verification_changes(out_dir: Path) -> list[dict]:
     - requireVerifiedStates（unmapped/absent-claimed）未核实 → 补 verified=true
       （state/newValue 保持原样）。
     """
-    required_fields = frozenset({"visual.content", "visual.framing", "audio.speech"})
+    required_fields = frozenset(
+        {"visual.contentSummary", "visual.framing", "audio.speech"}
+    )
     resolved = frozenset({ValueState.VALUE, ValueState.ABSENT})
     raws: dict[str, dict | None] = {}
     for name in RAW_FILES:

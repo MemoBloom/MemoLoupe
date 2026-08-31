@@ -25,29 +25,28 @@ __all__ = [
     "default_mock_unified",
 ]
 
-# 三组字段所有权（docs/03 §2.12：两组不得拥有同一字段）。
-# visual 组含"文字和合成"（components）；editing_function 组含素材形态/
-# 情绪/语气（function）与转场/连续性（editing）；confidence 按子键拆分。
+# unified-media v2 三组字段所有权（docs/03 §2.12）。模型只拥有无法由
+# 确定性阶段或原子字段稳定派生的语义；speech/contentSummary/
+# movementIntensity/transition 不进入模型响应。
 GROUP_OWNED_SECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     "visual": {
         "visual": (
-            "content", "subjects", "actions", "setting", "props", "framing",
-            "subjectCoverage", "cameraAngle", "composition", "perspective",
-            "lensFeel", "cameraMovement", "movementIntensity", "brightness",
-            "contrast", "lightingType", "colorTemperature", "dominantColor",
-            "saturation", "depthOfField", "texture",
+            "subjects", "actions", "setting", "props", "framing",
+            "cameraAngle", "composition", "viewpoint", "perceivedLensFeel",
+            "cameraMovement", "brightness", "contrast", "lightingSource",
+            "perceivedColorTemperature", "dominantColor", "saturation",
+            "depthOfField", "imageTexture",
         ),
-        "components": ("texts", "compositingEvents"),
+        "components": ("texts", "nonTextOverlayEvents"),
         "confidence": ("visual",),
     },
     "audio": {
-        "audio": ("speech", "bgmStyle", "soundEffects"),
+        "audio": ("bgmStyle", "soundEvents"),
         "confidence": ("audio",),
     },
-    "editing_function": {
+    "function": {
         "function": ("sourceMedium", "subjectEmotion", "shotTone"),
-        "editing": ("transition", "continuity"),
-        "confidence": ("editing", "overall"),
+        "confidence": ("function",),
     },
 }
 
@@ -191,7 +190,7 @@ def _default_shot_fields(group_name: str, shot_id: str) -> dict:
         elif section == "components":
             shot["components"] = {
                 "texts": [],
-                "compositingEvents": "无",
+                "nonTextOverlayEvents": "无",
             }
         else:
             shot[section] = {name: "无" for name in fields}

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import io
 
+from memoloupe.core import logging as logging_module
 from memoloupe.core.logging import get_logger, log_step
 
 
@@ -71,3 +73,24 @@ def test_levels() -> None:
         logging.WARNING,
         logging.ERROR,
     ]
+
+
+def test_root_formatter_accepts_third_party_records(monkeypatch) -> None:
+    """httpx/fireredvad 等普通 logger 没有 runID，也必须能被 root 格式化。"""
+    root = logging.getLogger()
+    old_handlers = list(root.handlers)
+    old_level = root.level
+    stream = io.StringIO()
+    try:
+        root.handlers = []
+        monkeypatch.setattr(logging_module, "_formatter_installed", False)
+        get_logger("test.logging.bootstrap")
+        assert len(root.handlers) == 1
+        root.handlers[0].stream = stream
+        logging.getLogger("third.party").info("plain third-party log")
+        rendered = stream.getvalue()
+        assert "runID=- phase=- step=-" in rendered
+        assert "plain third-party log" in rendered
+    finally:
+        root.handlers = old_handlers
+        root.setLevel(old_level)

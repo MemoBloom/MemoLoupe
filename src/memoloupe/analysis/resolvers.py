@@ -11,8 +11,9 @@ docs/02 §3（五态状态机）与 docs/00 §4.2-4.4：
   evidence_refs 可为空 —— docs/00 §4.4 唯一豁免）。
 - unified-media 的 response 数组按 shotID 查找，绝不按下标对齐
   （docs/04 §8.5 回归护栏）。
-- ``audio.speech`` 优先级：ASR complete（shot_speech 交集归属）>
-  unifiedModel 弱替代 > unknown（docs/03 §2.7）。
+- ``audio.speech`` 仅来自 ASR；unified-media v2 不再拥有转写字段。
+- ``visual.contentSummary`` 由 subjects/actions/setting/props 聚合，
+  ``visual.movementIntensity`` 由 camera-motion 提供，均不重复请求模型。
 - ``visual.cameraMovement``（D-005）：Apple Vision 分类为主值，模型语义
   并存；矛盾时双 evidence_refs 保留并向 ``ShotEvidenceContext.review_reasons``
   收集 needsReview 理由，不静默覆盖。
@@ -121,15 +122,14 @@ def _shot_final_range(context: ShotEvidenceContext) -> tuple[int, int] | None:
 
 
 class SpeechResolver:
-    """audio.speech：ASR > 模型的优先级解析（docs/01 §8、docs/03 §2.7）。
+    """audio.speech：仅由 ASR 解析（docs/01 §8、unified-media v2）。
 
     - ASR complete：用 :func:`shot_speech_segments` 取与镜头 final 区间
       归属的 segments 拼文本（source=asr，refs 指具体 segment）。
       ASR 不在授权确定性检测器之列，“无归属 segment”只能是 unknown，
       绝不能落 absent。
-    - ASR 非 complete：退回 unified-media 的 ``audio.speech`` 模型值
-      （source=unifiedModel，置信度不升格；“无” → absent-claimed）。
-    - 都没有：unknown（能力未运行，evidence_refs 豁免为空）。
+    - ASR 非 complete：unknown；即使读取到旧 v1 的 ``audio.speech``，也不
+      允许它重新成为事实来源。
     """
 
     field_name = "audio.speech"
@@ -138,9 +138,6 @@ class SpeechResolver:
         field, shot_id = self.field_name, context.shot_id
         doc = context.raws.get("asr")
         if not _status_complete(doc):
-            model_obs = ModelFieldResolver(field).resolve(context)
-            if model_obs.state != ValueState.UNKNOWN:
-                return model_obs
             return _not_run(field, shot_id)
         assert doc is not None
         shot_range = _shot_final_range(context)
@@ -377,6 +374,116 @@ class CameraMovementResolver:
         return _not_run(field, shot_id)
 
 
+class MovementIntensityResolver:
+    """visual.movementIntensity：只读取 camera-motion 的逐镜头测量结果。"""
+
+    field_name = "visual.movementIntensity"
+
+    def resolve(self, context: ShotEvidenceContext) -> Observation:
+        field, shot_id = self.field_name, context.shot_id
+        doc = context.raws.get("camera-motion")
+        analysis = doc.get("analysis") if isinstance(doc, dict) else None
+        if not isinstance(analysis, dict) or analysis.get("capabilityStatus") != "complete":
+            return _not_run(field, shot_id)
+        assert isinstance(doc, dict)
+        found = _shot_entry(doc, shot_id)
+        if found is None:
+            return _not_run(field, shot_id)
+        index, entry = found
+        ref = f"raw/camera-motion.json#shots[{index}]"
+        value = entry.get("movementIntensity")
+        confidence = _to_confidence(entry.get("confidence"))
+        if not isinstance(value, str) or not value.strip() or value == "unknown":
+            return unknown_observation(
+                field, shot_id, confidence=confidence,
+                evidence_refs=(ref,), source=Source.APPLE_VISION,
+                original_value=value,
+            )
+        return model_value_observation(
+            field, shot_id, value.strip(), confidence=confidence,
+            evidence_refs=(ref,), source=Source.APPLE_VISION,
+        )
+
+
+_CONTENT_SUMMARY_FIELDS: tuple[str, ...] = (
+    "visual.subjects",
+    "visual.actions",
+    "visual.setting",
+    "visual.props",
+)
+
+
+class ContentSummaryResolver:
+    """visual.contentSummary：由四个原子视觉字段确定性拼接，不重复询问模型。"""
+
+    field_name = "visual.contentSummary"
+
+    def resolve(self, context: ShotEvidenceContext) -> Observation:
+        concrete: list[Observation] = []
+        for field in _CONTENT_SUMMARY_FIELDS:
+            observation = ModelFieldResolver(field).resolve(context)
+            if observation.state == ValueState.VALUE and isinstance(observation.value, str):
+                value = observation.value.strip()
+                if value:
+                    concrete.append(observation)
+        if not concrete:
+            return _not_run(self.field_name, context.shot_id)
+        rank = {
+            Confidence.UNKNOWN: 0,
+            Confidence.LOW: 1,
+            Confidence.MEDIUM: 2,
+            Confidence.HIGH: 3,
+        }
+        confidence = min((obs.confidence for obs in concrete), key=rank.__getitem__)
+        refs = tuple(ref for obs in concrete for ref in obs.evidence_refs)
+        return model_value_observation(
+            self.field_name,
+            context.shot_id,
+            "；".join(str(obs.value) for obs in concrete),
+            confidence=confidence,
+            evidence_refs=refs,
+            source=Source.AGGREGATE,
+        )
+
+
+class TransitionResolver:
+    """editing.transition：从 shots 的入边界派生，不让单镜头模型猜接缝。"""
+
+    field_name = "editing.transition"
+
+    def resolve(self, context: ShotEvidenceContext) -> Observation:
+        field, shot_id = self.field_name, context.shot_id
+        shots = context.raws.get("shots")
+        if not isinstance(shots, dict):
+            return _not_run(field, shot_id)
+        found = _shot_entry(shots, shot_id)
+        if found is None:
+            return _not_run(field, shot_id)
+        index, shot = found
+        boundary = shot.get("boundaryIn")
+        if not isinstance(boundary, dict):
+            return _not_run(field, shot_id)
+        ref = f"raw/shots.json#shots[{index}].boundaryIn"
+        confidence = _to_confidence(boundary.get("confidence"))
+        boundary_type = boundary.get("type")
+        if boundary_type == "hardCutCandidate":
+            return model_value_observation(
+                field, shot_id, "硬切", confidence=confidence,
+                evidence_refs=(ref,), source=Source.FFMPEG,
+            )
+        if boundary_type == "sourceStart":
+            return deterministic_absent_observation(
+                field, shot_id,
+                confidence=confidence if confidence != Confidence.UNKNOWN else Confidence.HIGH,
+                evidence_refs=(ref,), source=Source.FFMPEG,
+            )
+        return unknown_observation(
+            field, shot_id, confidence=confidence,
+            evidence_refs=(ref,), source=Source.FFMPEG,
+            original_value=boundary_type,
+        )
+
+
 # ---------------------------------------------------------------------------
 # 模型字段 resolver
 # ---------------------------------------------------------------------------
@@ -385,7 +492,7 @@ class CameraMovementResolver:
 _CONFIDENCE_SECTIONS: dict[str, str] = {
     "visual": "visual",
     "audio": "audio",
-    "editing": "editing",
+    "function": "function",
 }
 
 
@@ -484,40 +591,35 @@ class ModelFieldResolver:
         confidence = shot.get("confidence")
         if not isinstance(confidence, dict):
             return Confidence.UNKNOWN
-        section = _CONFIDENCE_SECTIONS.get(self.field_name.split(".", 1)[0], "overall")
-        return _to_confidence(confidence.get(section) or confidence.get("overall"))
+        section = _CONFIDENCE_SECTIONS.get(self.field_name.split(".", 1)[0])
+        return _to_confidence(confidence.get(section)) if section else Confidence.UNKNOWN
 
 
 #: 本阶段模型字段清单（deterministic resolver 已覆盖的字段不在此列）。
 MODEL_FIELDS: tuple[str, ...] = (
-    "visual.content",
     "visual.subjects",
     "visual.actions",
     "visual.setting",
     "visual.props",
     "visual.framing",
-    "visual.subjectCoverage",
     "visual.cameraAngle",
     "visual.composition",
-    "visual.perspective",
+    "visual.viewpoint",
     "visual.brightness",
     "visual.contrast",
-    "visual.lightingType",
-    "visual.colorTemperature",
+    "visual.lightingSource",
+    "visual.perceivedColorTemperature",
     "visual.saturation",
     "visual.depthOfField",
-    "visual.texture",
+    "visual.imageTexture",
     "visual.dominantColor",
-    "visual.lensFeel",
-    "visual.movementIntensity",
+    "visual.perceivedLensFeel",
     "function.sourceMedium",
     "function.subjectEmotion",
     "function.shotTone",
     "audio.bgmStyle",
-    "audio.soundEffects",
-    "components.compositingEvents",
-    "editing.transition",
-    "editing.continuity",
+    "audio.soundEvents",
+    "components.nonTextOverlayEvents",
 )
 
 #: 默认 resolver 集合：确定性字段优先，其次模型字段。
@@ -527,6 +629,9 @@ DEFAULT_RESOLVERS: tuple[FieldResolver, ...] = (
     AudioEnergyResolver(),
     QualityFlagsResolver(),
     CameraMovementResolver(),
+    MovementIntensityResolver(),
+    ContentSummaryResolver(),
+    TransitionResolver(),
     *(ModelFieldResolver(field) for field in MODEL_FIELDS),
 )
 

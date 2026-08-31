@@ -6,3 +6,8 @@ __pycache__/
 dist/
 build/
 .DS_Store
+
+# local media & analysis outputs
+output/
+video/
+videos/

@@ -272,7 +272,7 @@ HTML 可以内嵌 JS，但静态 HTML 无权直接覆盖本地文件。推荐支
   "version": 1,
   "documents": {
     "shotAnalysis": {
-      "requiredFields": ["visual.content", "visual.framing", "audio.speech"],
+      "requiredFields": ["visual.contentSummary", "visual.framing", "audio.speech"],
       "requireVerifiedStates": ["unmapped", "absent-claimed"],
       "allowUnknown": true,
       "requireValidEvidenceRefs": true

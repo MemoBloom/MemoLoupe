@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": true,
   "required": [
+    "schemaVersion",
     "service",
     "schemaFingerprint",
     "request",
@@ -21,71 +22,64 @@
     },
     "modelShot": {
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
         "shotID",
         "visual",
         "function",
         "audio",
         "components",
-        "editing",
         "confidence"
       ],
       "properties": {
         "shotID": { "$ref": "#/$defs/shotID" },
         "visual": {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "required": [
-            "content",
             "subjects",
             "actions",
             "setting",
             "props",
             "framing",
-            "subjectCoverage",
             "cameraAngle",
             "composition",
-            "perspective",
-            "lensFeel",
+            "viewpoint",
+            "perceivedLensFeel",
             "cameraMovement",
-            "movementIntensity",
             "brightness",
             "contrast",
-            "lightingType",
-            "colorTemperature",
+            "lightingSource",
+            "perceivedColorTemperature",
             "dominantColor",
             "saturation",
             "depthOfField",
-            "texture"
+            "imageTexture"
           ],
           "properties": {
-            "content": { "type": "string" },
             "subjects": { "type": "string" },
             "actions": { "type": "string" },
             "setting": { "type": "string" },
             "props": { "type": "string" },
             "framing": { "type": "string" },
-            "subjectCoverage": { "type": "string" },
             "cameraAngle": { "type": "string" },
             "composition": { "type": "string" },
-            "perspective": { "type": "string" },
-            "lensFeel": { "type": "string" },
+            "viewpoint": { "type": "string" },
+            "perceivedLensFeel": { "type": "string" },
             "cameraMovement": { "type": "string" },
-            "movementIntensity": { "type": "string" },
             "brightness": { "type": "string" },
             "contrast": { "type": "string" },
-            "lightingType": { "type": "string" },
-            "colorTemperature": { "type": "string" },
+            "lightingSource": { "type": "string" },
+            "perceivedColorTemperature": { "type": "string" },
             "dominantColor": { "type": "string" },
             "saturation": { "type": "string" },
             "depthOfField": { "type": "string" },
-            "texture": { "type": "string" }
+            "imageTexture": { "type": "string" }
           }
         },
         "function": {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "required": ["sourceMedium", "subjectEmotion", "shotTone"],
           "properties": {
             "sourceMedium": { "type": "string" },
@@ -95,24 +89,23 @@
         },
         "audio": {
           "type": "object",
-          "additionalProperties": true,
-          "required": ["speech", "bgmStyle", "soundEffects"],
+          "additionalProperties": false,
+          "required": ["bgmStyle", "soundEvents"],
           "properties": {
-            "speech": { "type": "string" },
             "bgmStyle": { "type": "string" },
-            "soundEffects": { "type": "string" }
+            "soundEvents": { "type": "string" }
           }
         },
         "components": {
           "type": "object",
-          "additionalProperties": true,
-          "required": ["texts", "compositingEvents"],
+          "additionalProperties": false,
+          "required": ["texts", "nonTextOverlayEvents"],
           "properties": {
             "texts": {
               "type": "array",
               "items": {
                 "type": "object",
-                "additionalProperties": true,
+                "additionalProperties": false,
                 "required": [
                   "textContent",
                   "textType",
@@ -127,22 +120,13 @@
                 }
               }
             },
-            "compositingEvents": { "type": "string" }
-          }
-        },
-        "editing": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": ["transition", "continuity"],
-          "properties": {
-            "transition": { "type": "string" },
-            "continuity": { "type": "string" }
+            "nonTextOverlayEvents": { "type": "string" }
           }
         },
         "confidence": {
           "type": "object",
-          "additionalProperties": true,
-          "required": ["visual", "audio", "editing", "overall"],
+          "additionalProperties": false,
+          "required": ["visual", "audio", "function"],
           "properties": {
             "visual": {
               "type": "string",
@@ -152,20 +136,21 @@
               "type": "string",
               "enum": ["high", "medium", "low", "unknown"]
             },
-            "editing": {
-              "type": "string",
-              "enum": ["high", "medium", "low", "unknown"]
-            },
-            "overall": {
+            "function": {
               "type": "string",
               "enum": ["high", "medium", "low", "unknown"]
             }
           }
+        },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     }
   },
   "properties": {
+    "schemaVersion": { "const": 2 },
     "service": { "const": "unifiedAudioVideo" },
     "schemaFingerprint": { "type": "string" },
     "request": {

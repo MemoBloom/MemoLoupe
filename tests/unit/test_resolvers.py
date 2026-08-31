@@ -13,10 +13,13 @@ from memoloupe.analysis.resolvers import (
     AudioEnergyResolver,
     BgmPresenceResolver,
     CameraMovementResolver,
+    ContentSummaryResolver,
     ModelFieldResolver,
+    MovementIntensityResolver,
     QualityFlagsResolver,
     ShotEvidenceContext,
     SpeechResolver,
+    TransitionResolver,
     build_observations,
     build_observations_with_review,
 )
@@ -99,23 +102,14 @@ class TestSpeechResolver:
         assert obs2.state == ValueState.VALUE
         assert obs2.value == "跨界句。"
 
-    def test_asr_non_complete_falls_back_to_model_value(self):
-        unified = _unified_media({"audio.speech": "模型听到的解说词"})
+    def test_asr_non_complete_does_not_fall_back_to_model_value(self):
+        # v2 的模型协议不再拥有 speech；旧 v1 残留也不能越过 ASR 事实来源。
+        unified = _unified_media({"audio.speech": "旧模型听到的解说词"})
         obs = SpeechResolver().resolve(
             _ctx({"shots": TWO_SHOTS, "asr": _asr("skipped"), "unified-media": unified})
         )
-        assert obs.state == ValueState.VALUE
-        assert obs.value == "模型听到的解说词"
-        assert obs.source == Source.UNIFIED_MODEL
-
-    def test_asr_non_complete_model_absence_claim(self):
-        unified = _unified_media({"audio.speech": "无"})
-        obs = SpeechResolver().resolve(
-            _ctx({"shots": TWO_SHOTS, "asr": _asr("failed"), "unified-media": unified})
-        )
-        assert obs.state == ValueState.ABSENT_CLAIMED
-        assert obs.original_value == "无"
-        assert obs.source == Source.UNIFIED_MODEL
+        assert obs.state == ValueState.UNKNOWN
+        assert obs.source == Source.FALLBACK
 
     def test_asr_complete_wins_over_model(self):
         unified = _unified_media({"audio.speech": "模型解说"})
@@ -279,6 +273,83 @@ def _camera_motion(value: str, *, capability: str = "complete", confidence: str 
     }
 
 
+class TestDerivedResolvers:
+    def test_content_summary_is_derived_from_atomic_visual_fields(self):
+        unified = _unified_media(
+            {
+                "visual.subjects": "一名旅客",
+                "visual.actions": "拖着行李走向登机口",
+                "visual.setting": "机场候机厅",
+                "visual.props": "行李箱",
+            }
+        )
+        obs = ContentSummaryResolver().resolve(_ctx({"unified-media": unified}))
+        assert obs.field == "visual.contentSummary"
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "一名旅客；拖着行李走向登机口；机场候机厅；行李箱"
+        assert obs.source == Source.AGGREGATE
+        assert len(obs.evidence_refs) == 4
+
+    def test_content_summary_keeps_only_concrete_model_values(self):
+        unified = _unified_media(
+            {
+                "visual.subjects": "一名旅客",
+                "visual.actions": "无",
+                "visual.setting": "unknown",
+                "visual.props": "",
+            }
+        )
+        obs = ContentSummaryResolver().resolve(_ctx({"unified-media": unified}))
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "一名旅客"
+
+    def test_movement_intensity_comes_from_camera_motion(self):
+        raw = _camera_motion("pan_right", confidence="high")
+        raw["shots"][0]["movementIntensity"] = "medium"
+        obs = MovementIntensityResolver().resolve(_ctx({"camera-motion": raw}))
+        assert obs.field == "visual.movementIntensity"
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "medium"
+        assert obs.source == Source.APPLE_VISION
+
+    def test_movement_intensity_never_uses_legacy_model_field(self):
+        unified = _unified_media({"visual.movementIntensity": "high"})
+        obs = MovementIntensityResolver().resolve(
+            _ctx({"camera-motion": None, "unified-media": unified})
+        )
+        assert obs.state == ValueState.UNKNOWN
+
+    def test_transition_comes_from_shot_boundary(self):
+        shots = {
+            "shots": [
+                {
+                    "shotID": "SH0001",
+                    "boundaryIn": {
+                        "type": "hardCutCandidate",
+                        "confidence": "high",
+                    },
+                }
+            ]
+        }
+        obs = TransitionResolver().resolve(_ctx({"shots": shots}))
+        assert obs.state == ValueState.VALUE
+        assert obs.value == "硬切"
+        assert obs.source == Source.FFMPEG
+        assert obs.evidence_refs == ("raw/shots.json#shots[0].boundaryIn",)
+
+    def test_source_start_is_deterministic_absent_transition(self):
+        shots = {
+            "shots": [
+                {
+                    "shotID": "SH0001",
+                    "boundaryIn": {"type": "sourceStart", "confidence": "high"},
+                }
+            ]
+        }
+        obs = TransitionResolver().resolve(_ctx({"shots": shots}))
+        assert obs.state == ValueState.ABSENT
+
+
 class TestCameraMovementResolverMerge:
     """D-005：Vision 与模型运镜并存；冲突进 review_reasons，不静默覆盖。"""
 
@@ -374,7 +445,10 @@ class TestCameraMovementResolverMerge:
 def _unified_media(
     shot_fields: dict, *, shot_status: str = "succeeded", shot_id: str = "SH0001"
 ) -> dict:
-    shot: dict = {"shotID": shot_id, "confidence": {"visual": "medium", "overall": "medium"}}
+    shot: dict = {
+        "shotID": shot_id,
+        "confidence": {"visual": "medium", "audio": "medium", "function": "medium"},
+    }
     for dotted, value in shot_fields.items():
         node = shot
         parts = dotted.split(".")
@@ -392,14 +466,14 @@ def _unified_media(
 
 class TestModelFieldResolver:
     def test_succeeded_shot_free_text_is_value(self):
-        raw = _unified_media({"visual.content": "机场出发画面"})
-        obs = ModelFieldResolver("visual.content").resolve(_ctx({"unified-media": raw}))
+        raw = _unified_media({"visual.subjects": "机场中的旅客"})
+        obs = ModelFieldResolver("visual.subjects").resolve(_ctx({"unified-media": raw}))
         assert obs.state == ValueState.VALUE
-        assert obs.value == "机场出发画面"
+        assert obs.value == "机场中的旅客"
         assert obs.source == Source.UNIFIED_MODEL
         assert obs.confidence == Confidence.MEDIUM
         assert obs.evidence_refs == (
-            "raw/unified-media.json#batches[0].response.shots[0].visual.content",
+            "raw/unified-media.json#batches[0].response.shots[0].visual.subjects",
         )
 
     def test_vocabulary_field_normalizes(self):
@@ -415,8 +489,8 @@ class TestModelFieldResolver:
         assert obs.original_value == "无人机俯冲螺旋景"
 
     def test_absence_claim_becomes_absent_claimed(self):
-        raw = _unified_media({"components.compositingEvents": "无"})
-        obs = ModelFieldResolver("components.compositingEvents").resolve(
+        raw = _unified_media({"components.nonTextOverlayEvents": "无"})
+        obs = ModelFieldResolver("components.nonTextOverlayEvents").resolve(
             _ctx({"unified-media": raw})
         )
         assert obs.state == ValueState.ABSENT_CLAIMED
@@ -431,24 +505,24 @@ class TestModelFieldResolver:
         assert obs.original_value == "无"
 
     def test_model_unknown_text_is_unknown(self):
-        raw = _unified_media({"visual.content": "unknown"})
-        obs = ModelFieldResolver("visual.content").resolve(_ctx({"unified-media": raw}))
+        raw = _unified_media({"visual.subjects": "unknown"})
+        obs = ModelFieldResolver("visual.subjects").resolve(_ctx({"unified-media": raw}))
         assert obs.state == ValueState.UNKNOWN
 
     def test_pending_shot_is_unknown(self):
-        raw = _unified_media({"visual.content": "机场"}, shot_status="pending")
-        obs = ModelFieldResolver("visual.content").resolve(_ctx({"unified-media": raw}))
+        raw = _unified_media({"visual.subjects": "机场"}, shot_status="pending")
+        obs = ModelFieldResolver("visual.subjects").resolve(_ctx({"unified-media": raw}))
         assert obs.state == ValueState.UNKNOWN
         assert obs.evidence_refs == ()
 
     def test_missing_file_is_unknown(self):
-        obs = ModelFieldResolver("visual.content").resolve(_ctx({"unified-media": None}))
+        obs = ModelFieldResolver("visual.subjects").resolve(_ctx({"unified-media": None}))
         assert obs.state == ValueState.UNKNOWN
 
     def test_shape_mismatch_does_not_fall_back_to_first_element(self):
         """docs/04 §8.5 回归护栏：response 数组形状不符时按 shotID 查找，不得取 [0]。"""
-        raw = _unified_media({"visual.content": "机场"}, shot_id="SH0002")
-        obs = ModelFieldResolver("visual.content").resolve(
+        raw = _unified_media({"visual.subjects": "机场"}, shot_id="SH0002")
+        obs = ModelFieldResolver("visual.subjects").resolve(
             _ctx({"unified-media": raw}, "SH0001")
         )
         assert obs.state == ValueState.UNKNOWN
@@ -470,10 +544,13 @@ class TestBuildObservations:
             "audio.energy",
             "quality.flags",
             "visual.cameraMovement",
-            "visual.content",
+            "visual.movementIntensity",
+            "visual.contentSummary",
+            "visual.subjects",
             "visual.framing",
             "function.shotTone",
             "audio.bgmStyle",
+            "audio.soundEvents",
             "editing.transition",
         ):
             assert expected in fields

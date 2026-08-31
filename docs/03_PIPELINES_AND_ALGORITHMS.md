@@ -83,16 +83,16 @@ EDGE_WEIGHT = 3.75211168
 SCORE_OFFSET = 5.485968377115124
 ```
 
-推荐实现过程：
+当前实现过程（`shots.v2`）：
 
-1. 用 ffmpeg 按分析 fps 解码，应用视频旋转，缩放到不超过 128 的分析尺寸。
-2. 输出固定像素格式的裸帧流，逐帧处理，不把全部帧留在内存。
-3. 为每帧计算：归一化颜色直方图、边缘图或边缘统计、平均亮度。
-4. 对相邻帧计算 histogram similarity、edge similarity、brightness delta。
-5. 计算原始切点 score。已知契约说明“score 越低越像硬切”，因此实现必须保持该方向。
-6. 使用 raw negative score 和 adaptive outlier 两条入选路径。
-7. 通过最小帧间距抑制重复候选。
-8. 将分析范围起止加入边界，生成 shots。
+1. 用 ffmpeg 按源帧率解码（最高 60 fps），应用视频旋转并缩放到不超过 128 的分析宽度。
+2. 输出 RGB24 裸帧流，逐帧计算 HSV、Sobel 边缘图、luma 与平均亮度；只为候选复核保留低分辨率 luma。
+3. 对相邻帧计算逐像素 HSV 内容变化与 Sobel 边缘变化；`score=-changeValue`，保持“越低越像硬切”。
+4. 在切点前后各 3 帧的局部滑窗内计算 adaptive ratio，避免快运动或快切片段污染全片阈值。
+5. `changeValue >= 60` 走 `rawNegativeScore`；否则须同时满足 `changeValue >= 15` 与 `adaptiveRatio >= 3.5` 才走 `adaptiveOutlier`。
+6. 仅对候选计算全局 SSIM；高相似的弱自适应候选被拒绝。
+7. 以 500ms 最小镜头执行置信度感知短段合并；两个高置信快切允许缩短到 200ms。被抑制候选保留在 `suppressedBoundaries`。
+8. 将分析范围起止加入边界生成 shots；检测边界不得被后续音频校准覆盖。
 
 原文未给出相似度的精确公式。初版推荐：
 
@@ -106,11 +106,12 @@ score = SCORE_OFFSET - raw_strength
 
 该公式标记为 CALIBRATION，不属于稳定契约。测试应锁定方向、不变量和已知样例，而不是在没有黄金数据时锁死数值。
 
-候选选择推荐：
+候选选择：
 
-- `rawNegativeScore`：score < 0。
-- `adaptiveOutlier`：在局部或全局稳健分布中明显偏低，例如低于 median - k*MAD。
-- 同一最小镜头窗口中多个候选只保留 score 最低者。
+- `rawNegativeScore`：原始 changeValue 达到强切阈值。
+- `adaptiveOutlier`：相对局部滑动窗口明显突出，且通过 SSIM 复核。
+- 同一最小镜头窗口中优先保留 changeValue 最大者；高置信快速剪辑不盲目合并。
+- 所有短段合并或 SSIM 拒绝的候选均作为 raw evidence 保留。
 - 首尾不作为普通 hard cut boundary。
 
 极端情况：
@@ -190,6 +191,8 @@ FEATURE_WEIGHTS = (1.0, 0.8, 0.8, 0.6, 0.8, 0.8)
 - 可统一宽度、fps、编码和音频参数；
 - 必须记录 normalization 和 cache key；
 - 短于 800 ms 的 clip 可补齐；恢复策略可补到至少 2000 ms、宽度 720；
+- 有音轨的短 clip 必须同时补帧与补静音，并截成音画等长的合法 MP4；
+- 模型代理使用 faststart 封装，避免只支持顺序读取的 Data URI 解码器失效；
 - 补齐只影响模型输入，不改变证据 clip 和镜头边界。
 
 禁止把外部抽取 JPEG 作为模型视频理解的替代输入。模型 request 的 `externalFrameExtraction=false`。
@@ -295,13 +298,19 @@ peak   >= -12 dB
 
 阈值为 CALIBRATION。neutralMotions 与原始 evidence 必须保留。
 
-### 2.12 UnifiedMLLM 三组分析
+### 2.12 UnifiedMLLM v2 三组分析
 
 内部推荐三组，最终仍合并为单个 modelShot：
 
-1. `visual`：视觉内容、镜头语言、色彩、光线、文字和合成。
-2. `audio`：可听语音、BGM 风格、音效。
-3. `editing_function`：素材形态、情绪、语气、转场、连续性。
+1. `visual`：主体、动作、场景、道具、镜头语言、色彩、光源、文字和非文字图层。
+2. `audio`：BGM 风格和声音事件；语音转写只由 ASR 提供。
+3. `function`：素材形态、人物情绪和镜头语气。
+
+模型不得重复输出 `visual.content`、`visual.subjectCoverage`、
+`visual.movementIntensity`、`audio.speech`、`editing.transition`、
+`editing.continuity` 或 `confidence.overall`。其中内容摘要由
+subjects/actions/setting/props 派生，运动强度来自 camera-motion，硬切转场
+来自 shots 边界；连续性属于相邻镜头关系，单镜头 clip 请求不负责判断。
 
 每组拥有：
 
@@ -318,8 +327,12 @@ peak   >= -12 dB
 - clip 使用 video Data URI；
 - videoFPS 默认 10；
 - mediaResolution 默认 default；
+- 视频 content part 必须显式携带 `fps` 与 `media_resolution`；
+- 结构化提取默认关闭深度思考，`maxCompletionTokens` 默认 4096；
 - 温度尽量低；
 - prompt 强制 shotID 原样返回，不允许额外镜头。
+- 请求必须把每个 `video_url` 的顺序与具体 `SHxxxx` 显式映射；不得让模型
+  从代理内部时间码猜测 shotID。
 
 响应解析顺序：
 
@@ -362,11 +375,11 @@ peak   >= -12 dB
 
 ```text
 shotID + time range
-+ visual.content
-+ subjects/actions/setting
++ contentSummary（由 subjects/actions/setting/props 派生）
++ subjects/actions/setting/props
 + ASR speech
 + text overlays
-+ transition/continuity
++ deterministic transition
 + deterministic boundary and audio signals
 ```
 

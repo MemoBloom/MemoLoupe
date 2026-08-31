@@ -47,7 +47,7 @@
 已关闭的路线分歧：
 
 - BGM 存在性只由 `music-flags.json` 的确定性检测负责；UnifiedMLLM 只输出 `bgmStyle`。
-- UnifiedMLLM 保留 visual/audio/editing_function 三组内部执行；下游只消费合并后的稳定 `unified-media.json`。
+- UnifiedMLLM v2 使用 visual/audio/function 三组内部执行；speech、contentSummary、movementIntensity 与 transition 由专属 Resolver/确定性证据提供；下游只消费合并后的稳定 `unified-media.json`。
 - aligned shots 的 base/aligned 指纹复用已经实现，并由 `test_aligned_run_is_fully_reusable_on_second_run` 覆盖。
 
 ## 3. 里程碑总览
@@ -117,7 +117,7 @@
 必须实现：
 
 - [x] 读取并校验 `media.json`、`shots.json`、`asr.json`、`unified-media.json`。
-- [x] 构造镜头文本摘要：shotID、时间、visual.content、subjects/actions/setting、ASR speech、文字、转场和必要确定性信号。
+- [x] 构造镜头文本摘要：shotID、时间、派生 contentSummary、subjects/actions/setting/props、ASR speech、文字、确定性转场和必要确定性信号。
 - [x] 摘要对象不得包含 clip、帧 Data URI、源视频二进制或模型代理路径。
 - [x] ASR segments 按时间排序，按 `gapMs`（默认 1200）创建停顿段。
 - [x] 实现 `segment_of(start_ms, end_ms)`；首镜头必须强制创建首 block。
@@ -393,7 +393,7 @@ Phase 1 fixture/output
 
 实现要点：
 
-- 闭集 = docs/07 全部受控字段（modelShot 22 + story 8），契约测试锁定；
+- v2 闭集 = docs/07 当前 modelShot 受控字段（18）+ story 8，契约测试锁定；
 - 词表升 v2：补充 121 个英文/口语别名；`tests/contract/test_vocabulary_contract.py`
   锁定闭集清单、story_prompts 一致性、别名合法性（目标存在/单跳/casefold 唯一）、
   版本递增；

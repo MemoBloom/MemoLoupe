@@ -63,12 +63,12 @@ def _run(store, clips, service, config, sleep=NO_SLEEP):
     )
 
 
-def _payload(group_name: str, shot_ids, *, content_prefix: str | None = None) -> str:
+def _payload(group_name: str, shot_ids, *, subjects_prefix: str | None = None) -> str:
     shots = []
     for sid in shot_ids:
         shot = _default_shot_fields(group_name, sid)
-        if content_prefix and "visual" in shot:
-            shot["visual"]["content"] = f"{content_prefix}-{sid}"
+        if subjects_prefix and "visual" in shot:
+            shot["visual"]["subjects"] = f"{subjects_prefix}-{sid}"
         shots.append(shot)
     return json.dumps({"shots": shots}, ensure_ascii=False)
 
@@ -131,12 +131,12 @@ class TestHappyPath:
             assert {s["shotID"] for s in batch["response"]["shots"]} == set(
                 batch["shotIDs"]
             )
-        # 合并后的 modelShot 六段齐全且字段完整
+        # 合并后的 modelShot v2 五段齐全且字段完整
         shot = doc["batches"][0]["response"]["shots"][0]
-        for section in ("visual", "function", "audio", "components", "editing", "confidence"):
+        for section in ("visual", "function", "audio", "components", "confidence"):
             assert section in shot
-        assert len(shot["visual"]) == 21
-        assert set(shot["confidence"]) == {"visual", "audio", "editing", "overall"}
+        assert len(shot["visual"]) == 18
+        assert set(shot["confidence"]) == {"visual", "audio", "function"}
 
     def test_model_defaults_to_mock(self, tmp_path):
         clips = _clips_info(1)
@@ -153,7 +153,7 @@ class TestHappyPath:
             ArtifactStore(tmp_path), clips, _good_service(["SH0001"]), _config()
         )
         shot = doc["batches"][0]["response"]["shots"][0]
-        assert shot["components"]["compositingEvents"] == "无"
+        assert shot["components"]["nonTextOverlayEvents"] == "无"
         assert shot["visual"]["subjects"] == "无"
 
     def test_out_of_order_response_aligned_by_id(self, tmp_path):
@@ -162,7 +162,7 @@ class TestHappyPath:
 
         def script(clips_arg, group, call_index):
             ids = [c.shot_id for c in clips_arg]
-            return _payload(group.name, list(reversed(ids)), content_prefix="content")
+            return _payload(group.name, list(reversed(ids)), subjects_prefix="subject")
 
         doc = _run(ArtifactStore(tmp_path), clips, MockUnifiedMediaService(script), _config())
         shots = {
@@ -171,7 +171,7 @@ class TestHappyPath:
             for s in b["response"]["shots"]
         }
         for sid in ("SH0001", "SH0002", "SH0003"):
-            assert shots[sid]["visual"]["content"] == f"content-{sid}"
+            assert shots[sid]["visual"]["subjects"] == f"subject-{sid}"
 
 
 class TestResponseParsing:
@@ -573,7 +573,7 @@ class TestConcurrencyDeterminism:
             ids = [c.shot_id for c in clips_arg]
             with lock:
                 started.append(f"{group.name}:{','.join(ids)}")
-            return _payload(group.name, list(reversed(ids)), content_prefix="c")
+            return _payload(group.name, list(reversed(ids)), subjects_prefix="s")
 
         config = _config(batchSize=1, concurrency=4)
         doc = _run(ArtifactStore(tmp_path), clips, MockUnifiedMediaService(script), config)
@@ -582,4 +582,4 @@ class TestConcurrencyDeterminism:
         shots = [s for b in doc["batches"] for s in b["response"]["shots"]]
         assert [s["shotID"] for s in shots] == [c["shotID"] for c in clips]
         for shot in shots:
-            assert shot["visual"]["content"] == f"c-{shot['shotID']}"
+            assert shot["visual"]["subjects"] == f"s-{shot['shotID']}"

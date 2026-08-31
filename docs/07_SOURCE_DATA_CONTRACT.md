@@ -129,7 +129,7 @@
 
 ### 文件级结构
 
-对象，顶层字段为 `analysis`、`boundaries`、`shots`。
+对象，顶层字段为 `analysis`、`boundaries`、`suppressedBoundaries`、`shots`。
 
 ### 字段
 
@@ -140,7 +140,10 @@
 | analysis.sourceFps | number | 是 | fps | ffprobe | 源视频帧率 |
 | analysis.durationMs | integer | 是 | ms | ffprobe | 源视频时长 |
 | analysis.selectedBoundaryCount | integer | 是 | count | 视觉检测 | 有效切点数量 |
+| analysis.rawCandidateCount | integer | 否 | count | 视觉检测 | 入选和被抑制候选总数 |
+| analysis.suppressedBoundaryCount | integer | 否 | count | 视觉检测 | 被短段合并或 SSIM 拒绝的候选数 |
 | boundaries | array | 是 | boundary[] | 视觉检测 | 候选画面切点 |
+| suppressedBoundaries | array | 否 | boundary[] | 视觉检测 | 保留的被抑制原始证据，不形成 shot 边界 |
 | shots | array | 是 | shot[] | 系统 | 最终镜头列表 |
 | shot.shotID | string | 是 | `SH<4位数字>` | 系统 | 镜头唯一标识 |
 | shot.sequenceIndex | integer | 是 | 从 1 开始 | 系统 | 时间顺序 |
@@ -154,8 +157,12 @@
 | shot.needsReview | boolean | 是 | true/false | 系统 | 是否需要人工复核 |
 | boundary.timeSec | number | 是 | sec | 视觉检测 | 候选切点时间 |
 | boundary.score | number | 是 | detector score | 视觉检测 | 切点分数，越低越像硬切 |
-| boundary.histogramSimilarity | number | 是 | detector score | 视觉检测 | 颜色直方图相似度 |
+| boundary.histogramSimilarity | number | 是 | 0..1 | 视觉检测 | shots.v2 为 HSV 联合颜色直方图相交相似度 |
 | boundary.edgeSimilarity | number | 是 | detector score | 视觉检测 | 边缘结构相似度 |
+| boundary.contentDelta | number | 否 | >=0 | 视觉检测 | HSV 逐像素内容变化 |
+| boundary.edgeDelta | number | 否 | >=0 | 视觉检测 | Sobel 边缘图变化 |
+| boundary.adaptiveRatio | number | 否 | >=0 | 视觉检测 | 相对局部滑窗的变化比率 |
+| boundary.ssim | number | 否 | -1..1 | 视觉检测 | 候选复核 SSIM |
 | boundary.confidence | string | 是 | high/medium/low | 视觉检测 | 候选切点置信度 |
 | boundary.selectionReason | string | 是 | `rawNegativeScore`/`adaptiveOutlier` | 视觉检测 | 入选原因 |
 
@@ -507,12 +514,13 @@
 
 ### 文件级结构
 
-对象，顶层字段为 `service`、`schemaFingerprint`、`request`、`retryPolicy`、`clips`、`batches`、`shotStatuses`、`status`。
+对象，顶层字段为 `schemaVersion`、`service`、`schemaFingerprint`、`request`、`retryPolicy`、`clips`、`batches`、`shotStatuses`、`status`。
 
 ### 字段
 
 | 字段 | 类型 | 必填 | 允许值/单位 | 来源 | 说明 |
 |---|---|---:|---|---|---|
+| schemaVersion | integer | 是 | `2` | 系统 | unified-media 契约版本 |
 | service | string | 是 | `unifiedAudioVideo` | 系统 | 服务类型 |
 | schemaFingerprint | string | 是 | 16 位 hash | 系统 | prompt/schema 指纹 |
 | request.model | string | 是 | model name | 系统 | 主模型 |
@@ -547,50 +555,52 @@
 | 字段 | 类型 | 必填 | 允许值/单位 | 来源 | 说明 |
 |---|---|---:|---|---|---|
 | shotID | string | 是 | `SH0001` | 系统/模型 | 镜头 ID，必须覆盖请求集合 |
-| visual.content | string | 是 | 短中文短语/unknown | 模型 | 画面概述 |
 | visual.subjects | string | 是 | 短中文短语/unknown/无 | 模型 | 主体 |
 | visual.actions | string | 是 | 短中文短语/unknown/无 | 模型 | 动作 |
 | visual.setting | string | 是 | 短中文短语/unknown | 模型 | 场景 |
 | visual.props | string | 是 | 短中文短语/unknown/无 | 模型 | 道具 |
 | visual.framing | string | 是 | 受控词表 | 模型 | 景别，可用 ` → ` 表示变化 |
-| visual.subjectCoverage | string | 是 | 受控词表 | 模型 | 主体覆盖 |
 | visual.cameraAngle | string | 是 | 受控词表 | 模型 | 摄影机角度 |
 | visual.composition | string | 是 | 受控词表 | 模型 | 构图 |
-| visual.perspective | string | 是 | 受控词表 | 模型 | 观看关系 |
-| visual.lensFeel | string | 是 | 受控词表 | 模型 | 镜头/透视感 |
+| visual.viewpoint | string | 是 | 受控词表 | 模型 | 叙事观看关系 |
+| visual.perceivedLensFeel | string | 是 | 受控词表 | 模型 | 感知透视感，不作为焦段事实 |
 | visual.cameraMovement | string | 是 | 受控词表 | 模型 | 运镜现象 |
-| visual.movementIntensity | string | 是 | 受控词表 | 模型/检测器兜底 | 运动强度 |
 | visual.brightness | string | 是 | 受控词表 | 模型 | 亮度 |
 | visual.contrast | string | 是 | 受控词表 | 模型 | 对比度 |
-| visual.lightingType | string | 是 | 受控词表 | 模型 | 光线 |
-| visual.colorTemperature | string | 是 | 受控词表 | 模型 | 色温 |
+| visual.lightingSource | string | 是 | 自然光/人工光/混合光 | 模型 | 光源来源，不混入亮度 |
+| visual.perceivedColorTemperature | string | 是 | 冷/中性/暖 | 模型 | 感知色温 |
 | visual.dominantColor | string | 是 | 短中文短语 | 模型 | 主色 |
 | visual.saturation | string | 是 | 受控词表 | 模型 | 饱和度 |
 | visual.depthOfField | string | 是 | 受控词表 | 模型 | 景深 |
-| visual.texture | string | 是 | 受控词表 | 模型 | 质感 |
+| visual.imageTexture | string | 是 | 受控词表 | 模型 | 成像质感 |
 | function.sourceMedium | string | 是 | 受控词表 | 模型 | 素材形态 |
 | function.subjectEmotion | string | 是 | 受控词表 | 模型 | 人物情绪 |
 | function.shotTone | string | 是 | 受控词表 | 模型 | 镜头语气 |
-| audio.speech | string | 是 | 原文/unknown/无 | 模型 | clip 内可听语音；ASR 优先 |
 | audio.bgmStyle | string | 是 | 风格短语/unknown | 模型 | BGM 风格，不回答有无 |
-| audio.soundEffects | string | 是 | 短中文短语/unknown/无 | 模型 | 音效 |
+| audio.soundEvents | string | 是 | 短中文短语/unknown/无 | 模型 | 可听声音事件 |
 | components.texts | array | 是 | textItem[] | 模型 | 画面文字/后期文字 |
 | textItem.textContent | string | 是 | 原文 | 模型 | 文字内容 |
 | textItem.textType | string | 是 | 受控词表 | 模型 | 文字类型 |
 | textItem.textStyle | string | 是 | 短中文短语 | 模型 | 文字样式 |
 | textItem.textAnimation | string | 是 | 受控词表 | 模型 | 文字动画 |
-| components.compositingEvents | string | 是 | 短中文短语/unknown/无 | 模型 | 后期图层/合成事件 |
-| editing.transition | string | 是 | 受控词表 | 模型 | 转场 |
-| editing.continuity | string | 是 | 受控词表 | 模型 | 连续性 |
+| components.nonTextOverlayEvents | string | 是 | 短中文短语/unknown/无 | 模型 | 非文字后期图层/合成事件 |
 | confidence.visual | string | 是 | high/medium/low/unknown | 模型 | 视觉字段自评 |
 | confidence.audio | string | 是 | high/medium/low/unknown | 模型 | 声音字段自评 |
-| confidence.editing | string | 是 | high/medium/low/unknown | 模型 | 剪辑字段自评 |
-| confidence.overall | string | 是 | high/medium/low/unknown | 模型 | 总体自评 |
+| confidence.function | string | 是 | high/medium/low/unknown | 模型 | 功能语义字段自评 |
+
+以下是产品 Observation 字段而非 modelShot 字段：
+
+- `visual.contentSummary`：由 subjects/actions/setting/props 拼接，source=`aggregate`；
+- `audio.speech`：只由 ASR 生成；
+- `visual.movementIntensity`：只由 camera-motion 生成；
+- `editing.transition`：当前仅把 shots 的 `hardCutCandidate` 派生为“硬切”；
+- `editing.continuity`：v2 暂不生成，后续必须由相邻镜头关系分析器负责。
 
 ### 完整示例
 
 ```json
 {
+  "schemaVersion": 2,
   "service": "unifiedAudioVideo",
   "schemaFingerprint": "86ad19c6afbf1a02",
   "request": {
@@ -640,27 +650,24 @@
           {
             "shotID": "SH0001",
             "visual": {
-              "content": "机场出发画面",
               "subjects": "旅行者",
               "actions": "拖行李走动",
               "setting": "机场出发大厅",
               "props": "行李箱",
               "framing": "全景",
-              "subjectCoverage": "全身",
               "cameraAngle": "平视",
               "composition": "居中",
-              "perspective": "第三人称观察",
-              "lensFeel": "广角感",
+              "viewpoint": "第三人称观察",
+              "perceivedLensFeel": "广角感",
               "cameraMovement": "跟",
-              "movementIntensity": "medium",
               "brightness": "明亮",
               "contrast": "中",
-              "lightingType": "自然光",
-              "colorTemperature": "冷",
+              "lightingSource": "自然光",
+              "perceivedColorTemperature": "冷",
               "dominantColor": "蓝白",
               "saturation": "中",
               "depthOfField": "深景深",
-              "texture": "清晰"
+              "imageTexture": "清晰"
             },
             "function": {
               "sourceMedium": "实拍素材",
@@ -668,9 +675,8 @@
               "shotTone": "轻快"
             },
             "audio": {
-              "speech": "今天我们从机场出发。",
               "bgmStyle": "轻快 电子",
-              "soundEffects": "行李轮声"
+              "soundEvents": "行李轮声"
             },
             "components": {
               "texts": [
@@ -681,17 +687,12 @@
                   "textAnimation": "淡入"
                 }
               ],
-              "compositingEvents": "无"
-            },
-            "editing": {
-              "transition": "硬切",
-              "continuity": "动作连续"
+              "nonTextOverlayEvents": "无"
             },
             "confidence": {
               "visual": "medium",
               "audio": "medium",
-              "editing": "medium",
-              "overall": "medium"
+              "function": "medium"
             }
           }
         ]

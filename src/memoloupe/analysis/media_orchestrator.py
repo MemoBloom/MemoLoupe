@@ -2,7 +2,7 @@
 
 执行模型：
 
-- 三组（visual / audio / editing_function）顺序执行；每组内按
+- 三组（visual / audio / function）顺序执行；每组内按
   ``unifiedModel.batchSize``（默认 4）分批，批次用线程池并发，另有一把
   独立的模型信号量（``unifiedModel.concurrency``，默认 10）限制在途请求。
 - 响应解析严格按 docs/03 §2.12 顺序：模型文本 → 去单层 Markdown fence →
@@ -53,7 +53,7 @@ from memoloupe.media.clips import PADDED_MIN_MS, PROXY_WIDTH, SHORT_CLIP_MS
 from memoloupe.services.base import PermanentServiceError, TransientServiceError
 from memoloupe.services.unified_media import AnalysisGroup, ModelClip, UnifiedMediaService
 
-UNIFIED_MEDIA_VERSION = "unified.v1"
+UNIFIED_MEDIA_VERSION = "unified.v3"
 
 #: 指数退避基数（秒）：第 n 次重试前睡 base * 2**n（n 从 0 起）。
 _RETRY_BASE_SEC = 1.0
@@ -544,6 +544,7 @@ def run_unified_media_analysis(
         status = "partial"
 
     document = {
+        "schemaVersion": 2,
         "service": "unifiedAudioVideo",
         "schemaFingerprint": fingerprint(
             {"groupFingerprints": {group.name: group.fingerprint for group in groups}}

@@ -31,7 +31,6 @@ import numpy as np
 
 from memoloupe.artifacts.schemas import ArtifactName, validate_artifact
 from memoloupe.core.ids import make_audio_boundary_id
-from memoloupe.core.time_ranges import seconds_to_ms
 from memoloupe.media.concurrency import FFmpegPool
 from memoloupe.media.proc import run_process
 
@@ -451,11 +450,7 @@ def detect_audio_cuts(
     moved: list[dict] = []
     if align_boundaries and internal_sides:
         shots_cfg = config.get("shots", {})
-        analysis_fps = float(
-            shots.get("analysis", {}).get("fps") or shots_cfg.get("analysisFps", 2.0)
-        )
-        minimum_frames = int(shots_cfg.get("minimumFrames", 8))
-        min_shot_ms = seconds_to_ms(minimum_frames / analysis_fps)
+        min_shot_ms = int(shots_cfg.get("minimumShotMs", 500))
         moved = plan_boundary_alignment(
             internal_sides, shot_list, min_shot_ms=min_shot_ms
         )

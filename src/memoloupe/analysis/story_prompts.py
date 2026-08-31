@@ -43,13 +43,12 @@ def _format_summary(summary: dict) -> str:
     texts = "、".join(summary.get("texts", [])) or "无"
     lines = [
         f"  - {summary['shotID']} [{summary['startMs']}, {summary['endMs']}ms)",
-        f"    画面: {visual.get('content') or '未知'}",
+        f"    画面: {visual.get('contentSummary') or '未知'}",
         f"    主体/动作/场景: {visual.get('subjects') or '未知'} / "
         f"{visual.get('actions') or '未知'} / {visual.get('setting') or '未知'}",
         f"    语音: {summary.get('speech') or '无'}",
         f"    叠字: {texts}",
-        f"    转场/连续性: {editing.get('transition') or '未知'} / "
-        f"{editing.get('continuity') or '未知'}",
+        f"    入镜转场(确定性): {editing.get('transition') or '片头/未知'}",
         f"    运镜(确定性): {summary.get('cameraMovement') or 'unknown'}",
     ]
     return "\n".join(lines)

@@ -221,7 +221,8 @@ class TestStyle:
 
     def test_missing_unified_yields_empty_distributions(self):
         doc = _aggregate(**{"unified-media": None})
-        assert doc["style"]["transitions"] == {}
+        # transitions 来自 shots 边界，不依赖模型。
+        assert doc["style"]["transitions"] == {"硬切": 1.0}
         assert doc["style"]["framing"] == {}
         assert doc["style"]["lighting"] == {}
         assert doc["style"]["textOverlay"] == {}
@@ -239,12 +240,9 @@ class TestStyle:
         assert doc["style"]["cameraMovement"] == {}
 
     def test_unknown_values_excluded_from_distribution(self):
-        unified = _fixture_raws("unified-media")["unified-media"]
-        for batch in unified["batches"]:
-            for shot in batch["response"]["shots"]:
-                shot["editing"]["transition"] = "unknown"
-        unified["batches"][0]["response"]["shots"][0]["editing"]["transition"] = "硬切"
-        doc = _aggregate(**{"unified-media": unified})
+        shots = _fixture_raws("shots")["shots"]
+        shots["shots"][0]["boundaryIn"]["type"] = "sourceStart"
+        doc = _aggregate(shots=shots)
         assert doc["style"]["transitions"] == {"硬切": 1.0}
 
     def test_distribution_uses_supplied_vocabulary(self):
@@ -259,8 +257,7 @@ class TestStyle:
                     values=("远景", "全景"),
                     aliases={"wide shot": "远景"},
                 ),
-                "editing.transition": FieldRule(values=("硬切",), aliases={}),
-                "visual.lightingType": FieldRule(values=("自然光",), aliases={}),
+                "visual.lightingSource": FieldRule(values=("自然光",), aliases={}),
             },
         )
         doc = build_profile_aggregate(

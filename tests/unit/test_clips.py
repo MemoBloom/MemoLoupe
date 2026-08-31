@@ -15,7 +15,7 @@ from memoloupe.media.clips import (
 
 
 def test_version_constant() -> None:
-    assert CLIP_BUILD_VERSION == "clips.v1"
+    assert CLIP_BUILD_VERSION == "clips.v2"
 
 
 def test_clip_paths_forward_slash() -> None:
@@ -58,11 +58,18 @@ def test_proxy_argv_normalization_and_tpad() -> None:
     assert "scale=720:-2" in text
     assert "fps=10" in text
     assert "tpad=stop_mode=clone:stop_duration=1.4" in text
+    # MiMo 会拒绝视频已补帧、音频仍保持原短时长的 MP4；短镜头必须同时
+    # 补静音并用 shortest 截成同一目标时长。
+    assert "apad=whole_dur=2" in text
+    assert "-shortest" in argv
+    assert "+faststart" in argv
     assert "libx264" in text and "aac" in text
     unpadded = model_proxy_argv(
         "ffmpeg", "/in/src.mp4", 0, 1000, "/out/p.mp4", has_audio=False, pad_sec=0.0
     )
     assert not any("tpad" in a for a in unpadded)
+    assert not any("apad" in a for a in unpadded)
+    assert "-shortest" not in unpadded
     assert "-an" in unpadded
 
 

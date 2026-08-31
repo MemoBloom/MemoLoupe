@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">MemoLoupe — 把参考视频拆解为三层可复刻契约</title>
+  <desc id="desc">MemoLoupe 是三阶段拉片分析系统：镜头分析产出 shot-analysis.html，故事分析产出 story-analysis.html，风格档案产出 style-profile.json。</desc>
+
+  <rect width="1200" height="420" rx="26" fill="#0d1117"/>
+
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0c75e"/>
+      <stop offset="1" stop-color="#d9a13b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 左列：标题与价值 -->
+  <g id="title-block" transform="translate(56 56)">
+    <text x="0" y="14" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">参考视频拆解 · 分阶段媒体分析系统</text>
+
+    <g transform="translate(0 44)">
+      <text x="0" y="64" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="64" font-weight="700" fill="#e6edf3">MemoLoupe</text>
+      <!-- Loupe motif：放大镜取景框 -->
+      <g transform="translate(470 6)" stroke="url(#gold)" stroke-width="6" fill="none">
+        <circle cx="34" cy="34" r="28"/>
+        <line x1="54" y1="54" x2="76" y2="76"/>
+        <circle cx="34" cy="34" r="10" fill="url(#gold)" stroke="none"/>
+      </g>
+    </g>
+
+    <text x="0" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="22" fill="#c9d1d9">把一段参考视频拆成</text>
+    <text x="0" y="188" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="22" fill="#c9d1d9"><tspan fill="#e3b341" font-weight="600">镜头</tspan> → <tspan fill="#e3b341" font-weight="600">故事块</tspan> → <tspan fill="#e3b341" font-weight="600">风格档案</tspan>，</text>
+    <text x="0" y="224" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif" font-size="22" fill="#c9d1d9">人工校对的拉片结论可复刻、可追溯。</text>
+
+    <text x="0" y="300" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">边界：输出止于 style profile，不生成 Story Spine / 粗剪 / FCPXML</text>
+  </g>
+
+  <!-- 右列：三阶段产物清单（终端面板） -->
+  <g id="output-panel" transform="translate(700 56)">
+    <rect width="444" height="308" rx="14" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+    <rect width="444" height="40" rx="14" fill="#21262d"/>
+    <rect y="26" width="444" height="14" fill="#21262d"/>
+    <circle cx="30" cy="20" r="5" fill="#f85149"/>
+    <circle cx="50" cy="20" r="5" fill="#e3b341"/>
+    <circle cx="70" cy="20" r="5" fill="#3fb950"/>
+    <text x="96" y="26" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">memoloupe output</text>
+
+    <g transform="translate(28 76)">
+      <circle cx="8" cy="0" r="4" fill="#e3b341"/>
+      <text x="26" y="7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="600" fill="#e6edf3">PHASE 1 · SHOT</text>
+      <text x="26" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">shot-analysis.html</text>
+      <text x="344" y="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" fill="#3fb950">镜头时间线 · 五态观察</text>
+    </g>
+    <line x1="28" y1="132" x2="416" y2="132" stroke="#30363d" stroke-width="1"/>
+    <g transform="translate(28 148)">
+      <circle cx="8" cy="0" r="4" fill="#e3b341"/>
+      <text x="26" y="7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="600" fill="#e6edf3">PHASE 2 · STORY</text>
+      <text x="26" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">story-analysis.html</text>
+      <text x="344" y="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" fill="#3fb950">故事块 · 插槽 · 关系</text>
+    </g>
+    <line x1="28" y1="204" x2="416" y2="204" stroke="#30363d" stroke-width="1"/>
+    <g transform="translate(28 220)">
+      <circle cx="8" cy="0" r="4" fill="#e3b341"/>
+      <text x="26" y="7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="600" fill="#e6edf3">PHASE 3 · PROFILE</text>
+      <text x="26" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">style-profile.json</text>
+      <text x="344" y="7" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" fill="#3fb950">叙事 / 节奏 / 风格契约</text>
+    </g>
+    <line x1="28" y1="220" x2="416" y2="220" stroke="none"/>
+    <g transform="translate(28 276)">
+      <text x="0" y="7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8b949e">memoloupe validate --strict</text>
+      <text x="262" y="7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#3fb950">✓ 0 errors</text>
+    </g>
+  </g>
+</svg>

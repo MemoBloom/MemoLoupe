@@ -19,9 +19,6 @@ pytestmark = pytest.mark.skipif(
     reason="ffmpeg/ffprobe 不在 PATH",
 )
 
-ANALYSIS_FPS = DEFAULT_CONFIG["shots"]["analysisFps"]
-
-
 def _run_ffmpeg(argv: list[str]) -> None:
     proc = subprocess.run(
         ["ffmpeg", "-hide_banner", "-v", "error", "-y", *argv],
@@ -98,7 +95,7 @@ class TestDetectShotsIntegration:
 
         analysis = result["analysis"]
         assert analysis["method"] == "memoClipHardCutCandidateCuts"
-        assert analysis["fps"] == pytest.approx(ANALYSIS_FPS)
+        assert analysis["fps"] == pytest.approx(media["source"]["frameRate"])
         assert analysis["algorithmVersion"] == SHOT_DETECTION_VERSION
         assert analysis["limitations"]
 
@@ -106,7 +103,7 @@ class TestDetectShotsIntegration:
         boundaries = result["boundaries"]
         assert len(boundaries) == 1
         boundary = boundaries[0]
-        tolerance_sec = 1.0 / ANALYSIS_FPS
+        tolerance_sec = 1.0 / analysis["fps"]
         assert boundary["timeSec"] == pytest.approx(2.0, abs=tolerance_sec)
         assert boundary["type"] == "hardCutCandidate"
         assert boundary["selectionReason"] in ("rawNegativeScore", "adaptiveOutlier")
@@ -147,7 +144,7 @@ class TestDetectShotsIntegration:
         assert shots[0]["shotID"] == "SH0001"
         assert shots[0]["finalStartMs"] == 0
         assert shots[0]["finalEndMs"] == media["source"]["durationMs"]
-        # 镜头短于 minimumFrames/analysisFps → 需要人工复核
+        # 镜头不长于 minimumShotMs → 需要人工复核
         assert shots[0]["needsReview"] is True
 
     def test_analyzed_range_restricts_detection(self, hardcut_clip):

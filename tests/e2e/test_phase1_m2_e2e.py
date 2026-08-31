@@ -51,7 +51,7 @@ def _group_payload(group_name: str, shot_ids: list[str]) -> str:
             if section == "confidence":
                 shot["confidence"] = {name: "medium" for name in fields}
             elif section == "components":
-                shot["components"] = {"texts": [], "compositingEvents": "无"}
+                shot["components"] = {"texts": [], "nonTextOverlayEvents": "无"}
             else:
                 shot[section] = {name: "无" for name in fields}
         shots.append(shot)
@@ -135,7 +135,7 @@ class TestMockFullRun:
 class TestCheckpointResume:
     """场景 3：unified 编排中断 → 首次 partial；同配置重跑只补未完成镜头。
 
-    中断方式：脚本 mock 在最后一组（editing_function）的第二批抛非服务类
+    中断方式：脚本 mock 在最后一组（function）的第二批抛非服务类
     异常（RuntimeError 不在编排器重试/回退范围内，原样传播——docs/03 §2.12
     “每次成功请求后立即 checkpoint”，已完成镜头因此保留在 checkpoints/）。
     """
@@ -154,10 +154,10 @@ class TestCheckpointResume:
                 group, ["SH0001", "SH0002"]
             )
             script[(group, ("SH0003",))] = _group_payload(group, ["SH0003"])
-        script[("editing_function", ("SH0001", "SH0002"))] = _group_payload(
-            "editing_function", ["SH0001", "SH0002"]
+        script[("function", ("SH0001", "SH0002"))] = _group_payload(
+            "function", ["SH0001", "SH0002"]
         )
-        script[("editing_function", ("SH0003",))] = RuntimeError("编排中断")
+        script[("function", ("SH0003",))] = RuntimeError("编排中断")
         first_mock = MockUnifiedMediaService(script)
         first = pipeline.run(
             ShotAnalysisRequest(
@@ -179,7 +179,7 @@ class TestCheckpointResume:
         }
         assert saved["unified-media-visual.json"] == {"SH0001", "SH0002", "SH0003"}
         assert saved["unified-media-audio.json"] == {"SH0001", "SH0002", "SH0003"}
-        assert saved["unified-media-editing_function.json"] == {"SH0001", "SH0002"}
+        assert saved["unified-media-function.json"] == {"SH0001", "SH0002"}
 
         # 重跑（同 config，新 mock 全部成功）：只应请求未完成镜头
         def succeed(clips, group, call_index):
