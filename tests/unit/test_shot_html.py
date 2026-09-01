@@ -121,16 +121,17 @@ class TestRenderWithoutModelArtifacts:
         # absent 与 unknown 可见文案不同。
         assert "无（确定性检测）" in html
         assert "未知" in html
-        # confidence=unknown 不隐藏。
-        assert "置信度 unknown" in html
+        # confidence=unknown 不隐藏，但 UI 显示为用户可读中文。
+        assert "可信度待确认" in html
 
     def test_missing_clips_disable_play_buttons(self, tmp_path):
         work = _copy_fixture(tmp_path)
         assert not (work / "clips").exists()
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert 'data-clip-src="clips/' not in html
-        assert html.count("play-btn") >= 3
+        assert html.count("shot-jump") >= 3
         assert "disabled" in html
+        assert 'id="play-full-video"' in html
 
     def test_snapshot_root_and_cell(self, tmp_path):
         work = _copy_fixture(tmp_path)
@@ -141,7 +142,7 @@ class TestRenderWithoutModelArtifacts:
         assert html_line == (
             '<html lang="zh-CN" data-document-type="shotAnalysis" '
             'data-document-status="draft" data-contract-version="1.0" '
-            'data-source-revision="a1b2c3d4e5f6">'
+            'data-source-revision="a1b2c3d4e5f6" data-render-version="render.v2">'
         )
         # 锁一个确定性单元格片段（属性顺序固定）。
         assert (
@@ -155,7 +156,7 @@ class TestRenderWithoutModelArtifacts:
         work = _copy_fixture(tmp_path)
         html = render_shot_html(work, status="underReview").read_text(encoding="utf-8")
         assert 'data-document-status="underReview"' in html
-        assert "<dd>underReview</dd>" in html
+        assert "<dd>校对中</dd>" in html
 
 
 class TestRenderWithModelArtifacts:
@@ -176,7 +177,7 @@ class TestRenderWithModelArtifacts:
             'data-field="components.nonTextOverlayEvents" data-shot-id="SH0001" '
             'data-value-state="absent-claimed"' in html
         )
-        assert "模型声称无" in html
+        assert "模型未发现" in html
 
     def test_model_output_is_escaped(self, tmp_path):
         work = _copy_fixture(tmp_path)
@@ -213,11 +214,35 @@ class TestResourcePolicy:
         )
         # 代表帧使用相对路径。
         assert 'src="evidence/frames/F_SH0001_MAIN.jpg"' in html
-        # needsReview 过滤控件与键盘可达的播放按钮。
+        # needsReview 过滤控件、时间线跳转、完整视频入口与右侧分层详情。
         assert 'id="filter-needs-review"' in html
         assert "<button" in html
-        assert SHOT_RENDER_VERSION == "render.v1"
-        assert "render.v1" in html
+        assert 'id="play-full-video"' in html
+        assert SHOT_RENDER_VERSION == "render.v2"
+        assert "render.v2" in html
+        assert 'id="shot-summary"' in html
+        assert 'id="shot-timeline"' in html
+        assert 'class="filmstrip"' in html
+        assert "镜头详情" in html
+        assert 'id="field-matrix-panel"' in html
+        assert "默认收起" in html
+        assert "inspector-hero" in html
+        assert "快速判断" in html
+        assert "详细信息" in html
+        assert "只看异常" in html
+        assert "待确认" in html
+        assert "inspector-field-row" in html
+        assert "inspector-field-summary" in html
+        assert 'class="field-category-nav"' in html
+        assert 'data-field-filter="core"' in html
+        assert 'data-field-group="core"' in html
+        assert 'data-field-group="visual-style"' in html
+        assert "核心审片" in html
+        assert "镜头内容摘要" in html
+        assert "var SHOT_INSPECTOR =" in html
+        assert '"clipSrc"' in html
+        assert '"frameRef"' in html
+        assert '"groups"' in html
 
 
 class TestCorrectionsOverlay:
@@ -246,7 +271,13 @@ class TestCorrectionsOverlay:
         _install_fake_corrections(monkeypatch, status=doc_status)
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert f'data-document-status="{doc_status}"' in html
-        assert f"<dd>{doc_status}</dd>" in html
+        labels = {
+            "draft": "未校对",
+            "underReview": "校对中",
+            "confirmed": "已确认",
+            "outdated": "需更新",
+        }
+        assert f"<dd>{labels[doc_status]}</dd>" in html
 
     def test_overlay_rendered_doc_validates_strict(self, tmp_path, monkeypatch):
         work = _copy_fixture(tmp_path)
@@ -278,6 +309,7 @@ class TestEditingControls:
         # visual.framing 是受控词表字段，fixture 中 SH0001 当前值为 全景。
         for value in ("远景", "全景", "中景", "近景", "特写", "unknown"):
             assert f'<option value="{value}"' in html
+        assert '<option value="unknown">待确认</option>' in html
         assert '<option value="全景" selected>全景</option>' in html
         assert '<select class="cell-edit" data-field="visual.framing" ' in html
 
@@ -300,9 +332,9 @@ class TestEditingControls:
         unified.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
         html = render_shot_html(work).read_text(encoding="utf-8")
-        # 原文不得可解析地出现在 option 中；escape 后的原文与“待映射”提示必须可见。
-        assert '"引号" <b>中文</b>（待映射）' not in html
-        assert "&quot;引号&quot; &lt;b&gt;中文&lt;/b&gt;（待映射）" in html
+        # 原文不得可解析地出现在 option 中；escape 后的原文与“待归类”提示必须可见。
+        assert '"引号" <b>中文</b>（待归类）' not in html
+        assert "&quot;引号&quot; &lt;b&gt;中文&lt;/b&gt;（待归类）" in html
         # 单元格状态仍为 unmapped。
         assert (
             'data-field="visual.framing" data-shot-id="SH0001" '
@@ -326,7 +358,8 @@ class TestServerModeAndActions:
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert 'id="export-corrections"' in html
         assert 'id="confirm-document"' in html
-        assert "确认文档" in html
+        assert "导出校对记录" in html
+        assert "确认本次校对" in html
         # 本地保存按钮存在（server 模式下由 JS 取消 hidden）。
         assert 'id="save-corrections"' in html
 
@@ -388,6 +421,7 @@ class TestReviewReasonsAndBoundary:
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert 'data-needs-review="true"' not in html
         assert '<span class="needs-review-badge">' not in html
+        assert "需人工复核</span>" not in html
         for shot_id in ("SH0001", "SH0002", "SH0003"):
             assert self._column_reasons(html, shot_id) == []
 
@@ -406,13 +440,18 @@ class TestReviewReasonsAndBoundary:
             else:
                 assert 'data-needs-review="false"' in header
 
-    def test_boundary_form_present_per_column(self, tmp_path):
+    def test_boundary_form_moved_to_sidebar_inspector(self, tmp_path):
         work = _copy_fixture(tmp_path)
         html = render_shot_html(work).read_text(encoding="utf-8")
-        assert 'class="boundary-form" data-shot-id="SH0001"' in html
-        assert 'name="finalStartMs" value="0"' in html
-        assert 'name="finalEndMs" value="3203"' in html
-        assert "提交边界修正" in html
+        assert 'class="boundary-form"' not in html
+        assert "inspector-boundary" in html
+        assert "inspector-boundary-form" in html
+        assert "时间范围" in html
+        assert 'name = "finalStartMs"' in html
+        assert 'name = "finalEndMs"' in html
+        assert '"startMs": 0' in html
+        assert '"endMs": 3203' in html
+        assert "保存时间调整" in html
         # 循环播放开关（默认关）。
         assert 'id="loop-shot"' in html
 
@@ -428,4 +467,4 @@ class TestReviewReasonsAndBoundary:
         work = _copy_fixture(tmp_path)
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert 'id="validation-summary"' in html
-        assert "未提供校验摘要" in html
+        assert "未提供检查结果" in html

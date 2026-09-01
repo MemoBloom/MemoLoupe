@@ -550,6 +550,67 @@ faststart 仍失败。补齐音频使两轨均为 2.000s 后，同一 Base64 cli
 成功并正确识别 Disney 气球画面。该调整只影响模型输入代理，不改变证据
 clip、detected/final 镜头边界或稳定 JSON 时间字段。
 
+### D-049：连续演唱的全轨 BGM 检测（music.v2，CALIBRATION）
+
+决策：BGM 检测不再在 `ASR status=complete` 时只分析 speech gaps，而是始终
+执行全轨 STFT 扫描，并在 ASR 完成时融合 gap anchor。全轨单窗不能只凭响度
+判 music：必须满足低频/调性与谱平坦度组合条件；高谱平坦度宽带噪声保持
+unknown。逐窗 music 先合并不超过 600ms 的非静音缺口，再移除短于 400ms 的
+命中；silent 必须低于 -55dB 且持续至少 500ms，避免把安静歌词间隙升级为
+确定性 absent。算法版本升为 `music.v2`，music 配置和版本均进入指纹。
+
+实证：`video/disney.MP4` 的本地 ASR 生成 27 个 segments，旧算法只剩两个
+短 gap，结果为 music=0/silent=1/unknown=62。`music.v2` 只读重算得到
+music=59/silent=0/unknown=4，音乐区间主要覆盖 4.389–55.983s；合成回归同时
+验证“ASR 覆盖全段的连续双音伴奏”可检出，以及响亮宽带噪声不会被误判为
+music。该检测仍是 CALIBRATION，不声称能可靠区分所有纯人声与复杂伴奏。
+
+理由：连续演唱中 speech 与 BGM 可以共存；ASR 是文本证据，不能作为关闭
+全轨音乐检测的控制信号。保持 `music-flags.json` 对 BGM presence 的唯一
+所有权，MiMo 仍只负责 `bgmStyle`。
+
+### D-050：shadcn-inspired Shot HTML 审片工作台（render.v2）
+
+决策：`shot-analysis.html` 的生产模板采用 shadcn/ui 的 Card、Table、Badge、
+Sidebar/Sheet 组合原则重设计，但保持原生离线 HTML/CSS/JS，不执行
+`shadcn init`、不引入 React/Tailwind 构建链，也不加载 CDN。页面新增审片
+总览卡片、按镜头时长加权的时间线、代表帧胶片条、粘性播放器和右侧证据
+Sheet；字段矩阵、播放按钮、复核过滤、boundary 修正、corrections 导出/
+保存/确认等既有交互继续保留。
+
+约束：HTML 仍是人工校对视图，JSON 仍是机器主契约。所有原有
+`data-document-*`、镜头列 `data-shot-id/start/end/needs-review/review-reasons`
+以及字段单元格 `data-field/value-state/confidence/evidence-refs/source/verified`
+语义保持稳定；新增总览值必须标注来源，新增时间线/胶片条不得冒充字段证据。
+`absent` 与 `absent-claimed` 继续使用不同文案和视觉状态。渲染版本升为
+`render.v2`，不改变 raw、resolver、corrections overlay 或 schema 契约。
+
+2026-09-01 交互细化：时间线/胶片条成为镜头缩略图和视频片段跳转的唯一主入口，
+字段矩阵默认收起并定位为高级横向对照表，避免和时间线重复承担浏览职责。点击
+任意 SHOT 后，右侧 Sidebar 显示该镜头的代表帧、播放按钮、复核理由、边界修正
+表单，以及按“核心审片、画面内容与调度、视觉风格、声音层、功能与情绪、文字与
+后期图层”分组的字段详情。播放器区域新增“浏览完整视频”按钮，用于从头查看源
+视频；单镜头循环仍由时间线/Sidebar 的镜头播放入口驱动。所有字段仍完整渲染在
+DOM 中，原始字段 key 继续显示在中文业务标签下方，便于人工和机器同时复核。
+
+2026-09-01 Sidebar 视觉细化：Sidebar 第一屏采用“代表帧 Hero、SHOT 时间码、
+播放按钮、一句话摘要、快速判断”的审片卡片结构，字段详情降级为紧凑
+label/value 行；state、confidence、source 与 raw evidence refs 默认折叠到
+二级详情中。边界修正从常驻表单改为“时间范围”折叠区；字段详情提供
+“全部/只看异常/待确认/人工修正”筛选。该变更只影响 HTML 呈现层，不改变
+Observation、corrections 或 raw/schema 契约。
+
+2026-09-01 用户文案细化：默认可见界面不直接暴露 `raw`、`resolver`、
+`corrections`、`finalStartMs/finalEndMs`、`confidence/source`、`render.v2`
+等工程术语；改用“校对时间、追溯信息、可信度、原始依据、校对记录、待确认”
+等用户语言。机器值继续保留在 `data-*`、表单 `name` 和折叠追溯层中，避免
+牺牲校验、导出和可追溯能力。
+
+理由：影视从业者复查时首先需要快速判断“哪几个镜头有问题、BGM/模型是否
+覆盖、应该从哪里开始看”，而不是直接钻进宽表。shadcn 的组合式设计能给
+静态产物提供清晰层级，但 MemoLoupe 的核心价值仍在可追溯证据与离线可审阅，
+因此采用设计语言而不引入运行时依赖。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

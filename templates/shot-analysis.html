@@ -1,85 +1,1031 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-document-type="shotAnalysis" data-document-status="__DOCUMENT_STATUS__" data-contract-version="__CONTRACT_VERSION__" data-source-revision="__SOURCE_REVISION__">
+<html lang="zh-CN" data-document-type="shotAnalysis" data-document-status="__DOCUMENT_STATUS__" data-contract-version="__CONTRACT_VERSION__" data-source-revision="__SOURCE_REVISION__" data-render-version="__SHOT_RENDER_VERSION__">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
-<title>MemoLoupe Shot Analysis</title>
+<title>MemoLoupe 镜头拉片校对台</title>
 <style>
-  :root { color-scheme: light; }
-  body { font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; margin: 0; color: #1f2328; background: #f6f8fa; }
-  header.metadata { padding: 16px 20px; background: #fff; border-bottom: 1px solid #d0d7de; }
-  header.metadata h1 { font-size: 18px; margin: 0 0 8px; }
-  .metadata-grid { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
-  .metadata-grid div { display: flex; gap: 6px; }
-  .metadata-grid dt { color: #57606a; }
-  .metadata-grid dd { margin: 0; font-weight: 600; }
-  #validation-summary { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; font-size: 13px; }
-  #validation-summary h2 { font-size: 14px; margin: 0 0 4px; }
-  #validation-summary pre { margin: 0; white-space: pre-wrap; }
-  .validation-empty { color: #57606a; margin: 0; }
-  .correction-warnings { color: #9a6700; margin: 4px 0 0; }
-  .toolbar { padding: 8px 20px; background: #fff; border-bottom: 1px solid #d0d7de; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
-  .toolbar button { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
-  .toolbar button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
-  #pending-indicator { color: #9a6700; font-size: 13px; }
-  #shot-player { width: 480px; max-width: 100%; background: #000; display: block; margin: 12px 20px; }
-  .review-layout { display: flex; align-items: flex-start; gap: 12px; padding: 12px 20px 20px; }
-  .table-wrap { overflow-x: auto; flex: 1 1 auto; min-width: 0; }
-  table { border-collapse: collapse; background: #fff; }
-  th, td { border: 1px solid #d0d7de; padding: 6px 10px; vertical-align: top; text-align: left; font-size: 13px; }
-  thead th { background: #f6f8fa; }
-  tbody th[scope="row"] { position: sticky; left: 0; background: #f6f8fa; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; white-space: nowrap; }
-  .shot-head { display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
-  .shot-id { font-weight: 700; font-family: ui-monospace, SFMono-Regular, monospace; }
-  .timecode code { background: #eaeef2; padding: 1px 4px; border-radius: 4px; user-select: all; }
-  .shot-frame { max-width: 180px; border: 1px solid #d0d7de; border-radius: 4px; }
-  .needs-review-badge { color: #9a6700; font-weight: 600; }
-  .play-btn { font: inherit; padding: 4px 10px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; }
-  .play-btn:disabled { color: #57606a; cursor: not-allowed; background: #f6f8fa; }
-  .play-btn:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
-  .boundary-form { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #57606a; }
-  .boundary-form input[type="number"] { width: 90px; font: inherit; }
-  .boundary-form button { font: inherit; padding: 2px 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; cursor: pointer; align-self: flex-start; }
-  .cell-text { display: block; }
-  .cell-confidence { display: block; color: #57606a; font-size: 11px; margin-top: 2px; }
-  .cell-verified { display: inline-block; color: #1a7f37; font-size: 11px; margin-left: 4px; }
-  .cell-edit { display: block; margin-top: 4px; font: inherit; font-size: 12px; max-width: 220px; }
-  .cell-verify { display: block; margin-top: 4px; font-size: 12px; color: #1a7f37; }
-  .cell-edit:focus-visible, .verify-toggle:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
-  .state-value { color: #1f2328; }
-  .state-absent { color: #1a7f37; background: #dafbe1; }
-  .state-absent-claimed { color: #9a6700; background: #fff8c5; }
-  .state-unknown { color: #57606a; background: #f6f8fa; }
-  .state-unmapped { color: #8250df; background: #fbefff; }
-  .shot-hidden { display: none; }
-  #evidence-drawer { flex: 0 0 260px; position: sticky; top: 12px; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; font-size: 13px; }
-  #evidence-drawer h2 { font-size: 14px; margin: 0 0 4px; }
-  #evidence-drawer .drawer-hint { color: #57606a; margin: 0; }
-  #evidence-drawer code { word-break: break-all; font-size: 11px; }
-  .drawer-frame { max-width: 100%; display: block; margin: 4px 0; border: 1px solid #d0d7de; border-radius: 4px; }
+  :root {
+    color-scheme: dark;
+    --background: #09090b;
+    --foreground: #fafafa;
+    --card: #111113;
+    --card-foreground: #fafafa;
+    --popover: #18181b;
+    --popover-foreground: #fafafa;
+    --primary: #f4f4f5;
+    --primary-foreground: #09090b;
+    --secondary: #27272a;
+    --secondary-foreground: #fafafa;
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: #fafafa;
+    --destructive: #fb7185;
+    --warning: #fbbf24;
+    --success: #86efac;
+    --warning-border: rgba(251, 191, 36, 0.38);
+    --warning-bg: rgba(251, 191, 36, 0.10);
+    --success-border: rgba(134, 239, 172, 0.30);
+    --success-bg: rgba(134, 239, 172, 0.10);
+    --destructive-border: rgba(251, 113, 133, 0.35);
+    --purple-border: rgba(192, 132, 252, 0.38);
+    --border: #27272a;
+    --input: #3f3f46;
+    --ring: #a1a1aa;
+    --radius: 14px;
+    --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--background); }
+  body {
+    margin: 0;
+    color: var(--foreground);
+    background:
+      radial-gradient(circle at top left, rgba(244, 244, 245, 0.08), transparent 34rem),
+      linear-gradient(180deg, #09090b 0%, #111113 58%, #09090b 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+  button, input, select { font: inherit; }
+  button {
+    min-height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--accent); }
+  button:disabled {
+    color: var(--muted-foreground);
+    cursor: not-allowed;
+    opacity: 0.62;
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .skip-link {
+    position: fixed;
+    left: 16px;
+    top: 12px;
+    transform: translateY(-140%);
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .skip-link:focus { transform: translateY(0); }
+  .app-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 18px;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .main-shell {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(17, 17, 19, 0.92);
+    color: var(--card-foreground);
+    box-shadow: var(--shadow);
+  }
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 18px 0;
+  }
+  .card-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .card-description {
+    margin: 6px 0 0;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .badge-outline { background: transparent; color: var(--muted-foreground); }
+  .badge-warning { border-color: var(--warning-border); color: var(--warning); }
+  .badge-success { border-color: var(--success-border); color: var(--success); }
+  .badge-destructive { border-color: var(--destructive-border); color: var(--destructive); }
+  .metadata {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 22px;
+    backdrop-filter: blur(16px);
+  }
+  .metadata-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .metadata h1 {
+    margin: 0;
+    font-size: clamp(24px, 3vw, 38px);
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+  }
+  .metadata-kicker {
+    margin: 0 0 8px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 18px 0 0;
+  }
+  .metadata-grid div {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--secondary);
+    padding: 10px;
+  }
+  .metadata-grid dt {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .metadata-grid dd {
+    margin: 4px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .metadata-tech {
+    margin-top: 10px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+  .metadata-tech summary {
+    width: fit-content;
+    cursor: pointer;
+  }
+  .metadata-grid-tech {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 10px;
+  }
+  .review-grid {
+    display: grid;
+    grid-template-columns: minmax(420px, 1.15fr) minmax(320px, 0.85fr);
+    gap: 18px;
+  }
+  .player-card {
+    position: sticky;
+    top: 176px;
+    overflow: hidden;
+  }
+  .player-surface { padding: 14px; }
+  #shot-player {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #000;
+  }
+  .player-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 18px 18px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+  .player-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+  #play-full-video {
+    padding: 0 12px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 12px;
+  }
+  .side-stack {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 18px;
+  }
+  #validation-summary { padding: 18px; }
+  #validation-summary h2 {
+    margin: 0;
+    font-size: 15px;
+  }
+  #validation-summary pre {
+    margin: 12px 0 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .validation-empty {
+    margin: 10px 0 0;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+  .correction-warnings {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 12px 0 0;
+    padding-left: 18px;
+    color: var(--warning);
+    font-size: 12px;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+  }
+  .toolbar label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 10px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    font-size: 12px;
+  }
+  .toolbar button {
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  #confirm-document {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  #pending-indicator {
+    min-height: 18px;
+    color: var(--warning);
+    font-size: 12px;
+  }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 18px;
+  }
+  .metric-card {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--secondary);
+    padding: 12px;
+  }
+  .metric-label {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .metric-value {
+    margin: 6px 0 0;
+    font-size: 24px;
+    font-weight: 720;
+    letter-spacing: -0.03em;
+  }
+  .timeline-card { overflow: hidden; }
+  .timeline-track {
+    display: flex;
+    min-height: 64px;
+    gap: 2px;
+    padding: 0 18px 18px;
+  }
+  .timeline-shot {
+    flex: 0 0 max(var(--shot-width), 1.6%);
+    min-width: 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    padding: 8px 4px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 10px;
+  }
+  .timeline-shot.is-review { border-color: var(--warning-border); color: var(--warning); }
+  .timeline-shot.is-music { background: rgba(134, 239, 172, 0.12); }
+  .timeline-shot.is-unknown { border-style: dashed; color: var(--muted-foreground); }
+  .timeline-shot.is-selected {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  .filmstrip {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 10px;
+    padding: 0 18px 18px;
+  }
+  .filmstrip-shot {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    padding: 8px;
+    text-align: left;
+  }
+  .filmstrip-shot img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 8px;
+    background: #000;
+  }
+  .filmstrip-shot span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  .table-card { overflow: hidden; }
+  .matrix-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .matrix-summary::-webkit-details-marker { display: none; }
+  .matrix-summary-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field-category-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .category-tab {
+    min-height: 32px;
+    padding: 0 11px;
+    font-size: 12px;
+  }
+  .category-tab[aria-selected="true"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .table-wrap {
+    overflow: auto;
+    max-height: 76vh;
+  }
+  .shot-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--card);
+  }
+  .shot-table th,
+  .shot-table td {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 10px;
+    vertical-align: top;
+    text-align: left;
+    font-size: 12px;
+  }
+  .shot-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--popover);
+    color: var(--popover-foreground);
+  }
+  .shot-table thead th:first-child {
+    left: 0;
+    z-index: 1;
+    min-width: 150px;
+  }
+  .shot-table tbody th[scope="row"] {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    width: 150px;
+    max-width: 150px;
+    background: var(--popover);
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    white-space: normal;
+  }
+  .field-group-tbody.is-filtered-out { display: none; }
+  .field-group-tbody.is-collapsed tr:not(.field-group-row) { display: none; }
+  .field-group-row th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    padding: 0;
+    background: var(--card);
+  }
+  .field-group-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    width: 100%;
+    min-height: 54px;
+    border: 0;
+    border-radius: 0;
+    background: var(--card);
+    padding: 12px 14px;
+    color: var(--foreground);
+    text-align: left;
+  }
+  .field-group-toggle:hover {
+    background: var(--secondary);
+  }
+  .field-group-toggle span:first-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field-group-toggle strong {
+    font-size: 13px;
+  }
+  .field-group-toggle small {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .field-label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .field-key {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+  }
+  .shot-head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 190px;
+    max-width: 220px;
+  }
+  .shot-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+  }
+  .timecode code {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    padding: 3px 7px;
+    user-select: all;
+  }
+  .duration {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .shot-frame {
+    width: 100%;
+    max-width: 190px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #000;
+  }
+  .needs-review-badge {
+    display: inline-flex;
+    width: fit-content;
+    border: 1px solid var(--warning-border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    color: var(--warning);
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .cell-edit {
+    width: 100%;
+    border: 1px solid var(--input);
+    border-radius: 9px;
+    background: var(--background);
+    color: var(--foreground);
+    padding: 7px 8px;
+  }
+  .cell-text {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 260px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 4px 8px;
+    line-height: 1.45;
+  }
+  .cell-confidence,
+  .cell-verified,
+  .cell-verify {
+    display: block;
+    margin-top: 7px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .cell-verified { color: var(--success); }
+  .cell-edit { display: block; margin-top: 10px; max-width: 240px; font-size: 12px; }
+  .cell-verify {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .state-value { color: var(--foreground); background: transparent; }
+  .state-absent { border-color: var(--success-border); color: var(--success); background: var(--success-bg); }
+  .state-absent-claimed { border-color: var(--warning-border); color: var(--warning); background: var(--warning-bg); }
+  .state-unknown { border-color: var(--border); color: var(--muted-foreground); background: var(--secondary); }
+  .state-unmapped { border-color: var(--purple-border); color: #d8b4fe; background: rgba(192, 132, 252, 0.10); }
+  .shot-hidden { display: none !important; }
+  .inspector-sheet {
+    position: sticky;
+    top: 20px;
+    align-self: start;
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      linear-gradient(180deg, rgba(24, 24, 27, 0.98), rgba(12, 12, 14, 0.98));
+    color: var(--popover-foreground);
+    box-shadow: var(--shadow);
+    padding: 14px;
+  }
+  .inspector-sheet h2 {
+    margin: 0;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+  }
+  .drawer-hint {
+    margin: 6px 0 14px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .inspector-hero {
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    background: rgba(9, 9, 11, 0.72);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+  }
+  .inspector-cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #000;
+  }
+  .inspector-hero-body {
+    display: grid;
+    gap: 12px;
+    padding: 13px;
+  }
+  .inspector-title-row,
+  .inspector-time-row,
+  .inspector-section-title,
+  .inspector-field-summary,
+  .inspector-filterbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .inspector-title-row { justify-content: space-between; }
+  .inspector-shot-id {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 22px;
+    font-weight: 760;
+    letter-spacing: -0.04em;
+  }
+  .inspector-time-row {
+    justify-content: space-between;
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  .inspector-timecode {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .inspector-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .inspector-actions button {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .inspector-card {
+    margin-top: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    background: rgba(17, 17, 19, 0.78);
+    padding: 12px;
+  }
+  .inspector-card h3,
+  .inspector-card h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 680;
+  }
+  .inspector-shot-summary {
+    margin: 8px 0 0;
+    color: var(--foreground);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .quick-grid {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+  }
+  .quick-row {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-width: 0;
+  }
+  .quick-row dt {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .quick-row dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .quick-row.is-risk dd { color: var(--warning); }
+  .inspector-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .inspector-meta div {
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    background: rgba(39, 39, 42, 0.58);
+    padding: 9px;
+  }
+  .inspector-meta dt {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .inspector-meta dd {
+    margin: 4px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .inspector-section-title {
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .inspector-filterbar {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .inspector-filterbar button {
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .inspector-filterbar button.is-active {
+    border-color: rgba(244, 244, 245, 0.48);
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .review-reasons {
+    display: grid;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .review-reasons li {
+    border: 1px solid var(--warning-border);
+    border-radius: 12px;
+    background: var(--warning-bg);
+    padding: 9px 10px;
+    color: var(--warning);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .inspector-group {
+    margin-top: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(9, 9, 11, 0.28);
+  }
+  .inspector-group summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 11px;
+    background: rgba(24, 24, 27, 0.72);
+    cursor: pointer;
+    list-style: none;
+  }
+  .inspector-group summary::-webkit-details-marker { display: none; }
+  .inspector-group-title {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .inspector-group-title strong {
+    font-size: 12px;
+  }
+  .inspector-group-title small {
+    color: var(--muted-foreground);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .inspector-fields {
+    display: grid;
+    padding: 4px 10px 10px;
+  }
+  .inspector-field-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+  }
+  .inspector-field-row:last-child { border-bottom: 0; }
+  .inspector-field-row[hidden] { display: none; }
+  .inspector-field-summary {
+    min-height: 42px;
+    padding: 8px 0;
+    cursor: pointer;
+    list-style: none;
+  }
+  .inspector-field-summary::-webkit-details-marker { display: none; }
+  .state-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--muted-foreground);
+    box-shadow: 0 0 0 3px rgba(161, 161, 170, 0.10);
+  }
+  .state-row-value .state-dot,
+  .state-row-absent .state-dot {
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-bg);
+  }
+  .state-row-absent-claimed .state-dot,
+  .state-row-unknown .state-dot {
+    background: var(--warning);
+    box-shadow: 0 0 0 3px var(--warning-bg);
+  }
+  .state-row-unmapped .state-dot,
+  .state-row-human .state-dot {
+    background: #c084fc;
+    box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.12);
+  }
+  .inspector-field-label {
+    flex: 0 0 72px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .inspector-field-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .inspector-field-count {
+    flex: 0 0 auto;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
+  .inspector-field-body {
+    display: grid;
+    gap: 8px;
+    padding: 0 0 10px 17px;
+  }
+  .inspector-field-key,
+  .inspector-evidence code,
+  .inspector-boundary code {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
+  .inspector-field-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .inspector-evidence {
+    display: grid;
+    gap: 5px;
+    border-left: 1px solid var(--border);
+    padding-left: 9px;
+  }
+  .inspector-evidence-label {
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .inspector-boundary {
+    margin-top: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    background: rgba(9, 9, 11, 0.28);
+    overflow: hidden;
+  }
+  .inspector-boundary summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 11px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .inspector-boundary summary::-webkit-details-marker { display: none; }
+  .inspector-boundary-form {
+    display: grid;
+    gap: 8px;
+    padding: 0 11px 11px;
+  }
+  .inspector-boundary-form label {
+    display: grid;
+    gap: 4px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .inspector-boundary-form input[type="number"] {
+    width: 100%;
+    border: 1px solid var(--input);
+    border-radius: 9px;
+    background: var(--background);
+    color: var(--foreground);
+    padding: 7px 8px;
+  }
+  .inspector-boundary-form button {
+    justify-self: start;
+    min-height: 30px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .inspector-sheet ul {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 18px;
+  }
+  .inspector-sheet code {
+    overflow-wrap: anywhere;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+  .drawer-frame {
+    display: block;
+    width: 100%;
+    margin: 0 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  @media (max-width: 1180px) {
+    .app-shell { grid-template-columns: 1fr; }
+    .inspector-sheet { position: static; max-height: none; }
+    .review-grid { grid-template-columns: 1fr; }
+    .player-card { position: static; }
+    .metadata { position: static; }
+    .metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
 </style>
 </head>
 <body>
-<!--METADATA-->
-<!--VALIDATION_SUMMARY-->
-<div class="toolbar">
-  <label for="filter-needs-review"><input type="checkbox" id="filter-needs-review"> 只显示需人工复核的镜头</label>
-  <label for="loop-shot"><input type="checkbox" id="loop-shot"> 循环播放该镜头</label>
-  <button type="button" id="export-corrections">导出 corrections JSON</button>
-  <button type="button" id="save-corrections" hidden>保存到本地</button>
-  <button type="button" id="confirm-document">确认文档</button>
-  <span id="pending-indicator" role="status" aria-live="polite"></span>
-</div>
-<video id="shot-player" controls preload="none" aria-label="镜头播放器"></video>
-<div class="review-layout">
-<div class="table-wrap">
-<!--SHOT_TABLE-->
-</div>
-<aside id="evidence-drawer" aria-label="证据与复核详情">
-  <h2>证据详情</h2>
-  <p class="drawer-hint">点击字段单元格查看证据引用与复核理由。</p>
-  <div id="evidence-drawer-content"></div>
-</aside>
+<a class="skip-link" href="#shot-timeline">跳到镜头时间线</a>
+<div class="app-shell">
+  <main class="main-shell">
+    <!--METADATA-->
+    <section class="review-grid" aria-label="播放与校对控制台">
+      <section class="player-card card" aria-label="镜头播放器">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">镜头播放器</h2>
+            <p class="card-description">点击时间线中的镜头播放对应片段；需要从头观看时使用完整视频入口。</p>
+          </div>
+          <span class="badge badge-outline">校对时间</span>
+        </div>
+        <div class="player-surface">
+          <video id="shot-player" controls preload="none" aria-label="镜头播放器"></video>
+        </div>
+        <div class="player-footer">
+          <div class="player-actions">
+            <button type="button" id="play-full-video">浏览完整视频</button>
+            <span>单镜头会按校对后的起止时间播放</span>
+          </div>
+          <span>支持单镜头循环</span>
+        </div>
+      </section>
+      <div class="side-stack">
+        <!--VALIDATION_SUMMARY-->
+        <section class="toolbar card" aria-label="复核操作">
+          <label for="filter-needs-review"><input type="checkbox" id="filter-needs-review"> 只显示需人工复核</label>
+          <label for="loop-shot"><input type="checkbox" id="loop-shot"> 循环播放该镜头</label>
+          <button type="button" id="export-corrections">导出校对记录</button>
+          <button type="button" id="save-corrections" hidden>保存到本地</button>
+          <button type="button" id="confirm-document">确认本次校对</button>
+          <span id="pending-indicator" role="status" aria-live="polite"></span>
+        </section>
+        <!--SHOT_SUMMARY-->
+      </div>
+    </section>
+    <!--SHOT_TIMELINE-->
+    <details id="field-matrix-panel" class="table-card card" aria-label="高级字段矩阵">
+      <summary class="matrix-summary">
+        <span class="matrix-summary-text">
+          <span class="card-title">高级字段矩阵</span>
+          <span class="card-description">默认收起：需要横向对照所有镜头时再打开；日常审片请使用时间线和右侧镜头详情。</span>
+        </span>
+        <span class="badge badge-outline">可追溯</span>
+      </summary>
+      <div class="table-wrap">
+        <!--SHOT_TABLE-->
+      </div>
+    </details>
+  </main>
+  <aside id="evidence-drawer" class="inspector-sheet" aria-label="镜头详情">
+    <h2>镜头详情</h2>
+    <p class="drawer-hint">点击时间线中的镜头，查看摘要、复核提醒和分层详情。</p>
+    <div id="evidence-drawer-content"></div>
+  </aside>
 </div>
 <script>
 (function () {
@@ -88,16 +1034,493 @@
   var DOCUMENT_TYPE = "shotAnalysis";
   var SOURCE_REVISION_ID = __SOURCE_REVISION_JS__;
   var REVIEW_REASONS = __REVIEW_REASONS_JSON__;
+  var FULL_VIDEO_SRC = __FULL_VIDEO_SRC_JS__;
+  var SHOT_INSPECTOR = __SHOT_INSPECTOR_JSON__;
 
-  // ---- 播放器：定位 finalStartMs，播放到 finalEndMs 暂停（可选循环）----
   var player = document.getElementById("shot-player");
   var loopToggle = document.getElementById("loop-shot");
   var currentStartMs = 0;
   var currentEndMs = null;
+  var drawer = document.getElementById("evidence-drawer-content");
+  var shotsById = {};
+  (SHOT_INSPECTOR.shots || []).forEach(function (shot) {
+    shotsById[shot.shotID] = shot;
+  });
+  var inspectorFilterMode = "all";
 
-  function playShot(src, startMs, endMs) {
+  function appendText(parent, tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) { el.className = className; }
+    el.textContent = text;
+    parent.appendChild(el);
+    return el;
+  }
+
+  function appendBadge(parent, text, className) {
+    return appendText(parent, "span", "badge " + (className || "badge-outline"), text);
+  }
+
+  function stateBadgeClass(state) {
+    if (state === "absent") { return "badge-success"; }
+    if (state === "absent-claimed") { return "badge-warning"; }
+    if (state === "unmapped") { return "badge-destructive"; }
+    return "badge-outline";
+  }
+
+  function stateLabel(state) {
+    if (state === "value") { return "已识别"; }
+    if (state === "absent") { return "确认没有"; }
+    if (state === "absent-claimed") { return "模型未发现"; }
+    if (state === "unknown") { return "待确认"; }
+    if (state === "unmapped") { return "待归类"; }
+    return "待确认";
+  }
+
+  function confidenceLabel(confidence) {
+    if (confidence === "high") { return "可信度高"; }
+    if (confidence === "medium") { return "可信度中"; }
+    if (confidence === "low") { return "可信度低"; }
+    return "可信度待确认";
+  }
+
+  function sourceLabel(source) {
+    if (source === "human") { return "人工校对"; }
+    if (source === "unifiedModel" || source === "textModel") { return "视频理解"; }
+    if (source === "asr") { return "语音识别"; }
+    if (source === "audioDetector") { return "声音检测"; }
+    if (source === "appleVision") { return "画面运动检测"; }
+    if (source === "ffmpeg" || source === "ffprobe") { return "媒体检测"; }
+    if (source === "aggregate") { return "汇总计算"; }
+    if (source === "fallback") { return "暂未分析"; }
+    return "系统分析";
+  }
+
+  function appendMeta(container, label, value) {
+    var item = document.createElement("div");
+    appendText(item, "dt", "", label);
+    appendText(item, "dd", "", value || "待确认");
+    container.appendChild(item);
+  }
+
+  function allFields(shot) {
+    var fields = [];
+    (SHOT_INSPECTOR.groups || []).forEach(function (group) {
+      fields = fields.concat((shot.groups && shot.groups[group.id]) || []);
+    });
+    return fields;
+  }
+
+  function fieldByKey(shot, key) {
+    var fields = allFields(shot);
+    for (var i = 0; i < fields.length; i++) {
+      if (fields[i].field === key) { return fields[i]; }
+    }
+    return null;
+  }
+
+  function fieldText(shot, key) {
+    var field = fieldByKey(shot, key);
+    return field ? String(field.value || "未知") : "未知";
+  }
+
+  function compactText(text, maxLength) {
+    var value = String(text || "未知").replace(/\s+/g, " ").trim();
+    if (value.length <= maxLength) { return value; }
+    return value.slice(0, Math.max(0, maxLength - 1)) + "…";
+  }
+
+  function joinValues(shot, keys, fallback) {
+    var values = [];
+    keys.forEach(function (key) {
+      var text = fieldText(shot, key);
+      if (text && values.indexOf(text) === -1) { values.push(text); }
+    });
+    return values.length ? compactText(values.join(" / "), 86) : fallback;
+  }
+
+  function countFields(shot, predicate) {
+    return allFields(shot).filter(predicate).length;
+  }
+
+  function isRiskField(field) {
+    var value = String(field.value || "");
+    return field.state === "unknown" ||
+      field.state === "absent-claimed" ||
+      field.state === "unmapped" ||
+      field.confidence === "low" ||
+      field.confidence === "unknown" ||
+      (field.field === "quality.flags" && value !== "" && value !== "无标记");
+  }
+
+  function appendQuickRow(container, label, value, risk) {
+    var row = document.createElement("div");
+    row.className = "quick-row" + (risk ? " is-risk" : "");
+    appendText(row, "dt", "", label);
+    appendText(row, "dd", "", value);
+    container.appendChild(row);
+  }
+
+  function appendQuickRead(parent, shot) {
+    var card = document.createElement("section");
+    card.className = "inspector-card inspector-quick-read";
+    appendText(card, "h3", "", "快速判断");
+    var grid = document.createElement("dl");
+    grid.className = "quick-grid";
+    appendQuickRow(
+      grid,
+      "画面",
+      joinValues(shot, ["visual.subjects", "visual.actions", "visual.setting"], "未知"),
+      false
+    );
+    appendQuickRow(
+      grid,
+      "声音",
+      joinValues(shot, ["audio.speech", "audio.bgmPresence", "audio.soundEvents"], "未知"),
+      fieldByKey(shot, "audio.speech") && fieldByKey(shot, "audio.speech").state === "unknown"
+    );
+    appendQuickRow(
+      grid,
+      "剪辑",
+      joinValues(shot, ["editing.transition", "visual.cameraMovement", "visual.movementIntensity"], "未知"),
+      false
+    );
+    appendQuickRow(
+      grid,
+      "风格",
+      joinValues(shot, ["visual.framing", "visual.brightness", "visual.perceivedColorTemperature"], "未知"),
+      false
+    );
+    var unknownCount = countFields(shot, function (field) { return field.state === "unknown"; });
+    var claimedAbsentCount = countFields(shot, function (field) { return field.state === "absent-claimed"; });
+    var riskCount = countFields(shot, isRiskField);
+    var riskText = shot.reviewReasons.length ?
+      (shot.reviewReasons.length + " 项复核理由") :
+      (riskCount ? (riskCount + " 个字段需留意") : "无明显风险");
+    if (unknownCount || claimedAbsentCount) {
+      riskText += " · 待确认 " + unknownCount + " / 模型未发现 " + claimedAbsentCount;
+    }
+    appendQuickRow(grid, "风险", riskText, riskCount > 0 || shot.reviewReasons.length > 0);
+    card.appendChild(grid);
+    parent.appendChild(card);
+  }
+
+  function appendSummaryCard(parent, shot) {
+    var card = document.createElement("section");
+    card.className = "inspector-card inspector-summary-card";
+    appendText(card, "h3", "", "镜头摘要");
+    var summary = fieldText(shot, "visual.contentSummary");
+    if (summary === "未知") {
+      summary = joinValues(shot, ["visual.subjects", "visual.actions", "visual.setting"], "暂无可靠摘要");
+    }
+    appendText(card, "p", "inspector-shot-summary", summary);
+    parent.appendChild(card);
+  }
+
+  function appendInspectorField(container, field) {
+    var item = document.createElement("details");
+    item.className = "inspector-field-row state-row-" + field.state;
+    if (field.source === "human") { item.classList.add("state-row-human"); }
+    item.setAttribute("data-field", field.field);
+    item.setAttribute("data-value-state", field.state);
+    item.setAttribute("data-confidence", field.confidence);
+    item.setAttribute("data-source", field.source);
+    item.setAttribute("data-verified", field.verified ? "true" : "false");
+    item.setAttribute("data-evidence-refs", (field.evidenceRefs || []).join(" "));
+    item.setAttribute("data-is-risk", isRiskField(field) ? "true" : "false");
+    var summary = document.createElement("summary");
+    summary.className = "inspector-field-summary";
+    appendText(summary, "span", "state-dot", "");
+    appendText(summary, "span", "inspector-field-label", field.label);
+    appendText(summary, "span", "inspector-field-value", compactText(field.value, 72));
+    appendText(summary, "span", "inspector-field-count", (field.evidenceRefs || []).length + " 条依据");
+    item.appendChild(summary);
+    var body = document.createElement("div");
+    body.className = "inspector-field-body";
+    var trace = document.createElement("details");
+    trace.className = "inspector-trace";
+    var traceSummary = document.createElement("summary");
+    traceSummary.textContent = "追溯信息";
+    trace.appendChild(traceSummary);
+    appendText(trace, "code", "inspector-field-key", field.field);
+    var meta = document.createElement("div");
+    meta.className = "inspector-field-meta";
+    appendBadge(meta, stateLabel(field.state), stateBadgeClass(field.state));
+    appendBadge(meta, confidenceLabel(field.confidence), "badge-outline");
+    appendBadge(meta, sourceLabel(field.source), "badge-outline");
+    if (field.verified) { appendBadge(meta, "已核实", "badge-success"); }
+    trace.appendChild(meta);
+    if (field.evidenceRefs && field.evidenceRefs.length) {
+      var evidence = document.createElement("div");
+      evidence.className = "inspector-evidence";
+      appendText(evidence, "span", "inspector-evidence-label", "原始依据");
+      field.evidenceRefs.forEach(function (ref) {
+        appendText(evidence, "code", "", ref);
+      });
+      trace.appendChild(evidence);
+    }
+    body.appendChild(trace);
+    item.appendChild(body);
+    container.appendChild(item);
+  }
+
+  function bindInspectorBoundary(form, shot) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var startMs = parseInt(form.elements.finalStartMs.value, 10);
+      var endMs = parseInt(form.elements.finalEndMs.value, 10);
+      if (!(endMs > startMs)) {
+        indicator.textContent = shot.shotID + "：结束时间必须晚于开始时间";
+        return;
+      }
+      var original = null;
+      var index = -1;
+      for (var i = 0; i < shotOrder.length; i++) {
+        if (shotOrder[i].shotId === shot.shotID) { original = shotOrder[i]; index = i; break; }
+      }
+      var notes = [];
+      if (original) {
+        if (index > 0 && shotOrder[index - 1].endMs !== startMs) {
+          notes.push("与上一镜头不连续");
+        }
+        if (index < shotOrder.length - 1 && shotOrder[index + 1].startMs !== endMs) {
+          notes.push("与下一镜头不连续");
+        }
+      }
+      recordChange({
+        kind: "boundary",
+        entityID: shot.shotID,
+        field: "finalRange",
+        oldValue: original ? { finalStartMs: original.startMs, finalEndMs: original.endMs } : null,
+        newValue: { finalStartMs: startMs, finalEndMs: endMs },
+        state: "value",
+        verified: true
+      });
+      if (notes.length) {
+        indicator.textContent = shot.shotID + " 提示：" + notes.join("；") + "（已记录，最终以应用端校验为准）";
+      }
+    });
+  }
+
+  function appendBoundaryPanel(parent, shot) {
+    var details = document.createElement("details");
+    details.className = "inspector-boundary";
+    details.setAttribute("data-shot-id", shot.shotID);
+    var summary = document.createElement("summary");
+    var title = document.createElement("span");
+    title.className = "inspector-group-title";
+    appendText(title, "strong", "", "时间范围");
+    appendText(title, "small", "", shot.timecode + " · " + shot.durationText);
+    summary.appendChild(title);
+    appendBadge(summary, "调整", "badge-outline");
+    details.appendChild(summary);
+
+    var form = document.createElement("form");
+    form.className = "inspector-boundary-form";
+    form.setAttribute("aria-label", shot.shotID + " 时间范围调整");
+    var startLabel = appendText(form, "label", "", "开始时间（毫秒）");
+    var startInput = document.createElement("input");
+    startInput.type = "number";
+    startInput.name = "finalStartMs";
+    startInput.min = "0";
+    startInput.value = String(shot.startMs || 0);
+    startInput.setAttribute("aria-label", shot.shotID + " 开始时间");
+    startLabel.appendChild(startInput);
+    var endLabel = appendText(form, "label", "", "结束时间（毫秒）");
+    var endInput = document.createElement("input");
+    endInput.type = "number";
+    endInput.name = "finalEndMs";
+    endInput.min = "0";
+    endInput.value = String(shot.endMs || 0);
+    endInput.setAttribute("aria-label", shot.shotID + " 结束时间");
+    endLabel.appendChild(endInput);
+    var submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "保存时间调整";
+    form.appendChild(submit);
+    bindInspectorBoundary(form, shot);
+    details.appendChild(form);
+    parent.appendChild(details);
+  }
+
+  function appendReviewReasons(parent, shot) {
+    if (!shot.reviewReasons || !shot.reviewReasons.length) { return; }
+    var card = document.createElement("section");
+    card.className = "inspector-card";
+    appendText(card, "h3", "", "复核理由");
+    var reasonList = document.createElement("ul");
+    reasonList.className = "review-reasons";
+    shot.reviewReasons.forEach(function (reason) {
+      appendText(reasonList, "li", "", reason);
+    });
+    card.appendChild(reasonList);
+    parent.appendChild(card);
+  }
+
+  function fieldMatchesFilter(row, mode) {
+    if (mode === "risk") { return row.getAttribute("data-is-risk") === "true"; }
+    if (mode === "unknown") { return row.getAttribute("data-value-state") === "unknown"; }
+    if (mode === "human") { return row.getAttribute("data-source") === "human"; }
+    return true;
+  }
+
+  function applyInspectorFilter() {
+    var visibleRows = 0;
+    Array.prototype.forEach.call(drawer.querySelectorAll(".inspector-field-row"), function (row) {
+      var visible = fieldMatchesFilter(row, inspectorFilterMode);
+      row.hidden = !visible;
+      if (visible) { visibleRows += 1; }
+    });
+    Array.prototype.forEach.call(drawer.querySelectorAll(".inspector-group"), function (group) {
+      var hasVisibleRow = !!group.querySelector(".inspector-field-row:not([hidden])");
+      group.hidden = !hasVisibleRow;
+    });
+    var empty = drawer.querySelector(".inspector-empty");
+    if (empty) { empty.hidden = visibleRows !== 0; }
+    Array.prototype.forEach.call(drawer.querySelectorAll("[data-inspector-filter]"), function (button) {
+      var active = button.getAttribute("data-inspector-filter") === inspectorFilterMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  function appendInspectorFilterbar(parent) {
+    var filters = [
+      ["all", "全部"],
+      ["risk", "只看异常"],
+      ["unknown", "待确认"],
+      ["human", "人工修正"]
+    ];
+    var bar = document.createElement("div");
+    bar.className = "inspector-filterbar";
+    bar.setAttribute("aria-label", "镜头详情字段筛选");
+    filters.forEach(function (filterSpec) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = filterSpec[1];
+      button.setAttribute("data-inspector-filter", filterSpec[0]);
+      button.setAttribute("aria-pressed", filterSpec[0] === inspectorFilterMode ? "true" : "false");
+      button.addEventListener("click", function () {
+        inspectorFilterMode = filterSpec[0];
+        applyInspectorFilter();
+      });
+      bar.appendChild(button);
+    });
+    parent.appendChild(bar);
+  }
+
+  function renderShotInspector(shotId) {
+    var shot = shotsById[shotId] || (SHOT_INSPECTOR.shots || [])[0];
+    drawer.textContent = "";
+    if (!shot) {
+      appendText(drawer, "p", "", "暂无可显示的镜头详情。");
+      return;
+    }
+    var hero = document.createElement("section");
+    hero.className = "inspector-hero";
+    if (shot.frameRef) {
+      var img = document.createElement("img");
+      img.className = "inspector-cover";
+      img.src = shot.frameRef;
+      img.alt = shot.shotID + " 代表帧";
+      hero.appendChild(img);
+    }
+    var heroBody = document.createElement("div");
+    heroBody.className = "inspector-hero-body";
+    var titleRow = document.createElement("div");
+    titleRow.className = "inspector-title-row";
+    appendText(titleRow, "h3", "inspector-shot-id", shot.shotID);
+    appendBadge(titleRow, shot.needsReview ? "需复核" : "正常", shot.needsReview ? "badge-warning" : "badge-success");
+    heroBody.appendChild(titleRow);
+    var timeRow = document.createElement("div");
+    timeRow.className = "inspector-time-row";
+    appendText(timeRow, "span", "inspector-timecode", shot.timecode || "待确认");
+    appendText(timeRow, "span", "", shot.durationText || "待确认");
+    heroBody.appendChild(timeRow);
+    var actions = document.createElement("div");
+    actions.className = "inspector-actions";
+    var playButton = document.createElement("button");
+    playButton.type = "button";
+    playButton.textContent = shot.clipSrc ? "播放该镜头" : "暂无片段";
+    playButton.disabled = !shot.clipSrc;
+    playButton.addEventListener("click", function () {
+      if (!shot.clipSrc) { return; }
+      playShot(shot.clipSrc, shot.startMs || 0, shot.endMs || null, shot.shotID);
+    });
+    actions.appendChild(playButton);
+    appendBadge(actions, "校对时间", "badge-outline");
+    heroBody.appendChild(actions);
+    hero.appendChild(heroBody);
+    drawer.appendChild(hero);
+
+    var meta = document.createElement("dl");
+    meta.className = "inspector-meta";
+    appendMeta(meta, "起点", String(shot.startMs) + " ms");
+    appendMeta(meta, "终点", String(shot.endMs) + " ms");
+    appendMeta(meta, "可查看信息", String(allFields(shot).length) + " 项");
+    appendMeta(meta, "有依据", String(countFields(shot, function (field) { return !!(field.evidenceRefs && field.evidenceRefs.length); })) + " 项");
+    drawer.appendChild(meta);
+
+    appendSummaryCard(drawer, shot);
+    appendQuickRead(drawer, shot);
+    appendReviewReasons(drawer, shot);
+
+    var detailsCard = document.createElement("section");
+    detailsCard.className = "inspector-card inspector-fields-card";
+    var sectionTitle = document.createElement("div");
+    sectionTitle.className = "inspector-section-title";
+    appendText(sectionTitle, "h3", "", "详细信息");
+    appendBadge(sectionTitle, allFields(shot).length + " 项", "badge-outline");
+    detailsCard.appendChild(sectionTitle);
+    appendInspectorFilterbar(detailsCard);
+
+    (SHOT_INSPECTOR.groups || []).forEach(function (group, index) {
+      var fields = (shot.groups && shot.groups[group.id]) || [];
+      if (!fields.length) { return; }
+      var details = document.createElement("details");
+      details.className = "inspector-group";
+      if (index === 0) { details.open = true; }
+      var summary = document.createElement("summary");
+      var groupTitle = document.createElement("span");
+      groupTitle.className = "inspector-group-title";
+      appendText(groupTitle, "strong", "", group.title);
+      appendText(groupTitle, "small", "", group.description);
+      summary.appendChild(groupTitle);
+      appendBadge(summary, fields.length + " 项", "badge-outline");
+      details.appendChild(summary);
+      var fieldList = document.createElement("div");
+      fieldList.className = "inspector-fields";
+      fields.forEach(function (field) {
+        appendInspectorField(fieldList, field);
+      });
+      details.appendChild(fieldList);
+      detailsCard.appendChild(details);
+    });
+    var empty = appendText(detailsCard, "p", "inspector-empty", "当前筛选下没有内容。");
+    empty.hidden = true;
+    drawer.appendChild(detailsCard);
+    appendBoundaryPanel(drawer, shot);
+    applyInspectorFilter();
+  }
+
+  function highlightShot(shotId) {
+    Array.prototype.forEach.call(document.querySelectorAll(".is-selected"), function (el) {
+      el.classList.remove("is-selected");
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-shot-id]"), function (el) {
+      if (el.getAttribute("data-shot-id") === shotId &&
+          (el.classList.contains("timeline-shot") || el.classList.contains("filmstrip-shot"))) {
+        el.classList.add("is-selected");
+      }
+    });
+  }
+
+  function playShot(src, startMs, endMs, shotId) {
     currentStartMs = startMs;
     currentEndMs = endMs;
+    if (shotId) {
+      highlightShot(shotId);
+      renderShotInspector(shotId);
+    }
     if (player.getAttribute("src") !== src) { player.setAttribute("src", src); }
     player.currentTime = startMs / 1000;
     player.play();
@@ -113,27 +1536,42 @@
       }
     }
   });
-  Array.prototype.forEach.call(document.querySelectorAll(".play-btn"), function (btn) {
-    btn.addEventListener("click", function () {
-      var src = btn.getAttribute("data-clip-src");
-      if (!src) { return; }
-      playShot(src, parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
-               parseInt(btn.getAttribute("data-end-ms"), 10));
+  var fullVideoButton = document.getElementById("play-full-video");
+  if (!FULL_VIDEO_SRC) {
+    fullVideoButton.disabled = true;
+    fullVideoButton.textContent = "完整视频不可用";
+  }
+  fullVideoButton.addEventListener("click", function () {
+    if (!FULL_VIDEO_SRC) { return; }
+    currentStartMs = 0;
+    currentEndMs = null;
+    Array.prototype.forEach.call(document.querySelectorAll(".is-selected"), function (el) {
+      el.classList.remove("is-selected");
     });
-  });
-  // 点击镜头列头同样定位播放该镜头区间；列内控件点击除外。
-  Array.prototype.forEach.call(document.querySelectorAll("th[data-shot-id][data-start-ms]"), function (th) {
-    th.addEventListener("click", function (event) {
-      if (event.target.closest("button, input, select, textarea, label, form")) { return; }
-      var btn = th.querySelector(".play-btn[data-clip-src]");
-      if (!btn) { return; }
-      playShot(btn.getAttribute("data-clip-src"),
-               parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
-               parseInt(btn.getAttribute("data-end-ms"), 10));
-    });
+    if (player.getAttribute("src") !== FULL_VIDEO_SRC) {
+      player.setAttribute("src", FULL_VIDEO_SRC);
+    }
+    player.currentTime = 0;
+    player.play();
   });
 
-  // ---- needsReview 过滤 ----
+  function bindShotJump(selector) {
+    Array.prototype.forEach.call(document.querySelectorAll(selector), function (btn) {
+      btn.addEventListener("click", function () {
+        var src = btn.getAttribute("data-clip-src");
+        var shotId = btn.getAttribute("data-shot-id");
+        if (shotId) {
+          highlightShot(shotId);
+          renderShotInspector(shotId);
+        }
+        if (!src) { return; }
+        playShot(src, parseInt(btn.getAttribute("data-start-ms"), 10) || 0,
+                 parseInt(btn.getAttribute("data-end-ms"), 10), shotId);
+      });
+    });
+  }
+  bindShotJump(".shot-jump");
+
   var filter = document.getElementById("filter-needs-review");
   filter.addEventListener("change", function () {
     var hide = {};
@@ -148,7 +1586,44 @@
     });
   });
 
-  // ---- 人工修正：pendingChanges 累积 ----
+  function setFieldFilter(groupId) {
+    Array.prototype.forEach.call(document.querySelectorAll(".category-tab"), function (button) {
+      var active = button.getAttribute("data-field-filter") === groupId;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".field-group-tbody"), function (tbody) {
+      var matches = groupId === "all" || tbody.getAttribute("data-field-group") === groupId;
+      tbody.classList.toggle("is-filtered-out", !matches);
+      if (groupId !== "all" && matches) {
+        tbody.classList.remove("is-collapsed");
+        var toggle = tbody.querySelector(".field-group-toggle");
+        if (toggle) { toggle.setAttribute("aria-expanded", "true"); }
+      }
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".category-tab"), function (button) {
+    button.addEventListener("click", function () {
+      setFieldFilter(button.getAttribute("data-field-filter") || "all");
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".field-group-toggle"), function (button) {
+    button.addEventListener("click", function () {
+      var groupId = button.getAttribute("data-field-group-target");
+      var tbody = null;
+      Array.prototype.some.call(document.querySelectorAll(".field-group-tbody"), function (candidate) {
+        if (candidate.getAttribute("data-field-group") === groupId) {
+          tbody = candidate;
+          return true;
+        }
+        return false;
+      });
+      if (!tbody) { return; }
+      var expanded = !tbody.classList.toggle("is-collapsed");
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    });
+  });
+
   var pendingChanges = [];
   var indicator = document.getElementById("pending-indicator");
   function sameKey(a, b) {
@@ -182,7 +1657,7 @@
       if (!td) { return; }
       var state, newValue;
       if (control.tagName === "SELECT") {
-        if (control.value === "") { return; }  // 占位选项：尚未选择映射值
+        if (control.value === "") { return; }
         if (control.value === "unknown") { state = "unknown"; newValue = null; }
         else { state = "value"; newValue = control.value; }
       } else {
@@ -223,7 +1698,6 @@
     });
   });
 
-  // ---- corrections 导出 / 保存 / 确认 ----
   function correctionsPayload() {
     return {
       correctionVersion: 1,
@@ -261,7 +1735,7 @@
   });
   document.getElementById("confirm-document").addEventListener("click", function () {
     if (!window.__REVIEW_SERVER__) {
-      indicator.textContent = "离线模式：请导出 corrections JSON 后用 CLI 确认文档";
+      indicator.textContent = "当前是离线页面：请先导出校对记录，再在应用中导入确认。";
       return;
     }
     fetch("/api/confirm", {
@@ -275,7 +1749,6 @@
     });
   });
 
-  // ---- 边界修正表单（kind="boundary"；相邻连续性仅提示，最终校验在应用端）----
   var shotOrder = [];
   Array.prototype.forEach.call(document.querySelectorAll("th[data-shot-id][data-start-ms]"), function (th) {
     shotOrder.push({
@@ -284,97 +1757,20 @@
       endMs: parseInt(th.getAttribute("data-end-ms"), 10)
     });
   });
-  Array.prototype.forEach.call(document.querySelectorAll("form.boundary-form"), function (form) {
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var shotId = form.getAttribute("data-shot-id");
-      var startMs = parseInt(form.elements.finalStartMs.value, 10);
-      var endMs = parseInt(form.elements.finalEndMs.value, 10);
-      if (!(endMs > startMs)) {
-        indicator.textContent = shotId + "：finalEndMs 必须大于 finalStartMs";
-        return;
-      }
-      var original = null;
-      var index = -1;
-      for (var i = 0; i < shotOrder.length; i++) {
-        if (shotOrder[i].shotId === shotId) { original = shotOrder[i]; index = i; break; }
-      }
-      var notes = [];
-      if (original) {
-        if (index > 0 && shotOrder[index - 1].endMs !== startMs) {
-          notes.push("与上一镜头不连续");
-        }
-        if (index < shotOrder.length - 1 && shotOrder[index + 1].startMs !== endMs) {
-          notes.push("与下一镜头不连续");
-        }
-      }
-      recordChange({
-        kind: "boundary",
-        entityID: shotId,
-        field: "finalRange",
-        oldValue: original ? { finalStartMs: original.startMs, finalEndMs: original.endMs } : null,
-        newValue: { finalStartMs: startMs, finalEndMs: endMs },
-        state: "value",
-        verified: true
-      });
-      if (notes.length) {
-        indicator.textContent = shotId + " 提示：" + notes.join("；") + "（已记录，最终以应用端校验为准）";
-      }
-    });
-  });
-
-  // ---- 证据抽屉：点击单元格显示证据引用与复核理由 ----
-  var drawer = document.getElementById("evidence-drawer-content");
   Array.prototype.forEach.call(document.querySelectorAll("td[data-field]"), function (td) {
     td.addEventListener("click", function (event) {
       if (event.target.closest("select, input, button, textarea, label, a")) { return; }
-      var field = td.getAttribute("data-field");
       var shotId = td.getAttribute("data-shot-id");
-      drawer.textContent = "";
-      var heading = document.createElement("h3");
-      heading.textContent = shotId + " · " + field;
-      drawer.appendChild(heading);
-      var refs = (td.getAttribute("data-evidence-refs") || "").split(/\s+/);
-      var list = document.createElement("ul");
-      var hasRef = false;
-      refs.forEach(function (ref) {
-        if (!ref) { return; }
-        hasRef = true;
-        var item = document.createElement("li");
-        if (/\.(jpe?g|png)$/i.test(ref)) {
-          var img = document.createElement("img");
-          img.setAttribute("src", ref);
-          img.setAttribute("alt", shotId + " " + field + " 证据帧");
-          img.className = "drawer-frame";
-          item.appendChild(img);
-        }
-        var code = document.createElement("code");
-        code.textContent = ref;
-        item.appendChild(code);
-        list.appendChild(item);
-      });
-      if (hasRef) {
-        drawer.appendChild(list);
-      } else {
-        var none = document.createElement("p");
-        none.textContent = "该字段无证据引用（unknown 豁免）。";
-        drawer.appendChild(none);
-      }
-      var reasons = REVIEW_REASONS[shotId] || [];
-      if (reasons.length) {
-        var title = document.createElement("h4");
-        title.textContent = "复核理由";
-        drawer.appendChild(title);
-        var rlist = document.createElement("ul");
-        reasons.forEach(function (reason) {
-          var li = document.createElement("li");
-          li.textContent = reason;
-          rlist.appendChild(li);
-        });
-        drawer.appendChild(rlist);
-      }
+      if (!shotId) { return; }
+      highlightShot(shotId);
+      renderShotInspector(shotId);
     });
   });
+  var firstShot = (SHOT_INSPECTOR.shots || [])[0];
+  if (firstShot) {
+    highlightShot(firstShot.shotID);
+    renderShotInspector(firstShot.shotID);
+  }
 })();
 </script>
 </body>

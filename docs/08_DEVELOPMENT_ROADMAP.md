@@ -43,6 +43,9 @@
   `asr.provider=local-fireredvad-mlx`，FireRedVAD 人声切分 +
   MLX whisper-large-v3-turbo 识别，optional extra `asr-local`。
 - 全量测试：`1125 passed, 6 skipped`。
+- BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
+  anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`
+  只读重算由 0 个 music 镜头提升为 59 个（决策 D-049）。
 
 已关闭的路线分歧：
 
@@ -431,9 +434,11 @@ opt-in 校准测试）；真实视频/标注到达后逐项校准。
 类型：feature/performance/docs  
 依赖：Phase 03/04  
 状态：05-05 的 CLI 能力部分已完成（2026-08-26，docs/06 D-043）；
-HTML 品牌/交互/性能/发布文档等外部输入（视觉原型、真实长视频）。
+shot HTML 品牌/交互生产模板已完成（2026-09-01，docs/06 D-050）；
+story HTML、性能和发布文档仍等待视觉原型/真实长视频等外部输入。
 
-- [ ] 明确 shot/story HTML 视觉品牌和交互原型。
+- [x] 明确 shot HTML 视觉品牌和交互原型（shadcn-inspired 离线审片工作台）。
+- [ ] 明确 story HTML 视觉品牌和交互原型。
 - [x] 人工 correction 导出或 localhost review server（M3 已交付）。
 - [x] confirmed/outdated/completion 状态闭环（M3 已交付）。
 - [ ] 真实长视频性能基线。
@@ -505,5 +510,5 @@ Phase 03、04 与 05-01A~D、05-02、05-03 框架、05-04（CLI 调试）、05-0
   `uv sync --extra asr-local`），无需远程端点；
 - **05-03 参数校准**：提供 2~5 支真实视频 + 人工标注
   （`tests/fixtures/golden/` 格式），逐项回调 A-001~A-007；
-- **05-06 HTML/性能/发布**：视觉原型与真实长视频到达后推进品牌/交互/
-  性能基线与发布文档。
+- **05-06 HTML/性能/发布**：shot HTML 已按 D-050 落地；story 视觉原型与
+  真实长视频到达后继续推进剩余品牌/交互、性能基线与发布文档。

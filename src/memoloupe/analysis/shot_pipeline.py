@@ -961,8 +961,8 @@ class ShotAnalysisPipeline:
                 skip_fn=lambda: build_asr_stub(),
             )
 
-            # 6. detect_music（链 asr 指纹；ASR 非 complete 时内部降级为
-            #    全片纹理分析）--------------------------------------------------
+            # 6. detect_music（全轨纹理始终运行；ASR complete 时再融合
+            #    语音间隙锚点，ASR 非 complete 时降低置信度）--------------------
             music_fp = fingerprint(
                 {
                     "artifact": "music-flags",

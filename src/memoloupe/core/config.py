@@ -68,7 +68,19 @@ DEFAULT_CONFIG: dict = {
         "sampleRate": 22050,
         "musicLevelDb": -18.0,
         "musicBassEnergy": 150.0,
-        "silentLevelDb": -22.0,
+        # 只有接近数字静音的持续区间才可形成确定性 absent；安静的歌词间隙
+        # 不能被当作“没有 BGM”。
+        "silentLevelDb": -55.0,
+        # 全轨扫描的高精度音乐条件。响度本身不构成音乐证据，必须同时满足
+        # 低频/调性与谱平坦度约束，避免把对白或宽带噪声判成音乐。
+        "musicFlatnessMax": 0.50,
+        "musicTonalFlatnessMax": 0.35,
+        "musicMinimumBassEnergy": 50.0,
+        # 滑动窗状态先合并短缺口，再移除短促命中；防止鼓点/瞬态噪声形成
+        # 独立 BGM 区间。
+        "musicMinimumRunMs": 400,
+        "musicMergeGapMs": 600,
+        "silentMinimumRunMs": 500,
     },
     "quality": {
         "videoSampleFps": 2.0,

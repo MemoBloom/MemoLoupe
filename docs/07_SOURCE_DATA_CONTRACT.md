@@ -459,13 +459,19 @@
 ```json
 {
   "status": "complete",
-  "method": "numpy STFT：语音间隙电平/低频判定 + 谱平坦度突变事件",
+  "method": "numpy STFT：全轨调性/低频/谱平坦度持续检测 + 语音间隙锚点融合",
   "stateTally": { "music": 1, "silent": 0, "unknown": 0 },
   "thresholds": {
     "sampleRate": 22050,
     "musicLevelDb": -18.0,
     "musicBassEnergy": 150.0,
-    "silentLevelDb": -22.0
+    "silentLevelDb": -55.0,
+    "musicFlatnessMax": 0.5,
+    "musicTonalFlatnessMax": 0.35,
+    "musicMinimumBassEnergy": 50.0,
+    "musicMinimumRunMs": 400,
+    "musicMergeGapMs": 600,
+    "silentMinimumRunMs": 500
   },
   "speechGaps": [
     {
@@ -488,7 +494,7 @@
     }
   ],
   "musicIntervals": [
-    { "startSec": 0.0, "endSec": 3.2, "origin": "gapAnchor" }
+    { "startSec": 0.0, "endSec": 3.2, "origin": "fullRangeTexture+gapAnchor" }
   ],
   "shots": [
     {

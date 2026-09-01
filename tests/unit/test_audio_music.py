@@ -11,6 +11,7 @@ from memoloupe.media.audio_music import (
     AUDIO_MUSIC_VERSION,
     aggregate_shot_states,
     classify_gap,
+    classify_full_range_frame,
     compute_overlap_ratio,
     detect_music,
     detect_texture_events,
@@ -27,7 +28,7 @@ def _sine(freq: float, amplitude: float, seconds: float) -> np.ndarray:
 
 
 def test_version_constant() -> None:
-    assert AUDIO_MUSIC_VERSION == "music.v1"
+    assert AUDIO_MUSIC_VERSION == "music.v2"
 
 
 class TestStftFeatures:
@@ -113,6 +114,27 @@ class TestClassifyGap:
         # level >= musicLevelDb → music；level <= silentLevelDb → silent
         assert classify_gap(-18.0, 0.0, self.THRESHOLDS) == "music"
         assert classify_gap(-22.0, 0.0, self.THRESHOLDS) == "silent"
+
+
+class TestClassifyFullRangeFrame:
+    THRESHOLDS = {
+        "musicLevelDb": -18.0,
+        "musicBassEnergy": 150.0,
+        "silentLevelDb": -55.0,
+        "musicFlatnessMax": 0.50,
+        "musicTonalFlatnessMax": 0.35,
+        "musicMinimumBassEnergy": 50.0,
+    }
+
+    def test_tonal_bass_frame_is_music(self) -> None:
+        assert classify_full_range_frame(-12.0, 220.0, 0.10, self.THRESHOLDS) == "music"
+
+    def test_loud_broadband_noise_is_unknown(self) -> None:
+        assert classify_full_range_frame(-8.0, 500.0, 0.80, self.THRESHOLDS) == "unknown"
+
+    def test_only_true_silence_is_silent(self) -> None:
+        assert classify_full_range_frame(-60.0, 0.0, 0.0, self.THRESHOLDS) == "silent"
+        assert classify_full_range_frame(-25.0, 0.0, 0.0, self.THRESHOLDS) == "unknown"
 
 
 class TestTextureEvents:

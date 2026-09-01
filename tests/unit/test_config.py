@@ -43,6 +43,9 @@ class TestDefaultConfig:
         assert DEFAULT_CONFIG["audioCuts"]["threshold"] == 8.0
         assert DEFAULT_CONFIG["audioCuts"]["syncToleranceMs"] == 100
         assert DEFAULT_CONFIG["audioCuts"]["associationWindowMs"] == 500
+        assert DEFAULT_CONFIG["music"]["silentLevelDb"] == -55.0
+        assert DEFAULT_CONFIG["music"]["musicMinimumRunMs"] == 400
+        assert DEFAULT_CONFIG["music"]["musicMergeGapMs"] == 600
         assert DEFAULT_CONFIG["story"]["gapMs"] == 1200
         assert DEFAULT_CONFIG["asr"]["baseUrl"] is None
         assert DEFAULT_CONFIG["asr"]["apiKey"] is None

@@ -6,13 +6,15 @@
   hop 512（约 23ms），逐窗计算 levelDb（时域 RMS dB，满量程归一）、
   bassEnergy（0–250Hz 频带幅值和，采样按 1/32768 归一，单位随实现）、
   flatness（谱平坦度 = 几何均值 / 算术均值）。
+- fullRangeTexture：无论 ASR 是否完成都扫描全轨。只有低频/调性和谱平坦度
+  同时满足的持续窗才形成 music；响度本身不能证明音乐。短缺口先合并，短促
+  命中再移除，避免鼓点或宽带噪声形成伪音乐区间。
 - speechGaps：ASR complete 时取 transcript.segments 之间（含首尾外侧）
-  ≥300ms 的间隙为锚点，测 median 电平/低频/平坦度；
+  ≥300ms 的间隙为额外锚点，测 median 电平/低频/平坦度；
   level ≥ musicLevelDb 或 bass ≥ musicBassEnergy → music；
   level ≤ silentLevelDb → silent；其余 unknown。
-- ASR 非 complete → 降级：speechGaps=[]，逐窗分类后按全片纹理扫描
-  生成区间（origin=fullRangeTexture），每镜头 confidence 降一档，
-  basis 注明"ASR 不可用，降级为全片纹理分析"。
+- ASR complete 时融合全轨扫描与 gap anchor（origin=fullRangeTexture+gapAnchor）；
+  ASR 非 complete 时只保留全轨扫描，confidence 降一档。
 - textureEvents：全片 flatness 相邻窗突变（|Δ| ≥ 0.1，250ms 最小间隔）。
 - 每镜头按与 music/silent 区间的时长重叠比例（≥0.5）裁定 state；
   stateTally 与 shots 聚合一致。state=unknown 不得转成 absent。
@@ -32,9 +34,9 @@ from memoloupe.media.audio_cuts import decode_mono_pcm
 from memoloupe.media.concurrency import FFmpegPool
 
 # 算法版本常量：pipeline 指纹引用，任何公式/阈值改动必须递增。
-AUDIO_MUSIC_VERSION = "music.v1"
+AUDIO_MUSIC_VERSION = "music.v2"
 
-METHOD = "numpy STFT：语音间隙电平/低频判定 + 谱平坦度突变事件"
+METHOD = "numpy STFT：全轨调性/低频/谱平坦度持续检测 + 语音间隙锚点融合"
 
 # CALIBRATION：STFT 参数与事件阈值。
 WINDOW_SIZE = 2048
@@ -114,6 +116,32 @@ def classify_gap(level_db: float, bass_energy: float, thresholds: dict) -> str:
         return "music"
     if level_db <= thresholds["silentLevelDb"]:
         return "silent"
+    return "unknown"
+
+
+def classify_full_range_frame(
+    level_db: float,
+    bass_energy: float,
+    flatness: float,
+    thresholds: dict,
+) -> str:
+    """全轨单窗的保守三态分类。
+
+    gap anchor 可在确定没有 ASR 人声时使用宽松的“响度或低频”规则；全轨
+    窗可能同时包含对白/演唱，必须拒绝“只因为响”这一捷径。音乐需要低频
+    与谱结构共同背书；高谱平坦度的宽带噪声保持 unknown。
+    """
+    if level_db <= thresholds["silentLevelDb"]:
+        return "silent"
+    flat_enough = flatness <= thresholds["musicFlatnessMax"]
+    bass_backed = bass_energy >= thresholds["musicBassEnergy"] and flat_enough
+    tonal_backed = (
+        level_db >= thresholds["musicLevelDb"]
+        and bass_energy >= thresholds["musicMinimumBassEnergy"]
+        and flatness <= thresholds["musicTonalFlatnessMax"]
+    )
+    if bass_backed or tonal_backed:
+        return "music"
     return "unknown"
 
 
@@ -253,32 +281,140 @@ def _gap_entry(
     return entry
 
 
-def _texture_scan_intervals(
-    feats: dict[str, np.ndarray], sample_rate: int, thresholds: dict
-) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
-    """降级路径：逐窗三态分类，连续同态窗合并为全片纹理区间。"""
-    n = len(feats["levelDb"])
-    states = [
-        classify_gap(float(feats["levelDb"][i]), float(feats["bassEnergy"][i]), thresholds)
-        for i in range(n)
-    ]
-    window_sec = WINDOW_SIZE / sample_rate
-    music: list[tuple[int, int]] = []
-    silent: list[tuple[int, int]] = []
+def _smooth_mask(
+    mask: np.ndarray,
+    *,
+    merge_gap_frames: int,
+    minimum_run_frames: int,
+    blocked: np.ndarray | None = None,
+) -> np.ndarray:
+    """填合被允许的短缺口并移除短命中，返回新 mask。"""
+    smoothed = np.asarray(mask, dtype=bool).copy()
+    blocked_mask = (
+        np.zeros(len(smoothed), dtype=bool)
+        if blocked is None
+        else np.asarray(blocked, dtype=bool)
+    )
     i = 0
-    while i < n:
-        if states[i] not in ("music", "silent"):
+    while i < len(smoothed):
+        j = i
+        while j + 1 < len(smoothed) and smoothed[j + 1] == smoothed[i]:
+            j += 1
+        is_bridged_gap = (
+            not smoothed[i]
+            and i > 0
+            and j + 1 < len(smoothed)
+            and j - i + 1 <= merge_gap_frames
+            and not np.any(blocked_mask[i : j + 1])
+        )
+        if is_bridged_gap:
+            smoothed[i : j + 1] = True
+        i = j + 1
+
+    i = 0
+    while i < len(smoothed):
+        j = i
+        while j + 1 < len(smoothed) and smoothed[j + 1] == smoothed[i]:
+            j += 1
+        if smoothed[i] and j - i + 1 < minimum_run_frames:
+            smoothed[i : j + 1] = False
+        i = j + 1
+    return smoothed
+
+
+def _mask_to_intervals(
+    mask: np.ndarray,
+    times_sec: np.ndarray,
+    *,
+    sample_rate: int,
+    range_start_ms: int,
+    range_end_ms: int,
+) -> list[tuple[int, int]]:
+    """把窗中心 mask 转为源时间轴半开区间并裁剪到分析范围。"""
+    intervals: list[tuple[int, int]] = []
+    window_sec = WINDOW_SIZE / sample_rate
+    i = 0
+    while i < len(mask):
+        if not mask[i]:
             i += 1
             continue
         j = i
-        while j + 1 < n and states[j + 1] == states[i]:
+        while j + 1 < len(mask) and mask[j + 1]:
             j += 1
-        start_sec = max(0.0, float(feats["timesSec"][i]) - window_sec / 2)
-        end_sec = float(feats["timesSec"][j]) + window_sec / 2
-        target = music if states[i] == "music" else silent
-        target.append((seconds_to_ms(start_sec), seconds_to_ms(end_sec)))
+        relative_start = seconds_to_ms(max(0.0, float(times_sec[i]) - window_sec / 2))
+        relative_end = seconds_to_ms(float(times_sec[j]) + window_sec / 2)
+        start_ms = max(range_start_ms, range_start_ms + relative_start)
+        end_ms = min(range_end_ms, range_start_ms + relative_end)
+        if end_ms > start_ms:
+            intervals.append((start_ms, end_ms))
         i = j + 1
-    return music, silent
+    return intervals
+
+
+def _merge_intervals(
+    intervals: list[tuple[int, int]], *, maximum_gap_ms: int = 0
+) -> list[tuple[int, int]]:
+    """对闭合/近邻区间求稳定并集。"""
+    merged: list[list[int]] = []
+    for start_ms, end_ms in sorted(intervals):
+        if end_ms <= start_ms:
+            continue
+        if not merged or start_ms - merged[-1][1] > maximum_gap_ms:
+            merged.append([start_ms, end_ms])
+        else:
+            merged[-1][1] = max(merged[-1][1], end_ms)
+    return [(start_ms, end_ms) for start_ms, end_ms in merged]
+
+
+def _texture_scan_intervals(
+    feats: dict[str, np.ndarray],
+    sample_rate: int,
+    thresholds: dict,
+    *,
+    range_start_ms: int,
+    range_end_ms: int,
+) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    """全轨高精度三态分类，含短缺口合并和短段抑制。"""
+    n = len(feats["levelDb"])
+    states = np.asarray(
+        [
+            classify_full_range_frame(
+                float(feats["levelDb"][i]),
+                float(feats["bassEnergy"][i]),
+                float(feats["flatness"][i]),
+                thresholds,
+            )
+            for i in range(n)
+        ]
+    )
+    hop_ms = HOP_SIZE * 1000.0 / sample_rate
+    music_mask = _smooth_mask(
+        states == "music",
+        merge_gap_frames=max(0, round(thresholds["musicMergeGapMs"] / hop_ms)),
+        minimum_run_frames=max(1, round(thresholds["musicMinimumRunMs"] / hop_ms)),
+        blocked=states == "silent",
+    )
+    silent_mask = _smooth_mask(
+        states == "silent",
+        merge_gap_frames=0,
+        minimum_run_frames=max(1, round(thresholds["silentMinimumRunMs"] / hop_ms)),
+    )
+    return (
+        _mask_to_intervals(
+            music_mask,
+            feats["timesSec"],
+            sample_rate=sample_rate,
+            range_start_ms=range_start_ms,
+            range_end_ms=range_end_ms,
+        ),
+        _mask_to_intervals(
+            silent_mask,
+            feats["timesSec"],
+            sample_rate=sample_rate,
+            range_start_ms=range_start_ms,
+            range_end_ms=range_end_ms,
+        ),
+    )
 
 
 def _unavailable_result(shots: list[dict], thresholds: dict) -> dict:
@@ -325,7 +461,17 @@ def detect_music(
         "sampleRate": sample_rate,
         "musicLevelDb": float(music_cfg.get("musicLevelDb", -18.0)),
         "musicBassEnergy": float(music_cfg.get("musicBassEnergy", 150.0)),
-        "silentLevelDb": float(music_cfg.get("silentLevelDb", -22.0)),
+        "silentLevelDb": float(music_cfg.get("silentLevelDb", -55.0)),
+        "musicFlatnessMax": float(music_cfg.get("musicFlatnessMax", 0.50)),
+        "musicTonalFlatnessMax": float(
+            music_cfg.get("musicTonalFlatnessMax", 0.35)
+        ),
+        "musicMinimumBassEnergy": float(
+            music_cfg.get("musicMinimumBassEnergy", 50.0)
+        ),
+        "musicMinimumRunMs": float(music_cfg.get("musicMinimumRunMs", 400)),
+        "musicMergeGapMs": float(music_cfg.get("musicMergeGapMs", 600)),
+        "silentMinimumRunMs": float(music_cfg.get("silentMinimumRunMs", 500)),
     }
 
     if not media.get("source", {}).get("audioTracks"):
@@ -350,29 +496,35 @@ def detect_music(
 
     asr_complete = isinstance(asr, dict) and asr.get("status") == "complete"
     speech_gaps: list[dict] = []
-    music_intervals: list[tuple[int, int]]
-    silent_intervals: list[tuple[int, int]]
-    interval_origin: str
+    music_intervals, silent_intervals = _texture_scan_intervals(
+        feats,
+        sample_rate,
+        thresholds,
+        range_start_ms=start_ms,
+        range_end_ms=end_ms,
+    )
+    interval_origin = (
+        "fullRangeTexture+gapAnchor" if asr_complete else "fullRangeTexture"
+    )
     if asr_complete:
         segments = asr.get("transcript", {}).get("segments", [])
         gaps = find_speech_gaps(
             segments, range_start_ms=start_ms, range_end_ms=end_ms
         )
-        music_intervals = []
-        silent_intervals = []
+        gap_music_intervals: list[tuple[int, int]] = []
+        gap_silent_intervals: list[tuple[int, int]] = []
         for gap_start, gap_end in gaps:
             gap = _gap_entry(gap_start, gap_end, feats, sample_rate, thresholds)
             speech_gaps.append(gap)
             if gap["state"] == "music":
-                music_intervals.append((gap_start, gap_end))
+                gap_music_intervals.append((gap_start, gap_end))
             elif gap["state"] == "silent":
-                silent_intervals.append((gap_start, gap_end))
-        interval_origin = "gapAnchor"
-    else:
-        music_intervals, silent_intervals = _texture_scan_intervals(
-            feats, sample_rate, thresholds
+                gap_silent_intervals.append((gap_start, gap_end))
+        music_intervals = _merge_intervals(
+            [*music_intervals, *gap_music_intervals],
+            maximum_gap_ms=int(thresholds["musicMergeGapMs"]),
         )
-        interval_origin = "fullRangeTexture"
+        silent_intervals = _merge_intervals([*silent_intervals, *gap_silent_intervals])
 
     entries = aggregate_shot_states(
         shots,

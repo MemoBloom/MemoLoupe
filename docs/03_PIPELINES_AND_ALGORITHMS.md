@@ -213,9 +213,14 @@ ASR 失败时：写 failed/skipped 文件，镜头 speech resolver 可退到模�
 
 ### 2.8 BGM 检测
 
-目标是确定“有没有 BGM”，不负责风格命名。协议建议 NumPy STFT：
+目标是确定“有没有 BGM”，不负责风格命名。当前 `music.v2` 使用 NumPy
+STFT，并把全轨扫描与 ASR 间隙证据融合：
 
-- 在 ASR 语音间隙测量电平、低频能量、谱平坦度；
+- 无论 ASR 是否完成，都在全轨测量电平、低频能量和谱平坦度；全轨音乐窗
+  必须同时满足低频/调性与低谱平坦度约束，响度本身不能证明音乐；
+- ASR 完成时，继续在语音间隙测量宽松的音乐/静音锚点；连续演唱不会再因
+  没有语音间隙而丢失伴奏证据；
+- 对逐窗结果合并短缺口并移除短促命中，避免鼓点和瞬态噪声形成伪区间；
 - 检测 texture rise/fall；
 - 形成 music/silent 区间；
 - 按区间与镜头重叠比例聚合。
@@ -225,7 +230,7 @@ ASR 失败时：写 failed/skipped 文件，镜头 speech resolver 可退到模�
 - sample rate：22050
 - music level：-18 dB
 - music bass energy：150
-- silent level：-22 dB
+- silent level：-55 dB（只有接近数字静音的持续区间才形成确定性静音）
 
 这些阈值均为 CALIBRATION。初版必须保存 thresholds 和 measurements，并对数据不足返回 unknown。
 

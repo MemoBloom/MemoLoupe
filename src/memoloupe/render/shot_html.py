@@ -8,7 +8,7 @@ Observation 并收集 review 理由 → 应用 corrections overlay
 
 - 所有模型/检测原文经 ``html.escape`` 后才进入 HTML；
 - CSS/JS 由模板固定内联，绝不动态拼接用户内容（CSP 例外因此安全）；
-- 注入 JS 的 JSON 数据经 ``json.dumps`` 并转义 ``</``，防止 ``</script>`` 逃逸；
+- 注入 JS 的 JSON 数据经 ``json.dumps`` 并转义尖括号/``&``，防止形成脚本标签；
 - 媒体一律相对路径；缺 clips/SHxxxx.mp4 时播放按钮禁用；
 - 受控词表字段渲染 ``<select>`` 内联编辑控件，自由文本字段渲染 ``<input>``；
 - 命中人工修正的单元格带 ``data-source="human"`` 与 ``data-original-value``；
@@ -17,11 +17,13 @@ Observation 并收集 review 理由 → 应用 corrections overlay
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import html
 import importlib
 import json
-from datetime import datetime, timezone
+import os
 from pathlib import Path
+from urllib.parse import quote
 
 from memoloupe.analysis.observations import Observation, Source, ValueState
 from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations_with_review
@@ -30,7 +32,7 @@ from memoloupe.core.atomic_io import read_json, write_text_atomic
 from memoloupe.core.errors import ArtifactError, ContractError
 from memoloupe.validate.html_contract import DOCUMENT_STATUSES
 
-SHOT_RENDER_VERSION = "render.v1"
+SHOT_RENDER_VERSION = "render.v2"
 CONTRACT_VERSION = "1.0"
 DOCUMENT_TYPE = "shotAnalysis"
 
@@ -52,8 +54,130 @@ RAW_FILES: tuple[str, ...] = (
 #: 非 value 状态的固定可见文案（docs/04 §3.3：absent 与 absent-claimed 必须不同）。
 _STATE_TEXT: dict[ValueState, str] = {
     ValueState.ABSENT: "无（确定性检测）",
-    ValueState.ABSENT_CLAIMED: "模型声称无",
+    ValueState.ABSENT_CLAIMED: "模型未发现",
     ValueState.UNKNOWN: "未知",
+}
+
+_FIELD_LABELS: dict[str, str] = {
+    "audio.speech": "对白/旁白",
+    "audio.bgmPresence": "BGM 是否存在",
+    "audio.energy": "音量能量",
+    "quality.flags": "质量风险",
+    "visual.cameraMovement": "运镜",
+    "visual.movementIntensity": "运动强度",
+    "visual.contentSummary": "镜头内容摘要",
+    "editing.transition": "剪辑转场",
+    "visual.subjects": "画面主体",
+    "visual.actions": "主体动作",
+    "visual.setting": "场景环境",
+    "visual.props": "道具",
+    "visual.framing": "景别",
+    "visual.cameraAngle": "机位角度",
+    "visual.composition": "构图",
+    "visual.viewpoint": "观看关系",
+    "visual.brightness": "亮度",
+    "visual.contrast": "对比度",
+    "visual.lightingSource": "光源",
+    "visual.perceivedColorTemperature": "色温",
+    "visual.saturation": "饱和度",
+    "visual.depthOfField": "景深",
+    "visual.imageTexture": "成像质感",
+    "visual.dominantColor": "主色",
+    "visual.perceivedLensFeel": "镜头透视感",
+    "function.sourceMedium": "素材形态",
+    "function.subjectEmotion": "人物情绪",
+    "function.shotTone": "镜头语气",
+    "audio.bgmStyle": "BGM 风格",
+    "audio.soundEvents": "声音事件",
+    "components.nonTextOverlayEvents": "非文字图层/合成",
+}
+
+_FIELD_GROUPS: tuple[dict[str, object], ...] = (
+    {
+        "id": "core",
+        "title": "核心审片",
+        "description": "先判断镜头讲了什么、是否有声音、怎么接、有没有明显风险。",
+        "default_open": True,
+        "fields": (
+            "visual.contentSummary",
+            "audio.speech",
+            "audio.bgmPresence",
+            "editing.transition",
+            "visual.cameraMovement",
+            "visual.movementIntensity",
+            "quality.flags",
+        ),
+    },
+    {
+        "id": "visual-action",
+        "title": "画面内容与调度",
+        "description": "主体、动作、场景、道具和基础摄影调度。",
+        "default_open": False,
+        "fields": (
+            "visual.subjects",
+            "visual.actions",
+            "visual.setting",
+            "visual.props",
+            "visual.framing",
+            "visual.cameraAngle",
+            "visual.composition",
+            "visual.viewpoint",
+        ),
+    },
+    {
+        "id": "visual-style",
+        "title": "视觉风格",
+        "description": "光线、色彩、景深、质感和镜头透视感。",
+        "default_open": False,
+        "fields": (
+            "visual.brightness",
+            "visual.contrast",
+            "visual.lightingSource",
+            "visual.perceivedColorTemperature",
+            "visual.saturation",
+            "visual.depthOfField",
+            "visual.imageTexture",
+            "visual.dominantColor",
+            "visual.perceivedLensFeel",
+        ),
+    },
+    {
+        "id": "audio-detail",
+        "title": "声音层",
+        "description": "能量、BGM 风格和可听声音事件；BGM 有无仍以确定性检测为准。",
+        "default_open": False,
+        "fields": (
+            "audio.energy",
+            "audio.bgmStyle",
+            "audio.soundEvents",
+        ),
+    },
+    {
+        "id": "function",
+        "title": "功能与情绪",
+        "description": "镜头在短片中的功能、人物情绪和整体语气。",
+        "default_open": False,
+        "fields": (
+            "function.sourceMedium",
+            "function.subjectEmotion",
+            "function.shotTone",
+        ),
+    },
+    {
+        "id": "post",
+        "title": "文字与后期图层",
+        "description": "非文字后期图层、合成事件；文字字段会在后续完整组件呈现中继续展开。",
+        "default_open": False,
+        "fields": (
+            "components.nonTextOverlayEvents",
+        ),
+    },
+)
+
+_FIELD_GROUP_BY_FIELD: dict[str, dict[str, object]] = {
+    field: group
+    for group in _FIELD_GROUPS
+    for field in group["fields"]  # type: ignore[index]
 }
 
 
@@ -118,6 +242,325 @@ def _frame_refs(raws: dict[str, dict | None], out_dir: Path) -> dict[str, str]:
     return result
 
 
+def _clip_src(out_dir: Path, shot_id: str) -> str | None:
+    clip_path = out_dir / "clips" / f"{shot_id}.mp4"
+    return f"clips/{shot_id}.mp4" if clip_path.is_file() else None
+
+
+def _full_video_src(raws: dict[str, dict | None], out_dir: Path) -> str | None:
+    media = raws.get("media")
+    if not media:
+        return None
+    source_path = media.get("source", {}).get("sourcePath")
+    if not isinstance(source_path, str) or not source_path:
+        return None
+    source = Path(source_path)
+    if not source.is_file():
+        return None
+    rel = os.path.relpath(source, out_dir)
+    return quote(Path(rel).as_posix())
+
+
+def _merged_review_reasons(shot: dict, review_reasons: list[str]) -> list[str]:
+    merged = list(review_reasons)
+    if shot.get("needsReview"):
+        merged.append("shots.json 标记 needsReview")
+    return merged
+
+
+def _shot_duration_ms(shot: dict) -> int:
+    duration = shot.get("durationMs")
+    if isinstance(duration, int) and duration > 0:
+        return duration
+    start_ms = shot.get("finalStartMs")
+    end_ms = shot.get("finalEndMs")
+    if isinstance(start_ms, int) and isinstance(end_ms, int) and end_ms > start_ms:
+        return end_ms - start_ms
+    return 0
+
+
+def _music_by_shot(raws: dict[str, dict | None]) -> dict[str, str]:
+    doc = raws.get("music-flags")
+    result: dict[str, str] = {}
+    if not doc:
+        return result
+    shots = doc.get("shots")
+    if not isinstance(shots, list):
+        return result
+    for shot in shots:
+        if not isinstance(shot, dict):
+            continue
+        shot_id = shot.get("shotID")
+        state = shot.get("state")
+        if isinstance(shot_id, str) and isinstance(state, str):
+            result[shot_id] = state
+    return result
+
+
+def _music_tally(raws: dict[str, dict | None]) -> dict[str, int]:
+    doc = raws.get("music-flags")
+    if not doc:
+        return {}
+    tally = doc.get("stateTally")
+    if not isinstance(tally, dict):
+        return {}
+    return {str(k): int(v) for k, v in tally.items() if isinstance(v, int)}
+
+
+def _unified_batch_status(raws: dict[str, dict | None]) -> tuple[str, int]:
+    doc = raws.get("unified-media")
+    if not doc:
+        return "missing", 0
+    batches = doc.get("batches")
+    if not isinstance(batches, list):
+        return "unknown", 0
+    statuses = [b.get("status") for b in batches if isinstance(b, dict)]
+    if statuses and all(s == "complete" for s in statuses):
+        return "complete", len(statuses)
+    if statuses and any(s == "failed" for s in statuses):
+        return "partial", len(statuses)
+    return "unknown", len(statuses)
+
+
+def _document_status_label(status: str) -> str:
+    return {
+        "draft": "未校对",
+        "underReview": "校对中",
+        "confirmed": "已确认",
+        "outdated": "需更新",
+    }.get(status, status)
+
+
+def _summary_html(
+    document_status: str,
+    shots: list[dict],
+    review_reasons_by_shot: dict[str, list[str]],
+    raws: dict[str, dict | None],
+) -> str:
+    review_count = sum(
+        1
+        for shot in shots
+        if _merged_review_reasons(shot, review_reasons_by_shot.get(str(shot.get("shotID", "")), []))
+    )
+    total_duration = sum(_shot_duration_ms(shot) for shot in shots)
+    music_tally = _music_tally(raws)
+    music_value = f"{music_tally.get('music', 0)} 已识别 · {music_tally.get('unknown', 0)} 待确认"
+    quality_doc = raws.get("quality-flags") or {}
+    flagged_quality = quality_doc.get("flaggedShotCount")
+    quality_value = str(flagged_quality) if isinstance(flagged_quality, int) else "待确认"
+    unified_status, batch_count = _unified_batch_status(raws)
+    unified_label = {
+        "complete": "已完成",
+        "partial": "部分完成",
+        "missing": "未运行",
+        "unknown": "待确认",
+    }.get(unified_status, "待确认")
+    cards = [
+        (
+            "镜头总数",
+            str(len(shots)),
+            "raw/shots.json#shots",
+            "badge-outline",
+            "已切分",
+        ),
+        (
+            "需复核镜头",
+            str(review_count),
+            "resolver review_reasons + raw/shots.json#shots[*].needsReview",
+            "badge-warning" if review_count else "badge-success",
+            "优先检查",
+        ),
+        (
+            "全片时长",
+            _timecode(total_duration),
+            "raw/shots.json#shots[*].finalStartMs/finalEndMs",
+            "badge-outline",
+            "校对范围",
+        ),
+        (
+            "背景音乐",
+            music_value,
+            "raw/music-flags.json#stateTally",
+            "badge-outline",
+            "检测结果",
+        ),
+        (
+            "画质问题",
+            quality_value,
+            "raw/quality-flags.json#flaggedShotCount",
+            "badge-warning" if quality_value not in {"0", "待确认"} else "badge-outline",
+            "需要留意",
+        ),
+        (
+            "视频理解",
+            f"{unified_label} · {batch_count} 组",
+            "raw/unified-media.json#batches",
+            "badge-success" if unified_status == "complete" else "badge-warning",
+            "语义分析",
+        ),
+    ]
+    parts = [
+        '<section id="shot-summary" class="card" aria-label="镜头分析总览">',
+        '<div class="card-header"><div>',
+        '<h2 class="card-title">审片总览</h2>',
+        f'<p class="card-description">当前状态：{html.escape(_document_status_label(document_status))}。先看需复核镜头，再进入时间线逐镜检查。</p>',
+        '</div><span class="badge badge-outline">总览</span></div>',
+        '<div class="summary-grid">',
+    ]
+    for label, value, source, badge_class, note in cards:
+        parts.append(
+            '<article class="metric-card" '
+            f'data-evidence-refs="{html.escape(source)}">'
+            f'<p class="metric-label">{html.escape(label)}</p>'
+            f'<p class="metric-value">{html.escape(value)}</p>'
+            f'<span class="badge {badge_class}">{html.escape(note)}</span>'
+            '</article>'
+        )
+    parts.append("</div></section>")
+    return "".join(parts)
+
+
+def _timeline_html(
+    shots: list[dict],
+    review_reasons_by_shot: dict[str, list[str]],
+    frame_refs: dict[str, str],
+    out_dir: Path,
+    raws: dict[str, dict | None],
+) -> str:
+    total_duration = sum(_shot_duration_ms(shot) for shot in shots) or 1
+    music_states = _music_by_shot(raws)
+    parts = [
+        '<section id="shot-timeline" class="timeline-card card" aria-label="镜头时间线">',
+        '<div class="card-header"><div>',
+        '<h2 class="card-title">镜头时间线</h2>',
+        '<p class="card-description">按镜头时长显示；金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。</p>',
+        '</div><span class="badge badge-outline">按时长</span></div>',
+        '<div class="timeline-track" role="list">',
+    ]
+    filmstrip: list[str] = ['<div class="filmstrip" aria-label="代表帧胶片条">']
+    for shot in shots:
+        shot_id = str(shot.get("shotID", ""))
+        esc_id = html.escape(shot_id)
+        duration = _shot_duration_ms(shot)
+        width = max((duration / total_duration) * 100, 1.0)
+        start_ms = shot.get("finalStartMs")
+        end_ms = shot.get("finalEndMs")
+        clip_src = _clip_src(out_dir, shot_id)
+        reasons = _merged_review_reasons(shot, review_reasons_by_shot.get(shot_id, []))
+        music_state = music_states.get(shot_id, "unknown")
+        class_names = ["timeline-shot", "shot-jump"]
+        if reasons:
+            class_names.append("is-review")
+        if music_state == "music":
+            class_names.append("is-music")
+        elif music_state == "unknown":
+            class_names.append("is-unknown")
+        disabled = "" if clip_src else " disabled"
+        src_attr = f' data-clip-src="{html.escape(clip_src)}"' if clip_src else ""
+        start_attr = f' data-start-ms="{start_ms}"' if isinstance(start_ms, int) else ""
+        end_attr = f' data-end-ms="{end_ms}"' if isinstance(end_ms, int) else ""
+        title_bits = [shot_id]
+        if isinstance(start_ms, int) and isinstance(end_ms, int):
+            title_bits.append(f"{_timecode(start_ms)}–{_timecode(end_ms)}")
+        title_bits.append(f"BGM={music_state}")
+        if reasons:
+            title_bits.append("复核：" + "；".join(reasons))
+        parts.append(
+            f'<button type="button" class="{" ".join(class_names)}" role="listitem" '
+            f'style="--shot-width: {width:.2f}%" data-shot-id="{esc_id}"'
+            f'{src_attr}{start_attr}{end_attr}{disabled} '
+            f'title="{html.escape(" · ".join(title_bits))}" '
+            f'aria-label="跳转到镜头 {esc_id}">{esc_id}</button>'
+        )
+        frame_ref = frame_refs.get(shot_id)
+        if frame_ref is not None:
+            filmstrip.append(
+                f'<button type="button" class="filmstrip-shot shot-jump" '
+                f'data-shot-id="{esc_id}"{src_attr}{start_attr}{end_attr}{disabled} '
+                f'aria-label="查看镜头 {esc_id}">'
+                f'<img src="{html.escape(frame_ref)}" alt="镜头 {esc_id} 代表帧" loading="lazy">'
+                f'<span>{esc_id} · {_timecode(duration)}</span>'
+                '</button>'
+            )
+    parts.append("</div>")
+    filmstrip.append("</div>")
+    parts.extend(filmstrip)
+    parts.append("</section>")
+    return "".join(parts)
+
+
+def _shot_inspector_json(
+    shots: list[dict],
+    observations_by_shot: dict[str, list[Observation]],
+    review_reasons_by_shot: dict[str, list[str]],
+    frame_refs: dict[str, str],
+    out_dir: Path,
+) -> str:
+    groups = [
+        {
+            "id": str(group["id"]),
+            "title": str(group["title"]),
+            "description": str(group["description"]),
+            "fields": list(group["fields"]),  # type: ignore[arg-type]
+        }
+        for group in _FIELD_GROUPS
+    ]
+    shot_items = []
+    for shot in shots:
+        shot_id = str(shot.get("shotID", ""))
+        start_ms = shot.get("finalStartMs")
+        end_ms = shot.get("finalEndMs")
+        duration = _shot_duration_ms(shot)
+        grouped_fields: dict[str, list[dict[str, object]]] = {
+            str(group["id"]): [] for group in _FIELD_GROUPS
+        }
+        grouped_fields.setdefault("other", [])
+        for obs in observations_by_shot.get(shot_id, []):
+            group = _group_for_field(obs.field)
+            group_id = str(group["id"])
+            grouped_fields.setdefault(group_id, []).append(
+                {
+                    "field": obs.field,
+                    "label": _FIELD_LABELS.get(obs.field, obs.field),
+                    "value": _state_plain_text(obs),
+                    "state": obs.state.value,
+                    "confidence": obs.confidence.value,
+                    "source": obs.source.value,
+                    "verified": obs.verified,
+                    "evidenceRefs": list(obs.evidence_refs),
+                }
+            )
+        shot_items.append(
+            {
+                "shotID": shot_id,
+                "startMs": start_ms if isinstance(start_ms, int) else None,
+                "endMs": end_ms if isinstance(end_ms, int) else None,
+                "durationMs": duration,
+                "timecode": (
+                    f"{_timecode(start_ms)} – {_timecode(end_ms)}"
+                    if isinstance(start_ms, int) and isinstance(end_ms, int)
+                    else ""
+                ),
+                "durationText": _timecode(duration),
+                "frameRef": frame_refs.get(shot_id),
+                "clipSrc": _clip_src(out_dir, shot_id),
+                "needsReview": bool(
+                    _merged_review_reasons(
+                        shot,
+                        review_reasons_by_shot.get(shot_id, []),
+                    )
+                ),
+                "reviewReasons": _merged_review_reasons(
+                    shot,
+                    review_reasons_by_shot.get(shot_id, []),
+                ),
+                "groups": grouped_fields,
+            }
+        )
+    payload = {"groups": groups, "shots": shot_items}
+    return _json_for_script(payload)
+
+
 def _state_visible_text(obs: Observation) -> str:
     if obs.state == ValueState.VALUE:
         value = obs.value
@@ -125,8 +568,28 @@ def _state_visible_text(obs: Observation) -> str:
             return html.escape("、".join(str(item) for item in value) if value else "无标记")
         return html.escape(str(value))
     if obs.state == ValueState.UNMAPPED:
-        return "未映射：" + html.escape(str(obs.original_value))
+        return "待归类：" + html.escape(str(obs.original_value))
     return _STATE_TEXT[obs.state]
+
+
+def _state_plain_text(obs: Observation) -> str:
+    if obs.state == ValueState.VALUE:
+        value = obs.value
+        if isinstance(value, list):
+            return "、".join(str(item) for item in value) if value else "无标记"
+        return str(value)
+    if obs.state == ValueState.UNMAPPED:
+        return f"待归类：{obs.original_value}"
+    return _STATE_TEXT[obs.state]
+
+
+def _confidence_visible_text(value: str) -> str:
+    return {
+        "high": "可信度高",
+        "medium": "可信度中",
+        "low": "可信度低",
+        "unknown": "可信度待确认",
+    }.get(value, "可信度待确认")
 
 
 def _initial_edit_value(obs: Observation) -> str:
@@ -170,13 +633,16 @@ def _edit_control_html(obs: Observation, rule: FieldRule | None) -> str:
         current = "unknown"
     elif obs.state == ValueState.UNMAPPED:
         # 保留原值并提示映射（docs/04 §8.2：unmapped 应保留可见原始值或修正入口）。
-        extra = ("", f"{obs.original_value}（待映射）")
+        extra = ("", f"{obs.original_value}（待归类）")
     else:
         extra = ("", _STATE_TEXT[obs.state])
     parts: list[str] = []
     for opt in options:
         selected = " selected" if current == opt else ""
-        parts.append(f'<option value="{html.escape(opt)}"{selected}>{html.escape(opt)}</option>')
+        visible = "待确认" if opt == "unknown" else opt
+        parts.append(
+            f'<option value="{html.escape(opt)}"{selected}>{html.escape(visible)}</option>'
+        )
     if extra is not None:
         parts.append(
             f'<option value="{html.escape(extra[0])}" selected>{html.escape(extra[1])}</option>'
@@ -207,8 +673,10 @@ def _cell_html(obs: Observation, rule: FieldRule | None) -> str:
     esc_field = html.escape(obs.field)
     esc_shot = html.escape(obs.shot_id)
     parts = [f'<span class="cell-text {state_class}">{_state_visible_text(obs)}</span>']
-    # confidence=unknown 也必须可见（docs/04 §3.3）。
-    parts.append(f'<span class="cell-confidence">置信度 {html.escape(obs.confidence.value)}</span>')
+    # confidence=unknown 也必须可见（docs/04 §3.3），但用户界面使用中文状态。
+    parts.append(
+        f'<span class="cell-confidence">{html.escape(_confidence_visible_text(obs.confidence.value))}</span>'
+    )
     if obs.verified:
         parts.append('<span class="cell-verified">已核实</span>')
     parts.append(_edit_control_html(obs, rule))
@@ -223,8 +691,6 @@ def _cell_html(obs: Observation, rule: FieldRule | None) -> str:
 
 def _column_header_html(
     shot: dict,
-    frame_ref: str | None,
-    clip_src: str | None,
     review_reasons: list[str],
 ) -> str:
     shot_id = str(shot.get("shotID", ""))
@@ -235,9 +701,7 @@ def _column_header_html(
     # data-review-reasons 稳定机器语义：JSON 字符串数组，resolver 理由在前，
     # shots.json needsReview=true 时追加标记理由；data-needs-review="true"
     # 当且仅当该数组非空（html_contract 校验此不变量）。
-    merged_reasons = list(review_reasons)
-    if shot.get("needsReview"):
-        merged_reasons.append("shots.json 标记 needsReview")
+    merged_reasons = _merged_review_reasons(shot, review_reasons)
     needs_review = bool(merged_reasons)
     reasons_attr = html.escape(json.dumps(merged_reasons, ensure_ascii=False))
     esc_id = html.escape(shot_id)
@@ -262,96 +726,134 @@ def _column_header_html(
         )
     if isinstance(duration_ms, int):
         lines.append(f'<span class="duration">时长 {duration_ms / 1000:.3f}s</span>')
-    if frame_ref is not None:
-        lines.append(
-            f'<img class="shot-frame" src="{html.escape(frame_ref)}" '
-            f'alt="镜头 {esc_id} 代表帧" loading="lazy">'
-        )
     if needs_review:
-        lines.append('<span class="needs-review-badge">⚠ 需人工复核</span>')
-    if clip_src is not None:
-        lines.append(
-            f'<button type="button" class="play-btn" data-clip-src="{html.escape(clip_src)}" '
-            f'data-start-ms="{start_ms}" data-end-ms="{end_ms}" '
-            f'aria-label="播放镜头 {esc_id}">▶ 播放</button>'
-        )
-    else:
-        lines.append(
-            f'<button type="button" class="play-btn" disabled '
-            f'aria-label="镜头 {esc_id} 无 clip，无法播放">▶ 无 clip</button>'
-        )
-    if isinstance(start_ms, int) and isinstance(end_ms, int):
-        # 边界修正表单：提交进 pendingChanges（kind="boundary"），最终校验在应用端。
-        lines.append(
-            f'<form class="boundary-form" data-shot-id="{esc_id}" '
-            f'aria-label="{esc_id} 边界修正">'
-            f'<label>finalStartMs <input type="number" name="finalStartMs" '
-            f'value="{start_ms}" min="0" aria-label="{esc_id} finalStartMs"></label>'
-            f'<label>finalEndMs <input type="number" name="finalEndMs" '
-            f'value="{end_ms}" min="0" aria-label="{esc_id} finalEndMs"></label>'
-            f'<button type="submit">提交边界修正</button></form>'
-        )
+        lines.append('<span class="needs-review-badge">需人工复核</span>')
     lines.append("</div></th>")
     return "".join(lines)
+
+
+def _field_label_html(field: str) -> str:
+    label = _FIELD_LABELS.get(field, field)
+    return f'<span class="field-label">{html.escape(label)}</span>'
+
+
+def _group_for_field(field: str) -> dict[str, object]:
+    return _FIELD_GROUP_BY_FIELD.get(
+        field,
+        {
+            "id": "other",
+            "title": "其他字段",
+            "description": "尚未归入固定业务分类的字段。",
+            "default_open": False,
+            "fields": (),
+        },
+    )
+
+
+def _field_category_nav(groups: list[dict[str, object]]) -> str:
+    buttons = [
+        '<button type="button" class="category-tab is-active" '
+        'data-field-filter="all" aria-selected="true">全部字段</button>'
+    ]
+    for group in groups:
+        group_id = html.escape(str(group["id"]))
+        buttons.append(
+            '<button type="button" class="category-tab" '
+            f'data-field-filter="{group_id}" aria-selected="false">'
+            f'{html.escape(str(group["title"]))}</button>'
+        )
+    return (
+        '<div class="field-category-nav" role="tablist" aria-label="字段分类筛选">'
+        + "".join(buttons)
+        + "</div>"
+    )
 
 
 def _table_html(
     shots: list[dict],
     observations_by_shot: dict[str, list[Observation]],
     review_reasons_by_shot: dict[str, list[str]],
-    frame_refs: dict[str, str],
-    out_dir: Path,
     vocabulary: Vocabulary,
 ) -> str:
     head_cells = ['<th scope="col">字段 \\ 镜头</th>']
     for shot in shots:
         shot_id = str(shot.get("shotID", ""))
-        clip_path = out_dir / "clips" / f"{shot_id}.mp4"
-        clip_src = f"clips/{shot_id}.mp4" if clip_path.is_file() else None
         head_cells.append(
             _column_header_html(
-                shot, frame_refs.get(shot_id), clip_src,
+                shot,
                 review_reasons_by_shot.get(shot_id, []),
             )
         )
-    rows = [
-        "<table>",
+    table_parts = [
+        _field_category_nav(list(_FIELD_GROUPS)),
+        '<table id="shot-table" class="shot-table">',
         f"<thead><tr>{''.join(head_cells)}</tr></thead>",
-        "<tbody>",
     ]
     if shots:
+        ordered_groups: list[dict[str, object]] = []
+        rows_by_group: dict[str, list[tuple[int, Observation]]] = {}
         field_count = len(observations_by_shot[str(shots[0].get("shotID", ""))])
         for row_index in range(field_count):
             first_obs = observations_by_shot[str(shots[0].get("shotID", ""))][row_index]
-            cells = [
-                f'<th scope="row" data-field="{html.escape(first_obs.field)}">'
-                f"{html.escape(first_obs.field)}</th>"
-            ]
-            for shot in shots:
-                obs = observations_by_shot[str(shot.get("shotID", ""))][row_index]
-                cells.append(_cell_html(obs, vocabulary.fields.get(obs.field)))
-            rows.append(f"<tr>{''.join(cells)}</tr>")
-    rows.append("</tbody></table>")
-    return "\n".join(rows)
+            group = _group_for_field(first_obs.field)
+            group_id = str(group["id"])
+            if group_id not in rows_by_group:
+                ordered_groups.append(group)
+                rows_by_group[group_id] = []
+            rows_by_group[group_id].append((row_index, first_obs))
+        column_count = len(shots) + 1
+        for group in ordered_groups:
+            group_id = str(group["id"])
+            group_rows = rows_by_group[group_id]
+            collapsed = "" if bool(group.get("default_open")) else " is-collapsed"
+            table_parts.append(
+                f'<tbody class="field-group-tbody{collapsed}" '
+                f'data-field-group="{html.escape(group_id)}">'
+                '<tr class="field-group-row">'
+                f'<th scope="rowgroup" colspan="{column_count}">'
+                f'<button type="button" class="field-group-toggle" '
+                f'data-field-group-target="{html.escape(group_id)}" '
+                f'aria-expanded="{"true" if not collapsed else "false"}">'
+                '<span>'
+                f'<strong>{html.escape(str(group["title"]))}</strong>'
+                f'<small>{html.escape(str(group["description"]))}</small>'
+                '</span>'
+                f'<span class="badge badge-outline">{len(group_rows)} 项</span>'
+                '</button>'
+                '</th></tr>'
+            )
+            for row_index, first_obs in group_rows:
+                cells = [
+                    f'<th scope="row" data-field="{html.escape(first_obs.field)}">'
+                    f"{_field_label_html(first_obs.field)}</th>"
+                ]
+                for shot in shots:
+                    obs = observations_by_shot[str(shot.get("shotID", ""))][row_index]
+                    cells.append(_cell_html(obs, vocabulary.fields.get(obs.field)))
+                table_parts.append(f"<tr>{''.join(cells)}</tr>")
+            table_parts.append("</tbody>")
+    table_parts.append("</table>")
+    return "\n".join(table_parts)
 
 
 def _metadata_html(status: str, shot_count: int, revision: str) -> str:
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
     entries = [
-        ("文档状态", status),
+        ("校对状态", _document_status_label(status)),
         ("镜头数", str(shot_count)),
-        ("源 revision", revision),
         ("生成时间", generated),
-        ("契约版本", CONTRACT_VERSION),
-        ("渲染版本", SHOT_RENDER_VERSION),
     ]
     items = "".join(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(value)}</dd></div>"
         for label, value in entries
     )
     return (
-        '<header class="metadata" id="metadata">'
-        "<h1>Shot Analysis 校对视图</h1>"
+        '<header class="metadata card" id="metadata">'
+        '<div class="metadata-topline"><div>'
+        '<p class="metadata-kicker">MemoLoupe 审片工作台</p>'
+        "<h1>镜头拉片校对台</h1>"
+        "</div>"
+        '<span class="badge badge-outline">离线可打开</span></div>'
         f'<dl class="metadata-grid">{items}</dl>'
         "</header>"
     )
@@ -360,11 +862,13 @@ def _metadata_html(status: str, shot_count: int, revision: str) -> str:
 def _validation_html(validation_summary: str | None, warnings: list[str]) -> str:
     """校验摘要区（只读）：外部校验结果 + corrections overlay 警告。"""
     parts = [
-        '<section id="validation-summary" aria-label="校验摘要">',
-        "<h2>校验摘要</h2>",
+        '<section id="validation-summary" class="card" aria-label="检查结果">',
+        '<div class="card-header"><div><h2 class="card-title">检查结果</h2>'
+        '<p class="card-description">页面生成和校对记录的检查状态。</p>'
+        "</div></div>",
     ]
     if validation_summary is None:
-        parts.append('<p class="validation-empty">未提供校验摘要</p>')
+        parts.append('<p class="validation-empty">未提供检查结果</p>')
     else:
         parts.append(f'<pre class="validation-report">{html.escape(validation_summary)}</pre>')
     if warnings:
@@ -376,9 +880,19 @@ def _validation_html(validation_summary: str | None, warnings: list[str]) -> str
     return "".join(parts)
 
 
+def _json_for_script(payload: object) -> str:
+    """转成可安全嵌入内联 ``<script>`` 的 JSON 字面量。"""
+    return (
+        json.dumps(payload, ensure_ascii=False)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+
+
 def _js_string(value: str) -> str:
-    """转成安全的 JS 字符串字面量（json.dumps + 转义 "</"，防 </script> 逃逸）。"""
-    return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
+    """转成安全的 JS 字符串字面量。"""
+    return _json_for_script(value)
 
 
 def render_shot_html(
@@ -455,21 +969,40 @@ def render_shot_html(
     else:
         document_status = status
 
+    frame_refs = _frame_refs(raws, out_dir)
+    full_video_src = _full_video_src(raws, out_dir)
     document = _TEMPLATE_PATH.read_text(encoding="utf-8")
     replacements = {
         "__DOCUMENT_STATUS__": document_status,
         "__CONTRACT_VERSION__": CONTRACT_VERSION,
         "__SOURCE_REVISION__": html.escape(revision),
+        "__SHOT_RENDER_VERSION__": SHOT_RENDER_VERSION,
         "__SOURCE_REVISION_JS__": _js_string(revision),
         "__SERVER_MODE__": "true" if server_mode else "false",
-        "__REVIEW_REASONS_JSON__": json.dumps(
-            review_reasons_by_shot, ensure_ascii=False
-        ).replace("</", "<\\/"),
+        "__FULL_VIDEO_SRC_JS__": (
+            "null" if full_video_src is None else _js_string(full_video_src)
+        ),
+        "__REVIEW_REASONS_JSON__": _json_for_script(review_reasons_by_shot),
+        "__SHOT_INSPECTOR_JSON__": _shot_inspector_json(
+            shots,
+            observations_by_shot,
+            review_reasons_by_shot,
+            frame_refs,
+            out_dir,
+        ),
         "<!--METADATA-->": _metadata_html(document_status, len(shots), revision),
         "<!--VALIDATION_SUMMARY-->": _validation_html(validation_summary, warnings),
+        "<!--SHOT_SUMMARY-->": _summary_html(
+            document_status, shots, review_reasons_by_shot, raws
+        ),
+        "<!--SHOT_TIMELINE-->": _timeline_html(
+            shots, review_reasons_by_shot, frame_refs, out_dir, raws
+        ),
         "<!--SHOT_TABLE-->": _table_html(
-            shots, observations_by_shot, review_reasons_by_shot,
-            _frame_refs(raws, out_dir), out_dir, vocabulary,
+            shots,
+            observations_by_shot,
+            review_reasons_by_shot,
+            vocabulary,
         ),
     }
     for placeholder, content in replacements.items():

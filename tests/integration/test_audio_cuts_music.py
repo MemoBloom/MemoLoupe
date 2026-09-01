@@ -119,6 +119,40 @@ def silent_clip(tmp_path_factory) -> Path:
     return out
 
 
+@pytest.fixture(scope="module")
+def continuous_music_clip(tmp_path_factory) -> Path:
+    """4s 连续双音伴奏；ASR 可同时把整段识别为演唱人声。"""
+    out = tmp_path_factory.mktemp("media") / "continuous-music.mp4"
+    _run_ffmpeg(
+        [
+            "-f", "lavfi", "-i", "color=gray:size=320x240:rate=30:duration=4",
+            "-f", "lavfi", "-i",
+            "aevalsrc=0.30*sin(2*PI*220*t)+0.20*sin(2*PI*440*t):sample_rate=44100:duration=4",
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "mpeg4", "-c:a", "aac", "-shortest",
+            str(out),
+        ]
+    )
+    return out
+
+
+@pytest.fixture(scope="module")
+def loud_noise_clip(tmp_path_factory) -> Path:
+    """4s 响亮宽带噪声，防止全轨扫描把响度直接等同于音乐。"""
+    out = tmp_path_factory.mktemp("media") / "loud-noise.mp4"
+    _run_ffmpeg(
+        [
+            "-f", "lavfi", "-i", "color=gray:size=320x240:rate=30:duration=4",
+            "-f", "lavfi", "-i",
+            "anoisesrc=color=white:amplitude=0.30:sample_rate=44100:duration=4",
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "mpeg4", "-c:a", "aac", "-shortest",
+            str(out),
+        ]
+    )
+    return out
+
+
 def _two_shots() -> list[dict]:
     return [
         {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 2000},
@@ -194,6 +228,36 @@ class TestAudioCutsIntegration:
 
 
 class TestDetectMusicIntegration:
+    def test_continuous_music_survives_full_asr_coverage(
+        self, continuous_music_clip
+    ) -> None:
+        media = probe_media(continuous_music_clip, DEFAULT_CONFIG)
+        asr = _asr_with_speech(end_ms=3900)
+        result = detect_music(
+            continuous_music_clip, _two_shots(), asr, media, DEFAULT_CONFIG
+        )
+        validate_artifact(ArtifactName.MUSIC_FLAGS, result)
+
+        assert result["speechGaps"] == []
+        assert [shot["state"] for shot in result["shots"]] == ["music", "music"]
+        assert all(shot["musicOverlapRatio"] >= 0.9 for shot in result["shots"])
+        assert all(
+            interval["origin"] == "fullRangeTexture+gapAnchor"
+            for interval in result["musicIntervals"]
+        )
+
+    def test_loud_noise_is_not_music_with_full_asr_coverage(
+        self, loud_noise_clip
+    ) -> None:
+        media = probe_media(loud_noise_clip, DEFAULT_CONFIG)
+        asr = _asr_with_speech(end_ms=3900)
+        result = detect_music(
+            loud_noise_clip, _two_shots(), asr, media, DEFAULT_CONFIG
+        )
+        validate_artifact(ArtifactName.MUSIC_FLAGS, result)
+
+        assert all(shot["state"] != "music" for shot in result["shots"])
+
     def test_music_after_speech(self, speech_then_music_clip) -> None:
         media = probe_media(speech_then_music_clip, DEFAULT_CONFIG)
         result = detect_music(
@@ -212,10 +276,13 @@ class TestDetectMusicIntegration:
             "silent": tally["silent"],
             "unknown": tally["unknown"],
         }
-        # gap 锚点区间来自 ASR 间隙
+        # ASR 间隙作为锚点，但不再关闭全轨扫描。
         assert result["speechGaps"]
         assert any(g["state"] == "music" for g in result["speechGaps"])
-        assert all(i["origin"] == "gapAnchor" for i in result["musicIntervals"])
+        assert all(
+            i["origin"] == "fullRangeTexture+gapAnchor"
+            for i in result["musicIntervals"]
+        )
 
     def test_degraded_without_asr(self, speech_then_music_clip) -> None:
         media = probe_media(speech_then_music_clip, DEFAULT_CONFIG)
