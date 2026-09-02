@@ -250,6 +250,108 @@ class TestConnectSwitchRemoveList:
         assert "mimo" in out  # 支持的 provider 全部列出
         assert FAKE_KEY not in out
 
+    def test_add_secret_store_failure_returns_input_error(
+        self, store, secrets, health_ok, monkeypatch, capsys
+    ):
+        """凭据写入失败（如 Keychain 拒绝）不得抛 traceback：退出码 3，
+        且 stderr 说明“配置已保存、凭据未保存”的半完成状态与检查方式。"""
+        from memoloupe.core.errors import MemoLoupeError
+
+        def _boom(provider_id, secret):
+            raise MemoLoupeError("写入 Keychain 失败（provider=qwen，exit=45）")
+
+        monkeypatch.setattr(secrets, "set", _boom)
+        monkeypatch.setenv("TEST_CONNECT_KEY", FAKE_KEY)
+        code = _add_qwen(store, secrets)
+        assert code == EXIT_INPUT
+        err = capsys.readouterr().err
+        assert "凭据" in err
+        assert "connect status" in err
+        assert FAKE_KEY not in err
+
+        # 半完成状态：配置已保存，凭据未保存，未置为当前 provider。
+        data = store.load()
+        assert "qwen" in data["providers"]
+        assert data["activeProvider"] is None
+        assert secrets.get("qwen") is None
+
+
+class TestHttpGetStatus:
+    """直接覆盖 health check 的 HTTP 层：URL 拼接、Bearer 头与错误脱敏。"""
+
+    class _FakeResponse:
+        def __init__(self, status):
+            self.status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    @staticmethod
+    def _install_opener(monkeypatch, result):
+        import memoloupe.cli.connect as connect_cli
+
+        class _Opener:
+            def __init__(self):
+                self.requests = []
+
+            def open(self, request, timeout=None):
+                self.requests.append((request, timeout))
+                if isinstance(self._result, Exception):
+                    raise self._result
+                return self._result
+
+            _result = result
+
+        opener = _Opener()
+        monkeypatch.setattr(connect_cli, "_OPENER", opener)
+        return connect_cli, opener
+
+    def test_success_builds_url_and_bearer_header(self, monkeypatch):
+        connect_cli, opener = self._install_opener(
+            monkeypatch, self._FakeResponse(200)
+        )
+        spec = connect_cli.get_provider_spec("qwen")
+        ok, detail = connect_cli.health_check(
+            spec, "https://example.com/v1/", FAKE_KEY
+        )
+        assert ok
+        assert detail == "HTTP 200"
+        request, timeout = opener.requests[0]
+        # baseUrl 尾部的 / 不产生双斜杠。
+        assert request.full_url == "https://example.com/v1/models"
+        assert request.get_header("Authorization") == f"Bearer {FAKE_KEY}"
+        assert timeout == connect_cli._HEALTH_TIMEOUT_SEC
+
+    def test_non_2xx_returns_status_code(self, monkeypatch):
+        import urllib.error
+
+        connect_cli, _ = self._install_opener(
+            monkeypatch,
+            urllib.error.HTTPError(
+                "https://example.com/v1/models", 401, "Unauthorized", {}, None
+            ),
+        )
+        spec = connect_cli.get_provider_spec("qwen")
+        ok, detail = connect_cli.health_check(spec, "https://example.com/v1", FAKE_KEY)
+        assert not ok
+        assert detail == "HTTP 401"
+
+    def test_network_error_is_redacted(self, monkeypatch):
+        import urllib.error
+
+        connect_cli, _ = self._install_opener(
+            monkeypatch,
+            urllib.error.URLError(f"connection refused (auth={FAKE_KEY})"),
+        )
+        spec = connect_cli.get_provider_spec("qwen")
+        ok, detail = connect_cli.health_check(spec, "https://example.com/v1", FAKE_KEY)
+        assert not ok
+        assert FAKE_KEY not in detail
+        assert "***" in detail
+
 
 class TestConnectDispatch:
     def test_main_dispatches_connect_prefix(self, tmp_path, monkeypatch, capsys):

@@ -13,7 +13,8 @@
 
 - ``0`` 完成（add 的 health check 失败只是 warning，仍返回 0）；
 - ``2`` 用户参数或配置错误（未知 provider、缺 API key）；
-- ``3`` 输入/状态错误（无已配置 provider、switch/remove 目标不存在）；
+- ``3`` 输入/状态错误（无已配置 provider、switch/remove 目标不存在、
+  add 时凭据写入失败但配置已保存）；
 - ``5`` health check 失败（``connect test``）。
 """
 
@@ -34,6 +35,7 @@ from memoloupe.connect.store import (
     ConnectionStore,
     ConnectionStoreError,
 )
+from memoloupe.core.errors import MemoLoupeError
 from memoloupe.services.base import ServiceError, TransientServiceError, redact_text
 
 EXIT_OK = 0
@@ -193,7 +195,19 @@ def _cmd_add(args: argparse.Namespace, store: ConnectionStore, secrets: SecretSt
     except ConnectionStoreError as exc:
         print(f"错误：保存连接配置失败：{exc}", file=sys.stderr)
         return EXIT_USAGE
-    secrets.set(spec.provider_id, api_key)
+    try:
+        secrets.set(spec.provider_id, api_key)
+    except MemoLoupeError as exc:
+        # 凭据存储失败（如 Keychain 拒绝）：连接配置已保存但凭据未保存，
+        # 不得抛 traceback；明确说明半完成状态与检查方式。
+        print(
+            f"错误：连接配置已保存，但凭据写入失败："
+            f"{redact_text(str(exc), [api_key])}\n"
+            f"当前状态可用 memoloupe connect status 检查；"
+            f"修复凭据存储后请重新运行 memoloupe connect add {spec.provider_id}",
+            file=sys.stderr,
+        )
+        return EXIT_INPUT
     print(f"已保存 {spec.provider_id}（{spec.label}）连接配置与凭据")
 
     ok, detail = health_check(spec, base_url, api_key)
