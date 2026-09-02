@@ -49,6 +49,7 @@ RAW_FILES: tuple[str, ...] = (
     "asr",
     "unified-media",
     "camera-motion",
+    "story-blocks",
 )
 
 #: 非 value 状态的固定可见文案（docs/04 §3.3：absent 与 absent-claimed 必须不同）。
@@ -331,6 +332,31 @@ def _document_status_label(status: str) -> str:
     }.get(status, status)
 
 
+def _story_status_label(status: str) -> str:
+    return {
+        "complete": "已完成",
+        "scaffold": "已生成初稿",
+        "partial": "部分完成",
+        "failed": "生成失败",
+    }.get(status, status or "待生成")
+
+
+def _story_role_label(role: object) -> str:
+    return {
+        "hook": "开场吸引",
+        "context": "背景铺垫",
+        "promise": "建立期待",
+        "problem": "提出问题",
+        "development": "过程展开",
+        "proof": "补充证明",
+        "turn": "情绪/信息转折",
+        "payoff": "高潮兑现",
+        "resolution": "收束总结",
+        "custom": "自定义作用",
+        "unknown": "作用待确认",
+    }.get(str(role or "unknown"), str(role or "作用待确认"))
+
+
 def _summary_html(
     document_status: str,
     shots: list[dict],
@@ -420,6 +446,159 @@ def _summary_html(
     return "".join(parts)
 
 
+def _story_blocks(raws: dict[str, dict | None]) -> list[dict]:
+    story = raws.get("story-blocks")
+    if not story:
+        return []
+    blocks = story.get("blocks")
+    if not isinstance(blocks, list):
+        return []
+    return [block for block in blocks if isinstance(block, dict)]
+
+
+def _story_slots(raws: dict[str, dict | None]) -> list[dict]:
+    story = raws.get("story-blocks")
+    if not story:
+        return []
+    slots = story.get("slots")
+    if not isinstance(slots, list):
+        return []
+    return [slot for slot in slots if isinstance(slot, dict)]
+
+
+def _story_slot_map(slots: list[dict]) -> dict[str, list[dict]]:
+    result: dict[str, list[dict]] = {}
+    for slot in slots:
+        block_ids = slot.get("blockIDs")
+        if not isinstance(block_ids, list):
+            continue
+        for block_id in block_ids:
+            if isinstance(block_id, str):
+                result.setdefault(block_id, []).append(slot)
+    return result
+
+
+def _story_context_by_shot(raws: dict[str, dict | None]) -> dict[str, dict]:
+    """shotID -> story 摘要；用于右侧 Sidebar 的故事归属卡片。"""
+    blocks = _story_blocks(raws)
+    slots_by_block = _story_slot_map(_story_slots(raws))
+    result: dict[str, dict] = {}
+    for block in blocks:
+        block_id = str(block.get("storyBlockID") or "")
+        if not block_id:
+            continue
+        shot_ids = block.get("shotIDs")
+        if not isinstance(shot_ids, list):
+            continue
+        start_ms, end_ms = block.get("startMs"), block.get("endMs")
+        slots = slots_by_block.get(block_id, [])
+        context = {
+            "blockID": block_id,
+            "blockTitle": str(block.get("blockTitle") or block_id),
+            "coreContent": str(block.get("coreContent") or "待确认"),
+            "primaryRole": _story_role_label(block.get("primaryRole")),
+            "narrativeDensity": str(block.get("narrativeDensity") or "密度待确认"),
+            "visualIndependence": str(block.get("visualIndependence") or "静音可读性待确认"),
+            "timecode": (
+                f"{_timecode(start_ms)} – {_timecode(end_ms)}"
+                if isinstance(start_ms, int) and isinstance(end_ms, int)
+                else ""
+            ),
+            "slots": [
+                {
+                    "slotID": str(slot.get("slotID") or ""),
+                    "slotTitle": str(slot.get("slotTitle") or "结构段"),
+                    "slotType": str(slot.get("slotType") or "待确认"),
+                }
+                for slot in slots
+            ],
+        }
+        for shot_id in shot_ids:
+            if isinstance(shot_id, str):
+                result[shot_id] = context
+    return result
+
+
+def _story_timeline_band_html(
+    raws: dict[str, dict | None],
+    shots: list[dict],
+    out_dir: Path,
+) -> str:
+    story = raws.get("story-blocks")
+    blocks = _story_blocks(raws)
+    if not story or not blocks:
+        return ""
+    slots = _story_slots(raws)
+    slots_by_block = _story_slot_map(slots)
+    shots_by_id = {str(shot.get("shotID", "")): shot for shot in shots}
+    timeline_ms = sum(_shot_duration_ms(shot) for shot in shots) or 1
+    parts = [
+        '<div id="story-timeline-band" class="story-timeline-band" '
+        'aria-label="故事轨道">',
+        '<div class="timeline-lane-label">',
+        '<span>故事</span>',
+        f'<small>{len(blocks)} 段 · {_story_status_label(str(story.get("status") or ""))}</small>',
+        "</div>",
+        '<div class="story-segment-track" role="list">',
+    ]
+    for index, block in enumerate(blocks, start=1):
+        block_id = str(block.get("storyBlockID") or f"B{index:04d}")
+        shot_ids = [sid for sid in block.get("shotIDs", []) if isinstance(sid, str)]
+        first_shot_id = shot_ids[0] if shot_ids else ""
+        first_shot = shots_by_id.get(first_shot_id, {})
+        clip_src = _clip_src(out_dir, first_shot_id) if first_shot_id else None
+        start_ms = block.get("startMs")
+        end_ms = block.get("endMs")
+        duration = (
+            max(0, end_ms - start_ms)
+            if isinstance(start_ms, int) and isinstance(end_ms, int)
+            else 0
+        )
+        width = max((duration / timeline_ms) * 100, 4.0)
+        range_text = (
+            f"{_timecode(start_ms)} – {_timecode(end_ms)}"
+            if isinstance(start_ms, int) and isinstance(end_ms, int)
+            else "时间待确认"
+        )
+        block_slots = slots_by_block.get(block_id, [])
+        slot_text = " / ".join(
+            str(slot.get("slotTitle") or slot.get("slotID") or "结构段")
+            for slot in block_slots
+        ) or "未归入结构段"
+        src_attr = f' data-clip-src="{html.escape(clip_src)}"' if clip_src else ""
+        shot_attr = f' data-shot-id="{html.escape(first_shot_id)}"' if first_shot_id else ""
+        start_attr = (
+            f' data-start-ms="{first_shot.get("finalStartMs")}"'
+            if isinstance(first_shot.get("finalStartMs"), int)
+            else ""
+        )
+        end_attr = (
+            f' data-end-ms="{first_shot.get("finalEndMs")}"'
+            if isinstance(first_shot.get("finalEndMs"), int)
+            else ""
+        )
+        disabled = "" if clip_src else " disabled"
+        parts.append(
+            '<button type="button" class="story-segment shot-jump" role="listitem" '
+            f'style="--story-width: {width:.2f}%" data-layer-id="{html.escape(block_id)}"'
+            f' data-layer-shot-ids="{html.escape(" ".join(shot_ids))}"'
+            f'{shot_attr}{src_attr}{start_attr}{end_attr}{disabled} '
+            f'title="{html.escape(str(block.get("coreContent") or ""))}" '
+            f'aria-label="查看故事段 {html.escape(str(block.get("blockTitle") or block_id))}">'
+            '<span class="story-segment-topline">'
+            f'<span class="badge badge-outline">{html.escape(block_id)}</span>'
+            f'<span class="story-time">{html.escape(range_text)}</span>'
+            "</span>"
+            f'<strong>{html.escape(str(block.get("blockTitle") or block_id))}</strong>'
+            '<span class="story-segment-meta">'
+            f'{html.escape(slot_text)} · {html.escape(_story_role_label(block.get("primaryRole")))} · {len(shot_ids)} 镜头'
+            "</span>"
+            "</button>"
+        )
+    parts.append("</div></div>")
+    return "".join(parts)
+
+
 def _timeline_html(
     shots: list[dict],
     review_reasons_by_shot: dict[str, list[str]],
@@ -432,9 +611,14 @@ def _timeline_html(
     parts = [
         '<section id="shot-timeline" class="timeline-card card" aria-label="镜头时间线">',
         '<div class="card-header"><div>',
-        '<h2 class="card-title">镜头时间线</h2>',
-        '<p class="card-description">按镜头时长显示；金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。</p>',
+        '<h2 class="card-title">镜头与故事时间线</h2>',
+        '<p class="card-description">上方是故事段，下方是镜头切分；金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。</p>',
         '</div><span class="badge badge-outline">按时长</span></div>',
+        _story_timeline_band_html(raws, shots, out_dir),
+        '<div class="shot-timeline-band" aria-label="镜头轨道">',
+        '<div class="timeline-lane-label"><span>镜头</span><small>'
+        f"{len(shots)} 个切分"
+        "</small></div>",
         '<div class="timeline-track" role="list">',
     ]
     filmstrip: list[str] = ['<div class="filmstrip" aria-label="代表帧胶片条">']
@@ -482,7 +666,7 @@ def _timeline_html(
                 f'<span>{esc_id} · {_timecode(duration)}</span>'
                 '</button>'
             )
-    parts.append("</div>")
+    parts.append("</div></div>")
     filmstrip.append("</div>")
     parts.extend(filmstrip)
     parts.append("</section>")
@@ -495,6 +679,7 @@ def _shot_inspector_json(
     review_reasons_by_shot: dict[str, list[str]],
     frame_refs: dict[str, str],
     out_dir: Path,
+    raws: dict[str, dict | None],
 ) -> str:
     groups = [
         {
@@ -506,6 +691,7 @@ def _shot_inspector_json(
         for group in _FIELD_GROUPS
     ]
     shot_items = []
+    story_context = _story_context_by_shot(raws)
     for shot in shots:
         shot_id = str(shot.get("shotID", ""))
         start_ms = shot.get("finalStartMs")
@@ -554,6 +740,7 @@ def _shot_inspector_json(
                     shot,
                     review_reasons_by_shot.get(shot_id, []),
                 ),
+                "story": story_context.get(shot_id),
                 "groups": grouped_fields,
             }
         )
@@ -989,6 +1176,7 @@ def render_shot_html(
             review_reasons_by_shot,
             frame_refs,
             out_dir,
+            raws,
         ),
         "<!--METADATA-->": _metadata_html(document_status, len(shots), revision),
         "<!--VALIDATION_SUMMARY-->": _validation_html(validation_summary, warnings),

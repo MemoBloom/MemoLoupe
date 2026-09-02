@@ -239,9 +239,22 @@ class TestResourcePolicy:
         assert 'data-field-group="visual-style"' in html
         assert "核心审片" in html
         assert "镜头内容摘要" in html
+        assert 'id="story-layer"' not in html
+        assert 'id="story-timeline-band"' in html
+        assert "镜头与故事时间线" in html
+        assert "故事</span>" in html
+        assert "机场出发" in html
+        assert "旅程启动" in html
+        assert 'class="story-segment shot-jump"' in html
+        assert 'data-layer-id="B0001"' in html
+        assert 'data-layer-shot-ids="SH0001 SH0002"' in html
+        assert "story-shot-chip" not in html
+        assert "<!--STORY_LAYER-->" not in html
+        assert 'class="story-block"' not in html
         assert "var SHOT_INSPECTOR =" in html
         assert '"clipSrc"' in html
         assert '"frameRef"' in html
+        assert '"story"' in html
         assert '"groups"' in html
 
 

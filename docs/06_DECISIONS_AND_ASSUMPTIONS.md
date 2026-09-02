@@ -169,7 +169,7 @@
 
 ### D-029：双模式保存与 review server（M3）
 
-决策：离线导出（Blob 下载）与 localhost review server（仅 127.0.0.1，`POST /api/corrections` / `/api/confirm`）产出同一 corrections schema；server 每次 GET 页面时以 server_mode 重渲染保证最新状态；`memoloupe import-corrections` 导入时 revision 不匹配直接拒绝；导入文件的 confirmedAt 以导入时刻落盘（幂等）。
+决策：离线导出（Blob 下载）与 localhost review server（仅 127.0.0.1，`POST /api/corrections` / `/api/confirm`）产出同一 corrections schema；server 每次 GET `shot-analysis.html` / `story-analysis.html` 页面时以 server_mode 重渲染保证最新状态；`memoloupe import-corrections` 导入时 revision 不匹配直接拒绝；导入文件的 confirmedAt 以导入时刻落盘（幂等）。
 理由：docs/04 §5.1 双模式等价；静态 HTML 无权写本地文件。
 
 ### D-030：needsReview 机器可读 HTML 语义（03-01 收尾）
@@ -610,6 +610,26 @@ Observation、corrections 或 raw/schema 契约。
 覆盖、应该从哪里开始看”，而不是直接钻进宽表。shadcn 的组合式设计能给
 静态产物提供清晰层级，但 MemoLoupe 的核心价值仍在可追溯证据与离线可审阅，
 因此采用设计语言而不引入运行时依赖。
+
+### D-051：Story 结果合并进 Shot 审片工作台
+
+决策：用户主视图以 `shot-analysis.html` 为统一审片工作台；当
+`raw/story-blocks.json` 存在时，渲染器把原“镜头时间线”升级为“镜头与故事
+时间线”：上方故事轨道按故事段时长排布，下方镜头轨道保留逐镜头切分和代表帧
+胶片条。故事轨道只显示段落标题、结构归属、叙事作用、时间范围和镜头数量；
+详细故事摘要与结构归属进入右侧 Sidebar，随当前 SHOT 切换。`story-analysis.html`
+仍作为 Phase 2 契约产物保留，但不再是人工复查 story 的主要入口。
+
+约束：该变更只影响 HTML 呈现层，不改变 `raw/story-blocks.json`、`raw/shots.json`
+或 `style-profile.json` 契约。`shotAnalysis` 文档不得输出
+`class="story-block"` 的 story 专属 DOM；故事轨道使用用户可读的普通时间线
+元素，避免触发 `storyAnalysis` 专属校验语义。Phase 2 仍只把结构化镜头摘要和
+文本信号发送给文本模型，不发送视频或帧。
+
+理由：影视从业者复查故事分析时，需要同时回答“这个故事段为何成立”和“它具体
+由哪些镜头支撑”。如果 story 和 shot 是两个视觉风格不同的页面，用户必须在两套
+界面模型间切换；把 story 合并成同一条多轨时间线，可以保持 Phase 1 到
+Phase 2 的认知连续性，并减少“故事段重复列出全部镜头”的信息噪音。
 
 ## 3. 推荐技术默认值
 

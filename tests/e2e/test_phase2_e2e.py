@@ -145,7 +145,7 @@ class TestPhase2MinimalScaffold:
         html = (work / "story-analysis.html").read_text(encoding="utf-8")
         # scaffold 的叙事字段必须呈 unknown 状态，不得伪装确定结论。
         assert 'data-value-state="unknown"' in html
-        assert "未知" in html
+        assert "待确认" in html
         assert not (work / "style-profile.json").exists()
         assert _strict_errors(work) == []
 

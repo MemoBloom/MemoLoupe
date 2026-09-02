@@ -148,7 +148,7 @@ class TestRenderBasics:
         assert '<td data-field="primaryRole" data-block-id="B0001" data-entity-id="B0001" data-value-state="unknown" data-confidence="unknown"' in text
         assert '<td data-field="coreContent" data-block-id="B0001" data-entity-id="B0001" data-value-state="unknown"' in text
         # 未知值可见但明确：scaffold 不伪装成确定结论。
-        assert "未知" in text
+        assert "待确认" in text
 
     def test_complete_cells_have_value_semantics(self, tmp_path):
         work = _write_out(tmp_path / "out", _complete_blocks_doc())
@@ -262,7 +262,7 @@ class TestClipsAndCoverage:
         work = _write_out(tmp_path / "out", _complete_blocks_doc())
         render_story_html(work)
         text = (work / "story-analysis.html").read_text(encoding="utf-8")
-        assert "无 clip，无法播放" in text
+        assert "暂无片段" in text
         assert 'data-clip-src="clips/SH0001.mp4"' not in text
 
     def test_existing_clips_allow_playback(self, tmp_path):
@@ -270,7 +270,97 @@ class TestClipsAndCoverage:
         render_story_html(work)
         text = (work / "story-analysis.html").read_text(encoding="utf-8")
         assert 'data-clip-src="clips/SH0001.mp4"' in text
-        assert "无 clip" not in text
+        assert "暂无片段" not in text
+
+    def test_story_page_layers_phase1_shot_evidence(self, tmp_path):
+        work = _write_out(tmp_path / "out", _complete_blocks_doc(), with_clips=True)
+        evidence_dir = work / "evidence" / "frames"
+        evidence_dir.mkdir(parents=True)
+        (evidence_dir / "F_SH0001_MAIN.jpg").write_bytes(b"jpg")
+        raw = work / "raw"
+        (raw / "frame-evidence.json").write_text(
+            json.dumps(
+                {
+                    "status": "complete",
+                    "frames": [
+                        {
+                            "shotID": "SH0001",
+                            "frameType": "representative",
+                            "fileRef": "evidence/frames/F_SH0001_MAIN.jpg",
+                        }
+                    ],
+                    "failedFrames": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (raw / "unified-media.json").write_text(
+            json.dumps(
+                {
+                    "status": "complete",
+                    "batches": [
+                        {
+                            "response": {
+                                "shots": [
+                                    {
+                                        "shotID": "SH0001",
+                                        "visual": {
+                                            "subjects": "旅行者走进乐园入口",
+                                            "framing": "全景",
+                                            "cameraMovement": "跟",
+                                        },
+                                        "audio": {"bgmStyle": "轻快电子乐"},
+                                        "function": {"shotTone": "轻快"},
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (raw / "music-flags.json").write_text(
+            json.dumps(
+                {"status": "complete", "shots": [{"shotID": "SH0001", "state": "music"}]},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (raw / "audio-energy.json").write_text(
+            json.dumps(
+                {
+                    "durationMs": 6000,
+                    "hasAudio": True,
+                    "sampleRate": 48000,
+                    "thresholds": {"silent": -60, "low": -40, "medium": -25, "high": -12},
+                    "shots": [
+                        {
+                            "shotID": "SH0001",
+                            "label": "中",
+                            "frameCount": 10,
+                            "minDb": -42.0,
+                            "medianDb": -28.0,
+                            "maxDb": -14.0,
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        render_story_html(work)
+        text = (work / "story-analysis.html").read_text(encoding="utf-8")
+        assert "故事层叠加在镜头拉片之上" in text
+        assert "镜头证据层" in text
+        assert 'class="story-shot-card" data-shot-id="SH0001"' in text
+        assert 'src="evidence/frames/F_SH0001_MAIN.jpg"' in text
+        assert "旅行者走进乐园入口" in text
+        assert "有背景音乐" in text
+        assert "音量中" in text
 
     def test_missing_shots_json_degrades_coverage(self, tmp_path):
         work = _write_out(tmp_path / "out", _complete_blocks_doc())
