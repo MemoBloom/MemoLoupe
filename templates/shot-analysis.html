@@ -6,35 +6,37 @@
 <title>MemoLoupe 镜头拉片校对台</title>
 <style>
   :root {
-    color-scheme: dark;
-    --background: #09090b;
-    --foreground: #fafafa;
-    --card: #111113;
-    --card-foreground: #fafafa;
-    --popover: #18181b;
-    --popover-foreground: #fafafa;
-    --primary: #f4f4f5;
-    --primary-foreground: #09090b;
-    --secondary: #27272a;
-    --secondary-foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --accent: #27272a;
-    --accent-foreground: #fafafa;
-    --destructive: #fb7185;
-    --warning: #fbbf24;
-    --success: #86efac;
-    --warning-border: rgba(251, 191, 36, 0.38);
-    --warning-bg: rgba(251, 191, 36, 0.10);
-    --success-border: rgba(134, 239, 172, 0.30);
-    --success-bg: rgba(134, 239, 172, 0.10);
-    --destructive-border: rgba(251, 113, 133, 0.35);
-    --purple-border: rgba(192, 132, 252, 0.38);
-    --border: #27272a;
-    --input: #3f3f46;
-    --ring: #a1a1aa;
+    color-scheme: light;
+    --background: #f7f2e6;
+    --foreground: #1c2333;
+    --card: #fffdf8;
+    --card-foreground: #1c2333;
+    --popover: #fffdf8;
+    --popover-foreground: #1c2333;
+    --primary: #1c2333;
+    --primary-foreground: #fffdf8;
+    --secondary: #f1e9d8;
+    --secondary-foreground: #1c2333;
+    --muted: #f1e9d8;
+    --muted-foreground: #5c6472;
+    --accent: #f0e6cf;
+    --accent-foreground: #1c2333;
+    --brand: #a57100;
+    --brand-foreground: #fffdf8;
+    --destructive: #b3354a;
+    --warning: #92610a;
+    --success: #2f7d43;
+    --warning-border: rgba(146, 97, 10, 0.35);
+    --warning-bg: rgba(197, 138, 25, 0.12);
+    --success-border: rgba(47, 125, 67, 0.32);
+    --success-bg: rgba(63, 155, 91, 0.12);
+    --destructive-border: rgba(179, 53, 74, 0.32);
+    --purple-border: rgba(124, 82, 189, 0.35);
+    --border: #e5dccb;
+    --input: #d8cfbd;
+    --ring: #a57100;
     --radius: 14px;
-    --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+    --shadow: 0 18px 50px rgba(28, 35, 51, 0.10);
   }
   * { box-sizing: border-box; }
   html { background: var(--background); }
@@ -42,8 +44,8 @@
     margin: 0;
     color: var(--foreground);
     background:
-      radial-gradient(circle at top left, rgba(244, 244, 245, 0.08), transparent 34rem),
-      linear-gradient(180deg, #09090b 0%, #111113 58%, #09090b 100%);
+      radial-gradient(circle at top left, rgba(165, 113, 0, 0.10), transparent 34rem),
+      linear-gradient(180deg, #f7f2e6 0%, #f3ecdc 58%, #f7f2e6 100%);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   }
   button, input, select { font: inherit; }
@@ -92,7 +94,7 @@
   .card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    background: rgba(17, 17, 19, 0.92);
+    background: rgba(255, 253, 248, 0.94);
     color: var(--card-foreground);
     box-shadow: var(--shadow);
   }
@@ -146,18 +148,21 @@
     justify-content: space-between;
     gap: 16px;
   }
+  .metadata-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-logo {
+    display: block;
+    height: 28px;
+    width: auto;
+  }
   .metadata h1 {
     margin: 0;
-    font-size: clamp(24px, 3vw, 38px);
-    line-height: 1.08;
-    letter-spacing: -0.04em;
-  }
-  .metadata-kicker {
-    margin: 0 0 8px;
-    color: var(--muted-foreground);
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    font-size: 20px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
   }
   .metadata-grid {
     display: grid;
@@ -293,9 +298,17 @@
     padding: 0 12px;
     font-size: 12px;
   }
-  #confirm-document {
+  #confirm-document,
+  #save-corrections {
     background: var(--primary);
     color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  #confirm-document:hover:not(:disabled),
+  #save-corrections:hover:not(:disabled) {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    filter: brightness(1.12);
   }
   #pending-indicator {
     min-height: 18px;
@@ -346,10 +359,11 @@
     font-size: 10px;
   }
   .timeline-shot.is-review { border-color: var(--warning-border); color: var(--warning); }
-  .timeline-shot.is-music { background: rgba(134, 239, 172, 0.12); }
+  .timeline-shot.is-music { background: var(--success-bg); }
   .timeline-shot.is-unknown { border-style: dashed; color: var(--muted-foreground); }
-  .timeline-shot.is-selected {
-    outline: 2px solid var(--primary);
+  .timeline-shot.is-selected,
+  .filmstrip-shot.is-selected {
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
   }
   .filmstrip {
@@ -424,19 +438,19 @@
     justify-content: space-between;
     gap: 6px;
     overflow: hidden;
-    border-color: rgba(134, 239, 172, 0.22);
+    border-color: var(--success-border);
     background:
-      linear-gradient(135deg, rgba(134, 239, 172, 0.16), rgba(39, 39, 42, 0.68));
+      linear-gradient(135deg, rgba(63, 155, 91, 0.14), rgba(255, 253, 248, 0.92));
     padding: 9px 10px;
     text-align: left;
   }
   .story-segment:hover:not(:disabled) {
-    border-color: rgba(134, 239, 172, 0.42);
+    border-color: rgba(47, 125, 67, 0.55);
     background:
-      linear-gradient(135deg, rgba(134, 239, 172, 0.20), rgba(39, 39, 42, 0.78));
+      linear-gradient(135deg, rgba(63, 155, 91, 0.20), rgba(255, 253, 248, 0.96));
   }
   .story-segment.is-selected {
-    outline: 2px solid var(--primary);
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
   }
   .story-segment-topline,
@@ -618,6 +632,7 @@
     color: var(--secondary-foreground);
     padding: 3px 7px;
     user-select: all;
+    font-variant-numeric: tabular-nums;
   }
   .duration {
     color: var(--muted-foreground);
@@ -678,7 +693,7 @@
   .state-absent { border-color: var(--success-border); color: var(--success); background: var(--success-bg); }
   .state-absent-claimed { border-color: var(--warning-border); color: var(--warning); background: var(--warning-bg); }
   .state-unknown { border-color: var(--border); color: var(--muted-foreground); background: var(--secondary); }
-  .state-unmapped { border-color: var(--purple-border); color: #d8b4fe; background: rgba(192, 132, 252, 0.10); }
+  .state-unmapped { border-color: var(--purple-border); color: #7c52bd; background: rgba(124, 82, 189, 0.10); }
   .shot-hidden { display: none !important; }
   .inspector-sheet {
     position: sticky;
@@ -689,7 +704,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background:
-      linear-gradient(180deg, rgba(24, 24, 27, 0.98), rgba(12, 12, 14, 0.98));
+      linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(243, 236, 220, 0.98));
     color: var(--popover-foreground);
     box-shadow: var(--shadow);
     padding: 14px;
@@ -707,10 +722,10 @@
   }
   .inspector-hero {
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
     border-radius: 18px;
-    background: rgba(9, 9, 11, 0.72);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
+    background: rgba(255, 253, 248, 0.92);
+    box-shadow: 0 18px 48px rgba(28, 35, 51, 0.12);
   }
   .inspector-cover {
     display: block;
@@ -746,6 +761,7 @@
     color: var(--muted-foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
   .inspector-timecode {
     overflow: hidden;
@@ -764,9 +780,9 @@
   }
   .inspector-card {
     margin-top: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
     border-radius: 16px;
-    background: rgba(17, 17, 19, 0.78);
+    background: rgba(255, 253, 248, 0.90);
     padding: 12px;
   }
   .inspector-card h3,
@@ -812,9 +828,9 @@
     margin-top: 10px;
   }
   .inspector-story-list div {
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: rgba(39, 39, 42, 0.50);
+    background: var(--secondary);
     padding: 9px;
   }
   .inspector-story-list dt {
@@ -836,9 +852,9 @@
   }
   .inspector-meta div {
     min-width: 0;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: rgba(39, 39, 42, 0.58);
+    background: var(--secondary);
     padding: 9px;
   }
   .inspector-meta dt {
@@ -869,9 +885,9 @@
     font-size: 11px;
   }
   .inspector-filterbar button.is-active {
-    border-color: rgba(244, 244, 245, 0.48);
-    background: var(--primary);
-    color: var(--primary-foreground);
+    border-color: var(--brand);
+    background: var(--brand);
+    color: var(--brand-foreground);
   }
   .review-reasons {
     display: grid;
@@ -891,10 +907,10 @@
   }
   .inspector-group {
     margin-top: 9px;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
     border-radius: 14px;
     overflow: hidden;
-    background: rgba(9, 9, 11, 0.28);
+    background: rgba(255, 253, 248, 0.55);
   }
   .inspector-group summary {
     display: flex;
@@ -902,7 +918,7 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 11px;
-    background: rgba(24, 24, 27, 0.72);
+    background: var(--secondary);
     cursor: pointer;
     list-style: none;
   }
@@ -925,7 +941,7 @@
     padding: 4px 10px 10px;
   }
   .inspector-field-row {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+    border-bottom: 1px solid var(--border);
   }
   .inspector-field-row:last-child { border-bottom: 0; }
   .inspector-field-row[hidden] { display: none; }
@@ -942,7 +958,7 @@
     height: 7px;
     border-radius: 999px;
     background: var(--muted-foreground);
-    box-shadow: 0 0 0 3px rgba(161, 161, 170, 0.10);
+    box-shadow: 0 0 0 3px rgba(92, 100, 114, 0.14);
   }
   .state-row-value .state-dot,
   .state-row-absent .state-dot {
@@ -956,8 +972,8 @@
   }
   .state-row-unmapped .state-dot,
   .state-row-human .state-dot {
-    background: #c084fc;
-    box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.12);
+    background: #7c52bd;
+    box-shadow: 0 0 0 3px rgba(124, 82, 189, 0.14);
   }
   .inspector-field-label {
     flex: 0 0 72px;
@@ -1007,9 +1023,9 @@
   }
   .inspector-boundary {
     margin-top: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
     border-radius: 14px;
-    background: rgba(9, 9, 11, 0.28);
+    background: rgba(255, 253, 248, 0.55);
     overflow: hidden;
   }
   .inspector-boundary summary {

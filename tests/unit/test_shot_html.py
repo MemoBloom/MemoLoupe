@@ -172,6 +172,17 @@ class TestRenderWithoutModelArtifacts:
 
         assert SHOT_RENDER_VERSION == "render.v3"
 
+    def test_light_brand_theme_tokens(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        from memoloupe.render.shot_html import render_shot_html
+
+        document = render_shot_html(work).read_text(encoding="utf-8")
+        assert "color-scheme: light" in document
+        assert "--background: #f7f2e6" in document
+        assert "--brand: #a57100" in document
+        for dark_token in ("#09090b", "#111113", "#18181b", "#27272a", "#3f3f46"):
+            assert dark_token not in document
+
 
 class TestRenderWithModelArtifacts:
     """模型产物存在且成功：value / absent-claimed 路径与 escape。"""
