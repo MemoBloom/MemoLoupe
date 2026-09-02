@@ -84,6 +84,29 @@ class TestLoad:
         with pytest.raises(ConnectionStoreError):
             store.load()
 
+    def test_missing_active_provider_key_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "connections.json"
+        path.write_text(
+            json.dumps({"version": 1, "providers": {}}),
+            encoding="utf-8",
+        )
+        store = ConnectionStore(path)
+        with pytest.raises(ConnectionStoreError, match="activeProvider"):
+            store.load()
+        # save() 走同一校验，同样拒绝
+        with pytest.raises(ConnectionStoreError, match="activeProvider"):
+            store.save({"version": 1, "providers": {}})
+
+    def test_missing_providers_key_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "connections.json"
+        path.write_text(
+            json.dumps({"version": 1, "activeProvider": None}),
+            encoding="utf-8",
+        )
+        store = ConnectionStore(path)
+        with pytest.raises(ConnectionStoreError, match="providers"):
+            store.load()
+
     def test_missing_required_field_raises(self, tmp_path: Path) -> None:
         store = ConnectionStore(tmp_path / "connections.json")
         record = _record()

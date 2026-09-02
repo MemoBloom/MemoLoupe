@@ -74,21 +74,25 @@ def _validate(data: dict) -> None:
     """校验整份 connections 数据；集中所有显式拒绝。"""
     if not isinstance(data, dict):
         raise ConnectionStoreError("connections 数据必须是 JSON 对象")
-    version = data.get("version")
+    # 顶层三个键均为必填（空骨架也含它们）；下游代码用下标访问，缺键必须在此拒绝。
+    for key in ("version", "activeProvider", "providers"):
+        if key not in data:
+            raise ConnectionStoreError(f"connections 数据缺少必填键 {key!r}")
+    version = data["version"]
     if version != CONNECTIONS_VERSION:
         raise ConnectionStoreError(
             f"不支持的 connections 版本 {version!r}；期望 {CONNECTIONS_VERSION}"
         )
-    providers = data.get("providers")
+    providers = data["providers"]
     if not isinstance(providers, dict):
-        raise ConnectionStoreError("connections 数据缺少 providers 对象")
+        raise ConnectionStoreError("connections 数据的 providers 必须是对象")
     for key, record in providers.items():
         _validate_record(record)
         if record["providerId"] != key:
             raise ConnectionStoreError(
                 f"providers 键 {key!r} 与 record.providerId {record['providerId']!r} 不一致"
             )
-    active = data.get("activeProvider")
+    active = data["activeProvider"]
     if active is not None and active not in providers:
         raise ConnectionStoreError(
             f"activeProvider {active!r} 指向不存在的 provider"
