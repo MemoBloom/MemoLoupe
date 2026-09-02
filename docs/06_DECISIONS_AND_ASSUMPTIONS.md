@@ -631,6 +631,17 @@ Observation、corrections 或 raw/schema 契约。
 界面模型间切换；把 story 合并成同一条多轨时间线，可以保持 Phase 1 到
 Phase 2 的认知连续性，并减少“故事段重复列出全部镜头”的信息噪音。
 
+### D-052：Shot 工作台暖纸浅色品牌主题（render.v3）
+
+决策：shot-analysis.html 从深色 shadcn 风格切换为与 README hero 一致的暖纸
+浅色品牌主题（米白 `#f7f2e6` 底、藏青 `#1c2333` 正文、品牌金 `#a57100`
+强调），页头植入 `assets/brand/memoloupe-logo.png`（渲染时复制到输出目录
+`assets/memoloupe-logo.png`，相对路径引用，CSP `img-src 'self'` 不变）。
+状态语义、文案与全部 `data-*` 机器语义不变，仅颜色、字阶与组件质感调整。
+
+理由：品牌 logo 为深色文字设计，深色页面上不可读；统一浅色品牌主题让
+README 与审片工作台视觉一致。story-analysis.html 本次保持现状。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：
