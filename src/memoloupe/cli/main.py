@@ -6,6 +6,7 @@
 - ``memoloupe shot``：Phase 1 镜头分析。
 - ``memoloupe story``：Phase 2 故事分析。
 - ``memoloupe profile``：Phase 3 风格档案。
+- ``memoloupe connect``：管理模型服务提供商连接（add/status/test/switch/remove/list）。
 - ``memoloupe review --output-dir DIR [--port 8765]``：localhost review server。
 - ``memoloupe import-corrections FILE --output-dir DIR``：导入离线 corrections。
 
@@ -35,6 +36,7 @@ from memoloupe.validate.html_contract import validate_html
 from memoloupe.core.config import load_env_file
 
 from .import_corrections import run_import_corrections
+from .connect import run_connect
 from .profile_build import run_profile_build
 from .review import run_review
 from .shot_analysis import run_shot_analysis
@@ -90,6 +92,8 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
     sub.add_parser("config", help="输出脱敏后的有效配置与未配置服务项")
+
+    sub.add_parser("connect", help="连接模型服务提供商（qwen/mimo）")
 
     return parser
 
@@ -202,7 +206,7 @@ def _extract_env_file(argv: Sequence[str]) -> tuple[list[str], str | None]:
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），shot、review、
-    # import-corrections、story 与 profile 的参数全部以选项开头，因此在主
+    # import-corrections、story、profile 与 connect 的参数全部以选项开头，因此在主
     # parser 之前分流。
     argv, env_file = _extract_env_file(argv)
     injected_env: dict[str, str] = {}
@@ -224,6 +228,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _dispatch(argv: Sequence[str]) -> int:
     if argv[:1] == ["shot"]:
         return run_shot_analysis(argv[1:])
+    if argv[:1] == ["connect"]:
+        return run_connect(argv[1:])
     if argv[:1] == ["review"]:
         return run_review(argv[1:])
     if argv[:1] == ["import-corrections"]:
