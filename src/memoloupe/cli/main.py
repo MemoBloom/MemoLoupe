@@ -201,7 +201,7 @@ def _extract_env_file(argv: Sequence[str]) -> tuple[list[str], str | None]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
-    # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），review、
+    # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），shot、review、
     # import-corrections、story 与 profile 的参数全部以选项开头，因此在主
     # parser 之前分流。
     argv, env_file = _extract_env_file(argv)
@@ -222,6 +222,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _dispatch(argv: Sequence[str]) -> int:
+    if argv[:1] == ["shot"]:
+        return run_shot_analysis(argv[1:])
     if argv[:1] == ["review"]:
         return run_review(argv[1:])
     if argv[:1] == ["import-corrections"]:
