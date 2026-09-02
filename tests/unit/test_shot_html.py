@@ -142,7 +142,7 @@ class TestRenderWithoutModelArtifacts:
         assert html_line == (
             '<html lang="zh-CN" data-document-type="shotAnalysis" '
             'data-document-status="draft" data-contract-version="1.0" '
-            'data-source-revision="a1b2c3d4e5f6" data-render-version="render.v2">'
+            'data-source-revision="a1b2c3d4e5f6" data-render-version="render.v3">'
         )
         # 锁一个确定性单元格片段（属性顺序固定）。
         assert (
@@ -157,6 +157,20 @@ class TestRenderWithoutModelArtifacts:
         html = render_shot_html(work, status="underReview").read_text(encoding="utf-8")
         assert 'data-document-status="underReview"' in html
         assert "<dd>校对中</dd>" in html
+
+    def test_logo_asset_copied_and_referenced(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        from memoloupe.render.shot_html import render_shot_html
+
+        html_path = render_shot_html(work)
+        document = html_path.read_text(encoding="utf-8")
+        assert (work / "assets" / "memoloupe-logo.png").is_file()
+        assert '<img class="brand-logo" src="assets/memoloupe-logo.png" alt="MemoLoupe"' in document
+
+    def test_render_version_is_v3(self):
+        from memoloupe.render.shot_html import SHOT_RENDER_VERSION
+
+        assert SHOT_RENDER_VERSION == "render.v3"
 
 
 class TestRenderWithModelArtifacts:
@@ -218,8 +232,8 @@ class TestResourcePolicy:
         assert 'id="filter-needs-review"' in html
         assert "<button" in html
         assert 'id="play-full-video"' in html
-        assert SHOT_RENDER_VERSION == "render.v2"
-        assert "render.v2" in html
+        assert SHOT_RENDER_VERSION == "render.v3"
+        assert "render.v3" in html
         assert 'id="shot-summary"' in html
         assert 'id="shot-timeline"' in html
         assert 'class="filmstrip"' in html

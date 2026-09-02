@@ -22,6 +22,7 @@ import html
 import importlib
 import json
 import os
+import shutil
 from pathlib import Path
 from urllib.parse import quote
 
@@ -32,11 +33,12 @@ from memoloupe.core.atomic_io import read_json, write_text_atomic
 from memoloupe.core.errors import ArtifactError, ContractError
 from memoloupe.validate.html_contract import DOCUMENT_STATUSES
 
-SHOT_RENDER_VERSION = "render.v2"
+SHOT_RENDER_VERSION = "render.v3"
 CONTRACT_VERSION = "1.0"
 DOCUMENT_TYPE = "shotAnalysis"
 
 _TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "templates" / "shot-analysis.html"
+_LOGO_SOURCE = Path(__file__).resolve().parents[3] / "assets" / "brand" / "memoloupe-logo.png"
 
 #: 渲染器读取的 raw 逻辑名（缺失时容忍为 None）。
 RAW_FILES: tuple[str, ...] = (
@@ -260,6 +262,15 @@ def _full_video_src(raws: dict[str, dict | None], out_dir: Path) -> str | None:
         return None
     rel = os.path.relpath(source, out_dir)
     return quote(Path(rel).as_posix())
+
+
+def _copy_logo_asset(out_dir: Path) -> None:
+    """把品牌 logo 复制到 out_dir/assets/，供 HTML 以相对路径引用（幂等）。"""
+    target = out_dir / "assets" / "memoloupe-logo.png"
+    if target.is_file() and target.read_bytes() == _LOGO_SOURCE.read_bytes():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(_LOGO_SOURCE, target)
 
 
 def _merged_review_reasons(shot: dict, review_reasons: list[str]) -> list[str]:
@@ -1036,8 +1047,8 @@ def _metadata_html(status: str, shot_count: int, revision: str) -> str:
     )
     return (
         '<header class="metadata card" id="metadata">'
-        '<div class="metadata-topline"><div>'
-        '<p class="metadata-kicker">MemoLoupe 审片工作台</p>'
+        '<div class="metadata-topline"><div class="metadata-brand">'
+        '<img class="brand-logo" src="assets/memoloupe-logo.png" alt="MemoLoupe" height="28">'
         "<h1>镜头拉片校对台</h1>"
         "</div>"
         '<span class="badge badge-outline">离线可打开</span></div>'
@@ -1104,6 +1115,7 @@ def render_shot_html(
     if status not in DOCUMENT_STATUSES:
         raise ValueError(f"非法文档状态: {status!r}（应为 {sorted(DOCUMENT_STATUSES)}）")
     raws = _load_raws(out_dir)
+    _copy_logo_asset(out_dir)
     shots_doc = raws.get("shots")
     if shots_doc is None:
         raise ArtifactError("shots", "raw/shots.json 缺失或不可读，无法渲染 shot-analysis.html")
