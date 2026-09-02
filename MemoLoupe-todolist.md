@@ -149,6 +149,17 @@
 
 ---
 
+## 四补、Profile 风格档案强化（用户定性为核心功能，2026-09-02 记录）
+
+> profile（Phase 3，`style-profile.json`）是产品核心价值"沉淀可复刻的风格配方"的载体，
+> 目前仅完成构建链路（T3.x），以下为后续待办：
+
+- [ ] **T6.1 真实数据端到端验证**：对 Disney 完整产物（本地 ASR + mimo-v2.5 unified + story）跑 `memoloupe profile`，人工核对确定性聚合数值与蒸馏质量。
+- [ ] **T6.2 真实文本模型蒸馏联调**：接入真实文本模型端点验证 profile_distill（当前只有 mock 演示与结构校验）。
+- [ ] **T6.3 Profile 结果可视化**：style-profile.json 的 HTML 呈现（对齐 shot/story 工作台品牌风格），让用户能直接阅读风格档案。
+
+---
+
 ## 五、建议执行顺序
 
 1. ~~T0.1 / T0.2~~（已关闭）。
