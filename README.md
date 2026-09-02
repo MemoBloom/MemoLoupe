@@ -1,63 +1,67 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="MemoLoupe — 一条命令，把参考视频拆成镜头、故事、风格三层可复刻档案">
+  <img src="./assets/readme/hero.svg" width="100%" alt="MemoLoupe — one command turns a reference video into shot, story & style profiles, ready to remake">
 </p>
 
-MemoLoupe 是一个**拉片分析工具**：给它一段参考视频，它把视频拆解成三层结构化档案——镜头、故事、风格——供你校对后用于复刻同类内容的创作。
+<p align="center">
+  English | <a href="README.zh-CN.md">中文</a>
+</p>
 
-## 你会得到什么
+MemoLoupe is a **film-analysis （拉片） tool**: give it a reference video, and it dissects the video into three structured profiles — shots, story, and style — reviewed by you and ready to guide remakes of similar content.
 
-| 命令 | 产物 | 内容 |
+## What you get
+
+| Command | Output | Contents |
 |---|---|---|
-| `memoloupe shot` | `shot-analysis.html` | 镜头时间线：每个镜头的内容、运镜、光线、声音，逐镜可回看证据 |
-| `memoloupe story` | `story-analysis.html` | 故事结构：故事块、叙事插槽、块之间的关系 |
-| `memoloupe profile` | `style-profile.json` | 风格档案：叙事/节奏/风格的分布与复刻要点（机器可读契约） |
+| `memoloupe shot` | `shot-analysis.html` | Unified review workbench: dual story/shot timeline — content, camera, lighting and sound per shot, each linked back to its evidence |
+| `memoloupe story` | `story-analysis.html` | Story structure: story blocks, narrative slots and their relations; also merged into the workbench's dual timeline, where human review happens |
+| `memoloupe profile` | `style-profile.json` | Style profile: structure/pacing/style distributions and remake notes (machine-readable contract) |
 
-所有结论都能在 HTML 里点回原始证据（clip、帧、音频段），模型拿不准的地方会明确标记，不会伪装成确定结论。
+Every conclusion in the HTML links back to raw evidence (clips, frames, audio segments). Anything the model is unsure about is explicitly marked — never dressed up as fact.
 
-## 快速开始
+## Quick start
 
-环境要求：Python 3.12+、[uv](https://docs.astral.sh/uv/)、ffmpeg。macOS（Apple Silicon）可额外启用本地 ASR 与 Apple Vision 运镜分析。
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg. On macOS (Apple Silicon) you can additionally enable local ASR and Apple Vision camera-motion analysis.
 
 ```bash
-# 1. 安装
+# 1. Install
 uv sync
-uv sync --extra asr-local   # 可选：本地语音识别（FireRedVAD + MLX Whisper）
+uv sync --extra asr-local   # optional: local ASR (FireRedVAD + MLX Whisper)
 
-# 2. 跑三阶段（无需任何 API key 也能跑；模型未配置时对应步骤显式降级，
-#    确定性分析不受影响）
+# 2. Run the three stages (works without any API key; unconfigured models
+#    degrade explicitly while deterministic analysis is unaffected)
 uv run memoloupe shot    ./video.mp4 --output-dir ./out
 uv run memoloupe story   --output-dir ./out
 uv run memoloupe profile --output-dir ./out
 
-# 3. 校验产物（schema + 跨文件一致性 + HTML 语义）
+# 3. Validate artifacts (schema + cross-file consistency + HTML semantics)
 uv run memoloupe validate ./out --strict
 
-# 4. 查看与校对
-open ./out/shot-analysis.html                    # 或直接用浏览器打开
-uv run memoloupe review --output-dir ./out       # localhost 人工校对界面
+# 4. Review
+open ./out/shot-analysis.html                    # or just open it in a browser
+uv run memoloupe review --output-dir ./out       # localhost review UI
 ```
 
-配置云端模型（[MiMo](https://api.xiaomimimo.com) 或任意 OpenAI 兼容端点）后，story/profile 会产出模型蒸馏的完整语义：
+Configure a cloud model ([MiMo](https://api.xiaomimimo.com) or any OpenAI-compatible endpoint) to get fully distilled semantics in story/profile:
 
 ```bash
-cp .env.example .env   # 填入 MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*
+cp .env.example .env   # fill in MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*
 uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 ```
 
-## 它是怎么工作的
+## How it works
 
-1. **确定性检测先行**——切镜、BGM、音频切点、质量、运镜由检测器实测，模型无法覆盖这些证据；
-2. **模型只做语义**——多模态模型分析镜头内容/声音/剪辑功能，文本模型只做 story 与 profile 的**文本**蒸馏，绝不接收视频或帧；
-3. **受控词表 + 五态取值**——语义字段归一化到固定词表，每个值区分"实测没有 / 模型称没有 / 无法确认"；
-4. **人工校对闭环**——校对结果以 overlay 形式叠加，重跑分析不会丢失。
+1. **Deterministic detection first** — cuts, BGM, audio cut points, quality and camera motion are measured by detectors (Apple Vision, ffmpeg); models cannot override this evidence.
+2. **Models only do semantics** — a multimodal model (MiMo or any OpenAI-compatible endpoint) describes shot content / sound / editing function; ASR can run fully locally (FireRedVAD speech separation + MLX Whisper); the text model only distills story and profile from **text** and never receives video or frames.
+3. **Controlled vocabulary + five-state values** — semantic fields normalize to a fixed vocabulary, and every value distinguishes "measured absent / model-claimed absent / unverifiable".
+4. **Human review loop** — story results merge into the same workbench as a dual timeline; corrections live as an overlay and survive re-runs.
 
-## 产品边界
+## Scope
 
-输出止于上面三个文件。Story Spine 生成、素材匹配、自动粗剪、FCPXML 导出**不属于本仓库**，它们是下游消费者。
+Output stops at the artifacts above. Story-spine generation, footage matching, automatic rough cuts and FCPXML export are **out of scope** — they belong to downstream consumers.
 
-## 文档与开发
+## Docs & development
 
-- 设计与契约文档：[`docs/`](docs/)（从 `00_REPRODUCTION_SPEC.md` 开始）
-- 贡献者/AI 协作者指南：[`AGENTS.md`](AGENTS.md)
-- 测试：`uv run pytest`（单元 + 契约 + 集成 + e2e）
-- 真实服务联调测试：`MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1` 显式启用（默认不进 CI）
+- Design & contract docs: [`docs/`](docs/) (start from `00_REPRODUCTION_SPEC.md`)
+- Contributor / AI-agent guide: [`AGENTS.md`](AGENTS.md)
+- Tests: `uv run pytest` (unit + contract + integration + e2e)
+- Real-service integration tests: opt in via `MEMOLOUPE_RUN_REAL_SERVICE_TESTS=1` (off in CI by default)
