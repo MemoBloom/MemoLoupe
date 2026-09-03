@@ -364,7 +364,11 @@ class TestMotionEffectsRendering:
         assert 'class="metric-card metric-card-motion"' in html
         assert 'id="motion-timeline-band"' in html
         assert 'class="motion-event shot-jump is-point"' in html
-        assert 'class="motion-event shot-jump is-range"' in html
+        assert 'class="motion-event shot-jump is-range is-compact"' in html
+        assert "圆点 = 关键帧" in html
+        # 点事件(1500ms)与 ramp(1400–1525ms) 在显示宽度上重叠 → 2 条泳道。
+        assert "--motion-lanes: 2" in html
+        assert "--motion-lane: 0" in html
         assert 'data-motion-kind="position"' in html
         assert 'data-motion-kind="impact_cut"' in html
         assert "动效</span>" in html
@@ -376,6 +380,34 @@ class TestMotionEffectsRendering:
         assert "需要人工视觉确认" in html
         assert "追溯依据" in html
         assert "is-motion" in html
+
+    def test_overlapping_speed_ramps_render_on_separate_lanes(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        motion_path = work / "raw" / "motion-effects.json"
+        motion = json.loads(motion_path.read_text(encoding="utf-8"))
+        motion["status"] = "complete"
+        ramp = {
+            "type": "impact_cut",
+            "durationMs": 400,
+            "avgMotion": 0.3,
+            "confidence": "medium",
+            "evidence": "cut_score peak=0.34",
+            "replicationHint": "Use a 2-4 frame exposure hit.",
+            "needsVisualConfirmation": True,
+            "evidenceRefs": ["raw/motion-effects.json#frameMetrics[0]"],
+        }
+        motion["speedRamps"] = [
+            {**ramp, "startMs": 1000, "endMs": 1400},
+            {**ramp, "startMs": 1200, "endMs": 1600},
+        ]
+        motion_path.write_text(json.dumps(motion, ensure_ascii=False), encoding="utf-8")
+
+        out = render_shot_html(work)
+        assert _errors(out, work) == []
+        html = out.read_text(encoding="utf-8")
+
+        assert "--motion-lanes: 2" in html
+        assert "--motion-lane: 1" in html
 
 
 class TestCorrectionsOverlay:

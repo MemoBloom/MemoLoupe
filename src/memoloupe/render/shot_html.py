@@ -890,6 +890,21 @@ def _motion_timeline_band_html(
         )
 
     events.sort(key=lambda event: (int(event["startMs"]), int(event["endMs"])))
+    for event in events:
+        start_ms = int(event["startMs"])
+        end_ms = int(event["endMs"])
+        duration = max(end_ms - start_ms, 0)
+        event["left"] = max(
+            0.0,
+            min(98.0, ((start_ms - int(first_start)) / timeline_ms) * 100),
+        )
+        event["width"] = (
+            2.8
+            if event["isPoint"]
+            else max((duration / timeline_ms) * 100, 3.2)
+        )
+        event["isCompact"] = (not event["isPoint"]) and float(event["width"]) < _MOTION_COMPACT_WIDTH_PCT
+    lane_count = _assign_motion_lanes(events)
     status_label = {
         "complete": "已检测",
         "skipped": "未运行",
@@ -901,8 +916,10 @@ def _motion_timeline_band_html(
         '<div class="timeline-lane-label">',
         '<span>动效</span>',
         f'<small>{len(events)} 个候选 · {html.escape(status_label)}</small>',
+        '<small class="motion-lane-legend">圆点 = 关键帧 · 横条 = 变速区间</small>',
         "</div>",
-        '<div class="motion-event-track" role="list">',
+        f'<div class="motion-event-track" role="list" '
+        f'style="--motion-lanes: {max(lane_count, 1)}">',
     ]
     if not events:
         parts.append(
@@ -911,16 +928,9 @@ def _motion_timeline_band_html(
     for event in events:
         start_ms = int(event["startMs"])
         end_ms = int(event["endMs"])
-        duration = max(end_ms - start_ms, 0)
-        left = max(
-            0.0,
-            min(98.0, ((start_ms - int(first_start)) / timeline_ms) * 100),
-        )
-        width = (
-            2.8
-            if event["isPoint"]
-            else max((duration / timeline_ms) * 100, 3.2)
-        )
+        left = float(event["left"])
+        width = float(event["width"])
+        lane = int(event["lane"])
         shot = event.get("shot")
         shot_id = str(shot.get("shotID") or "") if isinstance(shot, dict) else ""
         clip_src = _clip_src(out_dir, shot_id) if shot_id else None
@@ -938,6 +948,8 @@ def _motion_timeline_band_html(
             else f"{_timecode(start_ms)} – {_timecode(end_ms)}"
         )
         kind_class = "is-point" if event["isPoint"] else "is-range"
+        if event["isCompact"]:
+            kind_class += " is-compact"
         title_bits = [
             str(event["label"]),
             range_text,
@@ -949,7 +961,7 @@ def _motion_timeline_band_html(
         parts.append(
             f'<button type="button" class="motion-event shot-jump {kind_class}" '
             f'role="listitem" style="--motion-left: {left:.2f}%; '
-            f'--motion-width: {width:.2f}%" '
+            f'--motion-width: {width:.2f}%; --motion-lane: {lane}" '
             f'data-motion-kind="{html.escape(str(event["kind"]))}"'
             f' data-evidence-refs="{html.escape(evidence_refs)}"'
             f'{shot_attr}{src_attr}{start_attr}{end_attr}{disabled} '
