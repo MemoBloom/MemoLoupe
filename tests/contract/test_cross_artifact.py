@@ -242,6 +242,51 @@ class TestDerivedBreakage:
             for i in _errors(issues)
         )
 
+    def test_motion_effects_unknown_shot_reference(self, tmp_path: Path) -> None:
+        # keyframeCandidates.shotID 必须存在于 shots.json（05-07 §6.4）。
+        data = load_fixture("output_full", "raw/motion-effects.json")
+        broken = mutate(
+            data,
+            "keyframeCandidates",
+            [{
+                "shotID": "SH0099",
+                "timeMs": 300,
+                "property": "position",
+                "inferredChange": {"text": "Position approx (3.0px, 0.0px)"},
+                "confidence": "low",
+                "replicationHint": "hint",
+                "needsVisualConfirmation": True,
+                "evidenceRefs": ["raw/motion-effects.json#frameMetrics[0]"],
+            }],
+        )
+        issues = self._run(tmp_path, "raw/motion-effects.json", broken)
+        assert any(
+            i.artifact == "motion-effects" and "不存在于 shots.json" in i.message
+            for i in _errors(issues)
+        )
+
+    def test_motion_effects_broken_evidence_ref_pointer(self, tmp_path: Path) -> None:
+        data = load_fixture("output_full", "raw/motion-effects.json")
+        broken = mutate(
+            data,
+            "keyframeCandidates",
+            [{
+                "shotID": "SH0001",
+                "timeMs": 300,
+                "property": "position",
+                "inferredChange": {"text": "Position approx (3.0px, 0.0px)"},
+                "confidence": "low",
+                "replicationHint": "hint",
+                "needsVisualConfirmation": True,
+                "evidenceRefs": ["raw/motion-effects.json#frameMetrics[99]"],
+            }],
+        )
+        issues = self._run(tmp_path, "raw/motion-effects.json", broken)
+        assert any(
+            i.artifact == "motion-effects" and "指针不可解析" in i.message
+            for i in _errors(issues)
+        )
+
 
 class TestStrictCoverage:
     """complete 的镜头级文件缺镜头：非 strict 记 warning，strict 记 error。"""

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "status": "skipped",
+  "analysis": {
+    "method": "frameDifferenceMotionEffectCandidates",
+    "algorithmVersion": "motion-effects.v1",
+    "sourceRevisionID": "a1b2c3d4e5f6",
+    "durationMs": 9800,
+    "analyzedRange": {
+      "startMs": 0,
+      "endMs": 9800
+    },
+    "sampleFps": 8.0,
+    "sampleWidth": 96,
+    "sampleHeight": 54,
+    "frameCount": 0,
+    "thresholds": {},
+    "limitations": [
+      "Motion effect candidates are inferred from final pixels and are not edit-project truth.",
+      "The detector cannot reliably separate camera motion, subject motion, and post-production transforms.",
+      "Small local overlays, rotation, compression noise, motion blur, and very fast cuts require visual review."
+    ],
+    "note": "运动复刻候选检测未运行（--skip）"
+  },
+  "frameMetrics": [],
+  "speedRamps": [],
+  "keyframeCandidates": [],
+  "digest": {
+    "schemaVersion": 1,
+    "items": [],
+    "usageNote": "Motion effect detection was skipped; no absence conclusion is implied."
+  },
+  "shots": [
+    {
+      "shotID": "SH0001",
+      "startMs": 0,
+      "endMs": 3203,
+      "candidateCount": 0,
+      "properties": [],
+      "needsReview": false
+    },
+    {
+      "shotID": "SH0002",
+      "startMs": 3203,
+      "endMs": 6400,
+      "candidateCount": 0,
+      "properties": [],
+      "needsReview": false
+    },
+    {
+      "shotID": "SH0003",
+      "startMs": 6400,
+      "endMs": 9800,
+      "candidateCount": 0,
+      "properties": [],
+      "needsReview": false
+    }
+  ]
+}

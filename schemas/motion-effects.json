@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/motion-effects.json",
+  "title": "MemoLoupe motion-effects.json",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "status",
+    "analysis",
+    "frameMetrics",
+    "speedRamps",
+    "keyframeCandidates",
+    "digest",
+    "shots"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "skipped", "failed"]
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "method",
+        "algorithmVersion",
+        "sourceRevisionID",
+        "durationMs",
+        "analyzedRange",
+        "sampleFps",
+        "sampleWidth",
+        "sampleHeight",
+        "frameCount",
+        "thresholds",
+        "limitations"
+      ],
+      "properties": {
+        "method": { "type": "string", "const": "frameDifferenceMotionEffectCandidates" },
+        "algorithmVersion": { "type": "string" },
+        "sourceRevisionID": { "type": ["string", "null"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "analyzedRange": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["startMs", "endMs"],
+          "properties": {
+            "startMs": { "type": "integer", "minimum": 0 },
+            "endMs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "sampleFps": { "type": "number", "exclusiveMinimum": 0 },
+        "sampleWidth": { "type": "integer", "minimum": 1 },
+        "sampleHeight": { "type": "integer", "minimum": 1 },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "frameMetrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "frameIndex",
+          "timeMs",
+          "diff",
+          "motionEnergy",
+          "brightness",
+          "brightnessDelta",
+          "repeatScore",
+          "cutScore",
+          "dxPxSample",
+          "dyPxSample",
+          "scaleRatio",
+          "zoomScore",
+          "shakeScore"
+        ],
+        "properties": {
+          "frameIndex": { "type": "integer", "minimum": 1 },
+          "timeMs": { "type": "integer", "minimum": 0 },
+          "diff": { "type": "number", "minimum": 0 },
+          "motionEnergy": { "type": "number", "minimum": 0 },
+          "brightness": { "type": "number", "minimum": 0, "maximum": 1 },
+          "brightnessDelta": { "type": "number" },
+          "repeatScore": { "type": "number", "minimum": 0, "maximum": 1 },
+          "cutScore": { "type": "number", "minimum": 0 },
+          "dxPxSample": { "type": "number" },
+          "dyPxSample": { "type": "number" },
+          "scaleRatio": { "type": "number", "exclusiveMinimum": 0 },
+          "zoomScore": { "type": "number", "minimum": 0 },
+          "shakeScore": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "speedRamps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "type",
+          "startMs",
+          "endMs",
+          "durationMs",
+          "avgMotion",
+          "confidence",
+          "evidence",
+          "replicationHint",
+          "needsVisualConfirmation",
+          "evidenceRefs"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["low_motion_or_freeze", "high_motion_region", "impact_cut"]
+          },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "avgMotion": { "type": "number", "minimum": 0 },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "unknown"]
+          },
+          "evidence": { "type": "string" },
+          "replicationHint": { "type": "string" },
+          "needsVisualConfirmation": { "type": "boolean", "const": true },
+          "evidenceRefs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "keyframeCandidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "timeMs",
+          "property",
+          "inferredChange",
+          "confidence",
+          "replicationHint",
+          "needsVisualConfirmation",
+          "evidenceRefs"
+        ],
+        "properties": {
+          "shotID": { "type": "string", "pattern": "^SH\\d{4}$" },
+          "timeMs": { "type": "integer", "minimum": 0 },
+          "property": {
+            "type": "string",
+            "enum": ["position", "scale", "exposure_or_opacity", "shake"]
+          },
+          "inferredChange": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string" }
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low", "unknown"]
+          },
+          "replicationHint": { "type": "string" },
+          "needsVisualConfirmation": { "type": "boolean", "const": true },
+          "evidenceRefs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["schemaVersion", "items", "usageNote"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["kind", "timeRange", "summary", "confidence", "needsVisualConfirmation", "evidenceRefs"],
+            "properties": {
+              "kind": { "type": "string" },
+              "timeRange": { "type": "string" },
+              "summary": { "type": "string" },
+              "confidence": { "type": "string", "enum": ["high", "medium", "low", "unknown"] },
+              "needsVisualConfirmation": { "type": "boolean", "const": true },
+              "evidenceRefs": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "usageNote": { "type": "string" }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shotID",
+          "startMs",
+          "endMs",
+          "candidateCount",
+          "properties",
+          "needsReview"
+        ],
+        "properties": {
+          "shotID": { "type": "string", "pattern": "^SH\\d{4}$" },
+          "startMs": { "type": "integer", "minimum": 0 },
+          "endMs": { "type": "integer", "minimum": 0 },
+          "candidateCount": { "type": "integer", "minimum": 0 },
+          "properties": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "needsReview": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
