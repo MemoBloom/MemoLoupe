@@ -184,6 +184,16 @@ class TestLoadConfig:
         config = load_config(env={"PATH": "/usr/bin", "HOME": "/x"})
         assert config == DEFAULT_CONFIG
 
+    def test_connect_reserved_env_keys_ignored(self) -> None:
+        # connect 子系统的进程级变量不属于配置树，不得被当作未知配置项拒绝。
+        config = load_config(
+            env={
+                "MEMOLOUPE_CONNECTIONS_PATH": "/tmp/connections.json",
+                "MEMOLOUPE_SECRET_STORE": "memory",
+            }
+        )
+        assert config == DEFAULT_CONFIG
+
 
 class TestRedactedSnapshot:
     def test_sensitive_keys_masked(self) -> None:

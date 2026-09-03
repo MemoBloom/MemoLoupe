@@ -38,6 +38,12 @@ from memoloupe.artifacts.schemas import ArtifactName
 from memoloupe.artifacts.store import ArtifactStore
 from memoloupe.core.config import load_config
 from memoloupe.core.errors import ConfigError, MemoLoupeError
+from memoloupe.connect.runtime import (
+    SOURCE_NONE,
+    SOURCE_PROVIDER,
+    resolve_active_provider,
+)
+from memoloupe.connect.store import ConnectionStoreError
 from memoloupe.render.corrections import document_status, load_corrections
 from memoloupe.render.story_html import render_story_html
 from memoloupe.services.mock import MockTextModelService
@@ -216,6 +222,24 @@ def run_story_analysis(argv: Sequence[str]) -> int:
         except ConfigError as exc:
             print(f"错误：配置不可用：{exc}", file=sys.stderr)
             return EXIT_USAGE
+        # connect-first：active provider 叠加到 textModel（含统一服务配置）。
+        try:
+            config, service_source = resolve_active_provider(config)
+        except ConnectionStoreError as exc:
+            print(f"错误：连接配置不可用：{exc}", file=sys.stderr)
+            return EXIT_USAGE
+        if service_source == SOURCE_PROVIDER:
+            print(
+                "  [connect] 已加载当前 provider 的模型配置"
+                "（memoloupe connect status 查看）",
+                file=sys.stderr,
+            )
+        elif service_source == SOURCE_NONE:
+            print(
+                "  [warning] 未配置模型服务：文本模型将显式降级；"
+                "运行 memoloupe connect add qwen 连接 provider",
+                file=sys.stderr,
+            )
         text_service, warning = build_text_model_service(config)
         if warning:
             print(f"  [warning] {warning}", file=sys.stderr)

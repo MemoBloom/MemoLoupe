@@ -29,6 +29,12 @@ from memoloupe.analysis.shot_pipeline import (
 )
 from memoloupe.core.config import load_config
 from memoloupe.core.errors import ConfigError, MemoLoupeError
+from memoloupe.connect.runtime import (
+    SOURCE_NONE,
+    SOURCE_PROVIDER,
+    resolve_active_provider,
+)
+from memoloupe.connect.store import ConnectionStoreError
 from memoloupe.render.shot_html import render_shot_html
 
 EXIT_OK = 0
@@ -160,6 +166,29 @@ def run_shot_analysis(argv: Sequence[str]) -> int:
     except ConfigError as exc:
         print(f"错误：配置加载失败：{exc}", file=sys.stderr)
         return EXIT_USAGE
+
+    # connect-first：active provider 叠加到 unifiedModel/textModel/asr；
+    # --mock-services 时模型配置不被消费，跳过解析。
+    if not args.mock_services:
+        try:
+            config, service_source = resolve_active_provider(config)
+        except ConnectionStoreError as exc:
+            print(f"错误：连接配置不可用：{exc}", file=sys.stderr)
+            return EXIT_USAGE
+        if service_source == SOURCE_PROVIDER:
+            print(
+                "  [connect] 已加载当前 provider 的模型配置"
+                "（memoloupe connect status 查看）",
+                file=sys.stderr,
+            )
+        elif service_source == SOURCE_NONE and (
+            {"run_asr", "unified_media_analysis"} - skip_steps
+        ):
+            print(
+                "  [warning] 未配置模型服务：ASR/UnifiedMLLM 将显式降级；"
+                "运行 memoloupe connect add qwen 连接 provider",
+                file=sys.stderr,
+            )
 
     ffmpeg_cfg = config["ffmpeg"]
     missing = [

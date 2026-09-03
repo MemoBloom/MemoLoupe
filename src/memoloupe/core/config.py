@@ -23,6 +23,12 @@ ENV_SEPARATOR = "__"
 REDACTED = "***"
 _SENSITIVE_SUBSTRINGS = ("key", "token", "secret", "password")
 
+#: 保留给 connect 子系统自身的进程级环境变量，不参与配置树解析
+#: （否则 load_config 会把它们当未知配置项拒绝）。
+RESERVED_ENV_KEYS = frozenset(
+    {"MEMOLOUPE_CONNECTIONS_PATH", "MEMOLOUPE_SECRET_STORE"}
+)
+
 # 内置默认值按 docs/01 §4.1 分组；数值取自 docs/03 的协议默认参数。
 DEFAULT_CONFIG: dict = {
     "runtime": {
@@ -247,7 +253,7 @@ def _env_overrides(env: dict[str, str]) -> dict:
     """
     overrides: dict = {}
     for env_key, raw in env.items():
-        if not env_key.startswith(ENV_PREFIX):
+        if not env_key.startswith(ENV_PREFIX) or env_key in RESERVED_ENV_KEYS:
             continue
         body = env_key[len(ENV_PREFIX) :]
         segments = [s for s in body.split(ENV_SEPARATOR) if s]
