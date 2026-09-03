@@ -10,12 +10,14 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from memoloupe.core.errors import CapabilityUnavailableError
+from memoloupe.core.logging import get_logger
 from memoloupe.core.time_ranges import seconds_to_ms
 from memoloupe.services.base import (
     SERVICE_PROTOCOL_VERSION,
@@ -23,6 +25,8 @@ from memoloupe.services.base import (
     http_json_post,
     http_post_bytes,
 )
+
+_logger = get_logger("memoloupe.services.asr", phase="shot", step="asr")
 
 __all__ = [
     "SERVICE_PROTOCOL_VERSION",
@@ -32,11 +36,36 @@ __all__ = [
     "OpenAICompatibleASR",
     "MultipartOpenAICompatibleASR",
     "build_asr_service",
+    "local_asr_available",
+    "PROVIDER_AUTO",
 ]
 
 #: 支持的 provider / transport。
 PROVIDER_JSON = "openai-json"
 PROVIDER_MULTIPART = "openai-multipart"
+PROVIDER_LOCAL = "local-fireredvad-mlx"
+#: connect-first：自动路由——本地依赖优先，远程 provider 兜底，否则显式降级。
+PROVIDER_AUTO = "auto"
+
+
+def local_asr_available() -> bool:
+    """本地 ASR 可选依赖（fireredvad / mlx-whisper）是否已安装。"""
+    return (
+        importlib.util.find_spec("fireredvad") is not None
+        and importlib.util.find_spec("mlx_whisper") is not None
+    )
+
+
+def _build_local_asr(config: dict, asr_cfg: dict) -> ASRService:
+    """构造本地 FireRedVAD + MLX Whisper ASR（依赖缺失在 transcribe 时降级）。"""
+    from memoloupe.services.asr_local import LocalFireRedVadMlxASR
+
+    ffmpeg_cfg = config.get("ffmpeg", {}) if isinstance(config, dict) else {}
+    return LocalFireRedVadMlxASR(
+        asr_config=asr_cfg,
+        ffmpeg_path=str(ffmpeg_cfg.get("ffmpegPath", "ffmpeg")),
+        decode_timeout_sec=float(ffmpeg_cfg.get("scanTimeoutSec", 600.0)),
+    )
 
 
 @dataclass(frozen=True)
@@ -266,27 +295,32 @@ class MultipartOpenAICompatibleASR:
 def build_asr_service(config: dict) -> ASRService | None:
     """按 ``config["asr"]`` 构造 ASR 服务；未配置/未启用时返回 None。
 
-    ``provider`` 取值：``openai-json``（默认，JSON + base64）或
-    ``openai-multipart``（multipart 文件上传，``fileField`` 可配置）。
+    ``provider`` 取值：``openai-json``（默认，JSON + base64）、
+    ``openai-multipart``（multipart 文件上传，``fileField`` 可配置）、
+    ``local-fireredvad-mlx``（本地 FireRedVAD + MLX Whisper）、
+    ``auto``（本地依赖可用则本地，否则远程三项齐全走远程，皆无则显式降级）。
     """
     asr_cfg = config.get("asr", {}) if isinstance(config, dict) else {}
     if not asr_cfg.get("enabled", True):
         return None
     provider = str(asr_cfg.get("provider", PROVIDER_JSON))
-    if provider == "local-fireredvad-mlx":
-        # 本地 provider 无需 apiKey/baseUrl；依赖缺失在 transcribe 时抛
-        # CapabilityUnavailableError，由阶段层落 skipped。
-        from memoloupe.services.asr_local import LocalFireRedVadMlxASR
-
-        ffmpeg_cfg = config.get("ffmpeg", {}) if isinstance(config, dict) else {}
-        return LocalFireRedVadMlxASR(
-            asr_config=asr_cfg,
-            ffmpeg_path=str(ffmpeg_cfg.get("ffmpegPath", "ffmpeg")),
-            decode_timeout_sec=float(ffmpeg_cfg.get("scanTimeoutSec", 600.0)),
-        )
+    if provider == PROVIDER_LOCAL:
+        return _build_local_asr(config, asr_cfg)
     api_key = asr_cfg.get("apiKey")
     base_url = asr_cfg.get("baseUrl")
     model = asr_cfg.get("model")
+    if provider == PROVIDER_AUTO:
+        if local_asr_available():
+            return _build_local_asr(config, asr_cfg)
+        if not (api_key and base_url and model):
+            # 不静默跳过：说明降级原因并给出下一步（connect / 本地依赖）。
+            _logger.warning(
+                "ASR auto 路由：本地依赖（fireredvad/mlx-whisper）不可用且远程 "
+                "ASR 未配置，ASR 将显式降级。可运行 memoloupe connect add qwen "
+                "连接 provider，或安装本地依赖：uv sync --extra asr-local"
+            )
+            return None
+        # 远程三项齐全：按默认 JSON transport 构造（落到下方公共分支）。
     if not (api_key and base_url and model):
         return None
     timeout_sec = float(asr_cfg.get("timeoutSec", 120.0))

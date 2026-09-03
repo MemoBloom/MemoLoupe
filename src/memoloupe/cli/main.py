@@ -146,11 +146,17 @@ def _asr_is_configured(config: object) -> bool:
 
     本地 FireRedVAD + MLX Whisper 不使用远程 ``baseUrl``/``apiKey``/
     ``model``；其模型名位于 ``asr.whisper.model``。可选依赖和 Metal 能力在
-    实际转写时检查，不属于静态配置完整性判断。
+    实际转写时检查，不属于静态配置完整性判断。``auto`` 在本地依赖可用或
+    远程三项齐全时均视为已配置。
     """
     if not isinstance(config, dict):
         return False
-    if config.get("provider") == "local-fireredvad-mlx":
+    provider = config.get("provider")
+    if provider == "auto":
+        from memoloupe.services.asr import local_asr_available
+
+        return local_asr_available() or _remote_service_is_configured(config)
+    if provider == "local-fireredvad-mlx":
         whisper = config.get("whisper")
         return isinstance(whisper, dict) and bool(whisper.get("model"))
     return _remote_service_is_configured(config)
