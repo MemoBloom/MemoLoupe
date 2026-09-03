@@ -94,6 +94,11 @@ DEFAULT_CONFIG: dict = {
         "underexposedYAVG": 40.0,
         "overexposedYAVG": 215.0,
     },
+    #: 运动复刻候选检测（docs/03 §2.6，Phase 05-07）。目前只有 sampleFps
+    #: 影响行为；宽高/平移上限等由算法常量固定并在产物 analysis 中自证。
+    "motionEffects": {
+        "sampleFps": 8.0,
+    },
     "audioEnergy": {
         "sampleRate": 16000,
         "frameMs": 20,

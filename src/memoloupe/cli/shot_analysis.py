@@ -103,7 +103,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="STEP",
         help="显式跳过可选步骤并写降级产物（可重复）：run_asr / detect_music / "
         "detect_audio_cuts / extract_frames / detect_audio_energy / "
-        "detect_quality / unified_media_analysis / analyze_camera_motion",
+        "detect_quality / detect_motion_effects / unified_media_analysis / "
+        "analyze_camera_motion",
     )
     parser.add_argument(
         "--dry-run",

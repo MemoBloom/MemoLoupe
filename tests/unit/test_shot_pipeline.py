@@ -20,6 +20,7 @@ from memoloupe.analysis.shot_pipeline import (
     build_asr_stub,
     build_audio_cuts_stub,
     build_camera_motion_stub,
+    build_motion_effects_stub,
     build_music_flags_stub,
     build_unified_media_stub,
 )
@@ -182,6 +183,14 @@ def _fake_quality(source, shots, has_audio, config, *, pool) -> dict:
     }
 
 
+def _fake_motion_effects(source, shots, media, config, *, pool) -> dict:
+    # 编排测试不需要候选；返回 complete 的空候选文档（shots 摘要仍覆盖全镜头）。
+    doc = build_motion_effects_stub(shots, media, config)
+    doc["status"] = "complete"
+    doc["analysis"]["note"] = "unit-test fake"
+    return doc
+
+
 def _fake_render(out_dir, *, status="draft") -> Path:
     target = Path(out_dir) / "shot-analysis.html"
     target.write_text("<html>fake</html>", encoding="utf-8")
@@ -226,6 +235,11 @@ def patched(monkeypatch):
     )
     monkeypatch.setattr(
         shot_pipeline, "detect_quality", counted("detect_quality", _fake_quality)
+    )
+    monkeypatch.setattr(
+        shot_pipeline,
+        "detect_motion_effects",
+        counted("detect_motion_effects", _fake_motion_effects),
     )
     monkeypatch.setattr(
         shot_pipeline,
@@ -282,6 +296,7 @@ class TestHappyPath:
             "build_clips",
             "detect_audio_energy",
             "detect_quality",
+            "detect_motion_effects",
             "unified_media_analysis",
             "analyze_camera_motion",
             "render_shot_html",
@@ -297,6 +312,7 @@ class TestHappyPath:
                 "build_clips",
                 "detect_audio_energy",
                 "detect_quality",
+                "detect_motion_effects",
                 "render_shot_html",
                 "validate",
             )
@@ -313,6 +329,7 @@ class TestHappyPath:
         for artifact in (
             "media", "shots", "frame-evidence", "audio-energy", "quality-flags",
             "asr", "music-flags", "audio-cuts", "camera-motion", "unified-media",
+            "motion-effects",
         ):
             assert (out_dir / "raw" / f"{artifact}.json").is_file(), artifact
             assert f"raw/{artifact}.json" in report.artifacts

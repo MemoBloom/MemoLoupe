@@ -67,6 +67,11 @@ from memoloupe.media.clips import (
 )
 from memoloupe.media.concurrency import FFmpegPool
 from memoloupe.media.frames import FRAME_EXTRACTION_VERSION, extract_frames
+from memoloupe.media.motion_effects import (
+    MOTION_EFFECTS_VERSION,
+    build_motion_effects_stub,
+    detect_motion_effects,
+)
 from memoloupe.media.probe import probe_media
 from memoloupe.media.quality import QUALITY_DETECTION_VERSION, detect_quality
 from memoloupe.media.shots import SHOT_DETECTION_VERSION, detect_shots
@@ -100,6 +105,7 @@ SKIPPABLE_STEPS = frozenset(
         "extract_frames",
         "detect_audio_energy",
         "detect_quality",
+        "detect_motion_effects",
         "unified_media_analysis",
         "analyze_camera_motion",
     }
@@ -119,6 +125,7 @@ STEP_ORDER = (
     "build_clips",
     "detect_audio_energy",
     "detect_quality",
+    "detect_motion_effects",
     "unified_media_analysis",
     "analyze_camera_motion",
     "render_shot_html",
@@ -1067,6 +1074,26 @@ class ShotAnalysisPipeline:
                 skip_fn=lambda: build_quality_stub(shots, media, config),
             )
 
+            # 10b. detect_motion_effects（05-07：运动复刻候选；链 shots 指纹——
+            #      候选按 final 边界归属镜头；全轨 frameMetrics 随版本/config
+            #      指纹缓存，--align 重新对齐后自动失效）----------------------
+            motion_effects_fp = fingerprint(
+                {
+                    "artifact": "motion-effects",
+                    "shots": shots_fp_eff,
+                    "config": config_fingerprint(config, ["motionEffects"]),
+                    "version": MOTION_EFFECTS_VERSION,
+                }
+            )
+            run_artifact_step(
+                "detect_motion_effects",
+                ArtifactName.MOTION_EFFECTS,
+                motion_effects_fp,
+                lambda: detect_motion_effects(source, shots, media, config, pool=pool),
+                status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_motion_effects_stub(shots, media, config),
+            )
+
             # 11. unified_media_analysis（链 clips 指纹 + 词表版本；服务未配置
             #     → skipped 降级产物；partial/failed 下次自动断点续跑）----------
             vocab = load_vocabulary()
@@ -1139,6 +1166,7 @@ class ShotAnalysisPipeline:
                 "clips": clips_fp,
                 "audio-energy": energy_fp,
                 "quality-flags": quality_fp,
+                "motion-effects": motion_effects_fp,
                 "unified-media": unified_fp,
                 "camera-motion": camera_fp,
             }

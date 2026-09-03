@@ -281,6 +281,17 @@ def _check_shot_references_and_coverage(
             if isinstance(f, dict) and isinstance(f.get("shotID"), str)
         ]
 
+    def motion_shot_ids(doc: dict) -> list[tuple[str, str]]:
+        # shots[] 是逐镜头摘要（始终覆盖全部镜头）；keyframeCandidates[]
+        # 只含命中镜头（其 shotID 也必须存在于 shots.json）。
+        result = list(shot_ids(doc))
+        result.extend(
+            (f"$.keyframeCandidates[{i}].shotID", c.get("shotID"))
+            for i, c in enumerate(doc.get("keyframeCandidates", []))
+            if isinstance(c, dict) and isinstance(c.get("shotID"), str)
+        )
+        return result
+
     # (artifact, id 提取器, 是否 complete 判定)
     level_files: list[tuple[str, Any, Any]] = [
         (ArtifactName.AUDIO_CUTS.value, shot_ids,
@@ -294,6 +305,8 @@ def _check_shot_references_and_coverage(
         (ArtifactName.CAMERA_MOTION.value, shot_ids,
          lambda d: d.get("analysis", {}).get("capabilityStatus") == "complete"),
         (ArtifactName.QUALITY_FLAGS.value, shot_ids,
+         lambda d: d.get("status") == "complete"),
+        (ArtifactName.MOTION_EFFECTS.value, motion_shot_ids,
          lambda d: d.get("status") == "complete"),
         (ArtifactName.AUDIO_ENERGY.value, shot_ids,
          lambda d: d.get("hasAudio") is True),

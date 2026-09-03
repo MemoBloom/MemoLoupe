@@ -1,6 +1,6 @@
 """产物 schema 注册表。
 
-12 个逻辑 artifact 名与 ``schemas/`` 目录下的 Draft 2020-12 JSON Schema
+稳定逻辑 artifact 名与 ``schemas/`` 目录下的 Draft 2020-12 JSON Schema
 一一对应（文件名即逻辑名加 ``.json``）。所有产物的读写校验都通过
 :func:`validate_artifact` 走同一入口，失败时抛出带逻辑名与 JSON 路径的
 :class:`~memoloupe.core.errors.ContractError`。
@@ -19,7 +19,7 @@ from memoloupe.core.errors import ContractError
 
 
 class ArtifactName(StrEnum):
-    """稳定数据契约中的 12 个 artifact 逻辑名。"""
+    """稳定数据契约中的 13 个 artifact 逻辑名。"""
 
     MEDIA = "media"
     SHOTS = "shots"
@@ -31,6 +31,7 @@ class ArtifactName(StrEnum):
     CAMERA_MOTION = "camera-motion"
     QUALITY_FLAGS = "quality-flags"
     AUDIO_ENERGY = "audio-energy"
+    MOTION_EFFECTS = "motion-effects"
     STORY_BLOCKS = "story-blocks"
     STYLE_PROFILE = "style-profile"
 
