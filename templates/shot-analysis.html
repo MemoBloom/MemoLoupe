@@ -328,6 +328,12 @@
     background: var(--secondary);
     padding: 12px;
   }
+  .metric-card-motion {
+    border-color: var(--warning-border);
+    background:
+      linear-gradient(135deg, rgba(197, 138, 25, 0.14), rgba(255, 253, 248, 0.88));
+  }
+  .metric-card-motion .metric-value { color: var(--warning); }
   .metric-label {
     margin: 0;
     color: var(--muted-foreground);
@@ -359,6 +365,10 @@
     font-size: 10px;
   }
   .timeline-shot.is-review { border-color: var(--warning-border); color: var(--warning); }
+  .timeline-shot.is-motion {
+    border-color: var(--warning-border);
+    box-shadow: inset 0 -3px 0 rgba(165, 113, 0, 0.48);
+  }
   .timeline-shot.is-music { background: var(--success-bg); }
   .timeline-shot.is-unknown { border-style: dashed; color: var(--muted-foreground); }
   .timeline-shot.is-selected,
@@ -399,6 +409,7 @@
     font-size: 11px;
   }
   .story-timeline-band,
+  .motion-timeline-band,
   .shot-timeline-band {
     display: grid;
     grid-template-columns: 62px minmax(0, 1fr);
@@ -480,6 +491,88 @@
     color: var(--muted-foreground);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 10px;
+  }
+  .motion-event-track {
+    position: relative;
+    min-height: 58px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, rgba(255, 253, 248, 0.72), rgba(241, 233, 216, 0.72));
+  }
+  .motion-event-track::before {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 50%;
+    height: 1px;
+    background: var(--border);
+  }
+  .motion-event {
+    position: absolute;
+    left: var(--motion-left);
+    top: 11px;
+    width: min(var(--motion-width), calc(100% - var(--motion-left)));
+    min-width: 42px;
+    max-width: 220px;
+    min-height: 36px;
+    overflow: hidden;
+    border-color: var(--warning-border);
+    border-radius: 10px;
+    background:
+      linear-gradient(135deg, rgba(197, 138, 25, 0.24), rgba(255, 253, 248, 0.96));
+    color: var(--warning);
+    padding: 6px 8px;
+    text-align: left;
+    box-shadow: 0 8px 18px rgba(146, 97, 10, 0.12);
+  }
+  .motion-event.is-point {
+    min-width: 48px;
+    border-left-width: 4px;
+  }
+  .motion-event.is-range {
+    min-width: 72px;
+  }
+  .motion-event:hover:not(:disabled) {
+    border-color: rgba(146, 97, 10, 0.58);
+    background:
+      linear-gradient(135deg, rgba(197, 138, 25, 0.30), rgba(255, 253, 248, 0.98));
+  }
+  .motion-event.is-selected {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .motion-event strong,
+  .motion-event span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .motion-event strong {
+    font-size: 11px;
+    font-weight: 720;
+  }
+  .motion-event span {
+    margin-top: 3px;
+    color: var(--muted-foreground);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+  }
+  .motion-event-empty {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    margin: 14px 0 0 10px;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    padding: 0 10px;
+    color: var(--muted-foreground);
+    font-size: 11px;
   }
   .table-card { overflow: hidden; }
   .matrix-summary {
@@ -844,6 +937,92 @@
     font-size: 12px;
     line-height: 1.55;
   }
+  .inspector-motion-card {
+    border-color: var(--warning-border);
+    background:
+      linear-gradient(180deg, rgba(255, 253, 248, 0.94), rgba(197, 138, 25, 0.08));
+  }
+  .motion-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+  }
+  .motion-summary-grid div {
+    min-width: 0;
+    border: 1px solid var(--warning-border);
+    border-radius: 10px;
+    background: rgba(255, 253, 248, 0.72);
+    padding: 8px;
+  }
+  .motion-summary-grid dt {
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
+  .motion-summary-grid dd {
+    margin: 3px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--warning);
+    font-size: 12px;
+    font-weight: 680;
+  }
+  .motion-candidate-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .motion-candidate {
+    border: 1px solid var(--warning-border);
+    border-radius: 10px;
+    background: rgba(255, 253, 248, 0.76);
+    padding: 10px;
+  }
+  .motion-candidate-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .motion-candidate-title strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .motion-candidate-body {
+    margin: 6px 0 0;
+    overflow-wrap: anywhere;
+    color: var(--foreground);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .motion-candidate-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 7px;
+  }
+  .motion-evidence {
+    margin-top: 7px;
+    border-top: 1px solid var(--border);
+    padding-top: 7px;
+  }
+  .motion-evidence summary {
+    width: fit-content;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .motion-evidence code {
+    display: block;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
   .inspector-meta {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1088,7 +1267,9 @@
     .metadata { position: static; }
     .metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .story-timeline-band,
+    .motion-timeline-band,
     .shot-timeline-band { grid-template-columns: 1fr; }
+    .motion-summary-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -1366,6 +1547,86 @@
     parent.appendChild(card);
   }
 
+  function motionStatusLabel(status) {
+    if (status === "complete") { return "已检测"; }
+    if (status === "skipped") { return "未运行"; }
+    if (status === "failed") { return "检测失败"; }
+    return "待确认";
+  }
+
+  function appendMotionCandidate(container, item, isRange) {
+    var row = document.createElement("article");
+    row.className = "motion-candidate";
+    var title = document.createElement("div");
+    title.className = "motion-candidate-title";
+    var label = (isRange ? item.type : item.property) || "候选";
+    var timeText = isRange ?
+      (String(item.startMs) + "–" + String(item.endMs) + " ms") :
+      (String(item.timeMs) + " ms");
+    appendText(title, "strong", "", label + " · " + timeText);
+    appendBadge(title, item.confidence || "可信度待确认", "badge-warning");
+    row.appendChild(title);
+    appendText(row, "p", "motion-candidate-body", item.summary || item.replicationHint || "需要人工视觉确认");
+    var meta = document.createElement("div");
+    meta.className = "motion-candidate-meta";
+    appendBadge(meta, isRange ? "区间" : "关键帧", "badge-outline");
+    if (item.needsVisualConfirmation) {
+      appendBadge(meta, "需要人工视觉确认", "badge-warning");
+    }
+    row.appendChild(meta);
+    if (item.replicationHint && item.replicationHint !== item.summary) {
+      appendText(row, "p", "motion-candidate-body", item.replicationHint);
+    }
+    var refs = item.evidenceRefs || [];
+    if (refs.length) {
+      var evidence = document.createElement("details");
+      evidence.className = "motion-evidence";
+      appendText(evidence, "summary", "", "追溯依据");
+      refs.forEach(function (ref) {
+        appendText(evidence, "code", "", ref);
+      });
+      row.appendChild(evidence);
+    }
+    container.appendChild(row);
+  }
+
+  function appendMotionEffects(parent, shot) {
+    var motion = shot.motionEffects;
+    if (!motion) { return; }
+    var summary = motion.summary || {};
+    var speedRamps = motion.speedRamps || [];
+    var keyframes = motion.keyframes || [];
+    var total = (parseInt(summary.candidateCount, 10) || 0) + speedRamps.length;
+    var card = document.createElement("section");
+    card.className = "inspector-card inspector-motion-card";
+    var title = document.createElement("div");
+    title.className = "inspector-section-title";
+    appendText(title, "h3", "", "运动复刻候选");
+    appendBadge(title, motionStatusLabel(motion.status), total ? "badge-warning" : "badge-outline");
+    card.appendChild(title);
+    var meta = document.createElement("dl");
+    meta.className = "motion-summary-grid";
+    appendMeta(meta, "候选数量", total ? String(total) : "暂无候选");
+    appendMeta(meta, "候选类型", (summary.properties || []).join(" / ") || "待确认");
+    appendMeta(meta, "复核状态", total ? "需要确认" : "无候选");
+    card.appendChild(meta);
+    if (keyframes.length || speedRamps.length) {
+      var list = document.createElement("div");
+      list.className = "motion-candidate-list";
+      keyframes.forEach(function (item) { appendMotionCandidate(list, item, false); });
+      speedRamps.forEach(function (item) { appendMotionCandidate(list, item, true); });
+      card.appendChild(list);
+    } else {
+      appendText(
+        card,
+        "p",
+        "inspector-shot-summary",
+        motion.status === "skipped" ? "运动复刻检测未运行；这不代表没有动效。" : "暂无待展示候选。"
+      );
+    }
+    parent.appendChild(card);
+  }
+
   function appendInspectorField(container, field) {
     var item = document.createElement("details");
     item.className = "inspector-field-row state-row-" + field.state;
@@ -1612,6 +1873,7 @@
 
     appendSummaryCard(drawer, shot);
     appendStoryContext(drawer, shot);
+    appendMotionEffects(drawer, shot);
     appendQuickRead(drawer, shot);
     appendReviewReasons(drawer, shot);
 
@@ -1664,7 +1926,8 @@
       if ((isSameShot || isSameStory) &&
           (el.classList.contains("timeline-shot") ||
            el.classList.contains("filmstrip-shot") ||
-           el.classList.contains("story-segment"))) {
+           el.classList.contains("story-segment") ||
+           el.classList.contains("motion-event"))) {
         el.classList.add("is-selected");
       }
     });

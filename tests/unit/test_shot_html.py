@@ -266,6 +266,8 @@ class TestResourcePolicy:
         assert "镜头内容摘要" in html
         assert 'id="story-layer"' not in html
         assert 'id="story-timeline-band"' in html
+        assert 'id="motion-timeline-band"' in html
+        assert "动效</span>" in html
         assert "镜头与故事时间线" in html
         assert "故事</span>" in html
         assert "机场出发" in html
@@ -281,6 +283,95 @@ class TestResourcePolicy:
         assert '"frameRef"' in html
         assert '"story"' in html
         assert '"groups"' in html
+
+
+class TestMotionEffectsRendering:
+    def test_motion_effects_summary_and_sidebar_context_render(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        motion_path = work / "raw" / "motion-effects.json"
+        motion = json.loads(motion_path.read_text(encoding="utf-8"))
+        motion["status"] = "complete"
+        motion["frameMetrics"] = [
+            {
+                "frameIndex": 1,
+                "timeMs": 1500,
+                "diff": 0.2,
+                "motionEnergy": 0.3,
+                "brightness": 0.6,
+                "brightnessDelta": 0.2,
+                "repeatScore": 0.2,
+                "cutScore": 0.34,
+                "dxPxSample": 3.0,
+                "dyPxSample": 0.5,
+                "scaleRatio": 1.0,
+                "zoomScore": 0.0,
+                "shakeScore": 3.5,
+            }
+        ]
+        motion["speedRamps"] = [
+            {
+                "type": "impact_cut",
+                "startMs": 1400,
+                "endMs": 1525,
+                "durationMs": 125,
+                "avgMotion": 0.3,
+                "confidence": "medium",
+                "evidence": "cut_score peak=0.34",
+                "replicationHint": "Use a 2-4 frame exposure hit.",
+                "needsVisualConfirmation": True,
+                "evidenceRefs": ["raw/motion-effects.json#frameMetrics[0]"],
+            }
+        ]
+        motion["keyframeCandidates"] = [
+            {
+                "shotID": "SH0001",
+                "timeMs": 1500,
+                "property": "position",
+                "inferredChange": {
+                    "text": "Position approx (3.0px, 0.5px) in 96x54 sample"
+                },
+                "confidence": "high",
+                "replicationHint": "Use position keyframes with easing.",
+                "needsVisualConfirmation": True,
+                "evidenceRefs": ["raw/motion-effects.json#frameMetrics[0]"],
+            }
+        ]
+        motion["digest"]["items"] = [
+            {
+                "kind": "position",
+                "timeRange": "1500 ms",
+                "summary": "Position approx (3.0px, 0.5px) in 96x54 sample",
+                "confidence": "high",
+                "needsVisualConfirmation": True,
+                "evidenceRefs": ["raw/motion-effects.json#frameMetrics[0]"],
+            }
+        ]
+        motion["shots"][0]["candidateCount"] = 1
+        motion["shots"][0]["properties"] = ["position"]
+        motion["shots"][0]["needsReview"] = True
+        motion_path.write_text(json.dumps(motion, ensure_ascii=False), encoding="utf-8")
+
+        out = render_shot_html(work)
+        assert _errors(out, work) == []
+        html = out.read_text(encoding="utf-8")
+
+        assert "运动复刻候选" in html
+        assert "2 个候选 · 1 镜头" in html
+        assert 'class="metric-card metric-card-motion"' in html
+        assert 'id="motion-timeline-band"' in html
+        assert 'class="motion-event shot-jump is-point"' in html
+        assert 'class="motion-event shot-jump is-range"' in html
+        assert 'data-motion-kind="position"' in html
+        assert 'data-motion-kind="impact_cut"' in html
+        assert "动效</span>" in html
+        assert '"motionEffects"' in html
+        assert '"位移"' in html
+        assert '"冲击卡点"' in html
+        assert "Position approx (3.0px, 0.5px) in 96x54 sample" in html
+        assert "raw/motion-effects.json#frameMetrics[0]" in html
+        assert "需要人工视觉确认" in html
+        assert "追溯依据" in html
+        assert "is-motion" in html
 
 
 class TestCorrectionsOverlay:

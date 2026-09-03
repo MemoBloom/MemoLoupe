@@ -51,6 +51,7 @@ RAW_FILES: tuple[str, ...] = (
     "asr",
     "unified-media",
     "camera-motion",
+    "motion-effects",
     "story-blocks",
 )
 
@@ -334,6 +335,37 @@ def _unified_batch_status(raws: dict[str, dict | None]) -> tuple[str, int]:
     return "unknown", len(statuses)
 
 
+def _motion_effects_summary(raws: dict[str, dict | None]) -> tuple[str, int, int]:
+    """返回 motion-effects 展示摘要：``(status, candidate_count, review_shots)``。"""
+    doc = raws.get("motion-effects")
+    if not doc:
+        return "missing", 0, 0
+    status = doc.get("status")
+    status_text = status if isinstance(status, str) else "unknown"
+    speed = doc.get("speedRamps")
+    keyframes = doc.get("keyframeCandidates")
+    candidate_count = (
+        (len(speed) if isinstance(speed, list) else 0)
+        + (len(keyframes) if isinstance(keyframes, list) else 0)
+    )
+    review_shots = 0
+    shots = doc.get("shots")
+    if isinstance(shots, list):
+        review_shots = sum(
+            1
+            for shot in shots
+            if isinstance(shot, dict)
+            and (
+                shot.get("needsReview") is True
+                or (
+                    isinstance(shot.get("candidateCount"), int)
+                    and shot["candidateCount"] > 0
+                )
+            )
+        )
+    return status_text, candidate_count, review_shots
+
+
 def _document_status_label(status: str) -> str:
     return {
         "draft": "未校对",
@@ -368,6 +400,27 @@ def _story_role_label(role: object) -> str:
     }.get(str(role or "unknown"), str(role or "作用待确认"))
 
 
+def _motion_property_label(value: object) -> str:
+    return {
+        "position": "位移",
+        "scale": "缩放",
+        "exposure_or_opacity": "闪白/黑场",
+        "shake": "震动",
+        "low_motion_or_freeze": "慢放/冻结",
+        "high_motion_region": "高运动区",
+        "impact_cut": "冲击卡点",
+    }.get(str(value), str(value or "候选"))
+
+
+def _confidence_label(value: object) -> str:
+    return {
+        "high": "可信度高",
+        "medium": "可信度中",
+        "low": "可信度低",
+        "unknown": "可信度待确认",
+    }.get(str(value), "可信度待确认")
+
+
 def _summary_html(
     document_status: str,
     shots: list[dict],
@@ -392,6 +445,13 @@ def _summary_html(
         "missing": "未运行",
         "unknown": "待确认",
     }.get(unified_status, "待确认")
+    motion_status, motion_count, motion_review_shots = _motion_effects_summary(raws)
+    motion_value = {
+        "complete": f"{motion_count} 个候选 · {motion_review_shots} 镜头",
+        "skipped": "未运行",
+        "failed": "检测失败",
+        "missing": "未运行",
+    }.get(motion_status, "待确认")
     cards = [
         (
             "镜头总数",
@@ -435,6 +495,13 @@ def _summary_html(
             "badge-success" if unified_status == "complete" else "badge-warning",
             "语义分析",
         ),
+        (
+            "运动复刻候选",
+            motion_value,
+            "raw/motion-effects.json#digest.items",
+            "badge-warning" if motion_count else "badge-outline",
+            "待视觉确认",
+        ),
     ]
     parts = [
         '<section id="shot-summary" class="card" aria-label="镜头分析总览">',
@@ -445,8 +512,9 @@ def _summary_html(
         '<div class="summary-grid">',
     ]
     for label, value, source, badge_class, note in cards:
+        extra_class = " metric-card-motion" if label == "运动复刻候选" else ""
         parts.append(
-            '<article class="metric-card" '
+            f'<article class="metric-card{extra_class}" '
             f'data-evidence-refs="{html.escape(source)}">'
             f'<p class="metric-label">{html.escape(label)}</p>'
             f'<p class="metric-value">{html.escape(value)}</p>'
@@ -528,6 +596,342 @@ def _story_context_by_shot(raws: dict[str, dict | None]) -> dict[str, dict]:
             if isinstance(shot_id, str):
                 result[shot_id] = context
     return result
+
+
+def _motion_context_by_shot(
+    raws: dict[str, dict | None],
+    shots: list[dict],
+) -> dict[str, dict]:
+    """shotID -> motion-effects 摘要；只用于展示候选，不生成 Observation。"""
+    doc = raws.get("motion-effects")
+    if not doc:
+        return {}
+    status = doc.get("status")
+    by_shot: dict[str, dict] = {}
+    for shot in shots:
+        shot_id = str(shot.get("shotID") or "")
+        if not shot_id:
+            continue
+        by_shot[shot_id] = {
+            "status": str(status or "missing"),
+            "summary": {
+                "candidateCount": 0,
+                "properties": [],
+                "needsReview": False,
+            },
+            "keyframes": [],
+            "speedRamps": [],
+        }
+    motion_shots = doc.get("shots")
+    if not isinstance(motion_shots, list):
+        motion_shots = []
+    for item in motion_shots:
+        if not isinstance(item, dict) or not isinstance(item.get("shotID"), str):
+            continue
+        context = by_shot.setdefault(
+            item["shotID"],
+            {
+                "status": str(status or "missing"),
+                "summary": {},
+                "keyframes": [],
+                "speedRamps": [],
+            },
+        )
+        raw_properties = item.get("properties")
+        properties = raw_properties if isinstance(raw_properties, list) else []
+        context["summary"] = {
+            "candidateCount": item.get("candidateCount", 0),
+            "properties": [
+                _motion_property_label(prop)
+                for prop in properties
+            ],
+            "needsReview": bool(item.get("needsReview")),
+        }
+    keyframes = doc.get("keyframeCandidates")
+    if not isinstance(keyframes, list):
+        keyframes = []
+    for item in keyframes:
+        if not isinstance(item, dict) or not isinstance(item.get("shotID"), str):
+            continue
+        context = by_shot.setdefault(
+            item["shotID"],
+            {
+                "status": str(status or "missing"),
+                "summary": {},
+                "keyframes": [],
+                "speedRamps": [],
+            },
+        )
+        inferred = item.get("inferredChange")
+        context["keyframes"].append(
+            {
+                "timeMs": item.get("timeMs"),
+                "property": _motion_property_label(item.get("property")),
+                "confidence": _confidence_label(item.get("confidence")),
+                "summary": (
+                    inferred.get("text")
+                    if isinstance(inferred, dict) and isinstance(inferred.get("text"), str)
+                    else ""
+                ),
+                "replicationHint": str(item.get("replicationHint") or ""),
+                "evidenceRefs": [
+                    str(ref) for ref in item.get("evidenceRefs", []) if isinstance(ref, str)
+                ],
+                "needsVisualConfirmation": item.get("needsVisualConfirmation") is True,
+            }
+        )
+    speed_ramps = doc.get("speedRamps")
+    if not isinstance(speed_ramps, list):
+        speed_ramps = []
+    for item in speed_ramps:
+        if not isinstance(item, dict):
+            continue
+        start = item.get("startMs")
+        end = item.get("endMs")
+        if not isinstance(start, int) or not isinstance(end, int):
+            continue
+        display = {
+            "startMs": start,
+            "endMs": end,
+            "type": _motion_property_label(item.get("type")),
+            "confidence": _confidence_label(item.get("confidence")),
+            "summary": str(item.get("evidence") or ""),
+            "replicationHint": str(item.get("replicationHint") or ""),
+            "evidenceRefs": [
+                str(ref) for ref in item.get("evidenceRefs", []) if isinstance(ref, str)
+            ],
+            "needsVisualConfirmation": item.get("needsVisualConfirmation") is True,
+        }
+        for shot in shots:
+            shot_id = str(shot.get("shotID") or "")
+            shot_start = shot.get("finalStartMs")
+            shot_end = shot.get("finalEndMs")
+            if (
+                shot_id
+                and isinstance(shot_start, int)
+                and isinstance(shot_end, int)
+                and start < shot_end
+                and shot_start < end
+            ):
+                by_shot.setdefault(
+                    shot_id,
+                    {
+                        "status": str(status or "missing"),
+                        "summary": {},
+                        "keyframes": [],
+                        "speedRamps": [],
+                    },
+                )["speedRamps"].append(display)
+    return {
+        shot_id: context
+        for shot_id, context in by_shot.items()
+        if (
+            context["status"] != "missing"
+            or context["summary"].get("candidateCount")
+            or context["keyframes"]
+            or context["speedRamps"]
+        )
+    }
+
+
+def _motion_shot_for_time(shots: list[dict], time_ms: int) -> dict | None:
+    for shot in shots:
+        start_ms = shot.get("finalStartMs")
+        end_ms = shot.get("finalEndMs")
+        if (
+            isinstance(start_ms, int)
+            and isinstance(end_ms, int)
+            and start_ms <= time_ms < end_ms
+        ):
+            return shot
+    return None
+
+
+def _motion_shot_for_range(shots: list[dict], start_ms: int, end_ms: int) -> dict | None:
+    for shot in shots:
+        shot_start = shot.get("finalStartMs")
+        shot_end = shot.get("finalEndMs")
+        if (
+            isinstance(shot_start, int)
+            and isinstance(shot_end, int)
+            and start_ms < shot_end
+            and shot_start < end_ms
+        ):
+            return shot
+    return None
+
+
+def _motion_timeline_band_html(
+    raws: dict[str, dict | None],
+    shots: list[dict],
+    out_dir: Path,
+) -> str:
+    """渲染 motion-effects 的时间线轨道；仅展示 raw 候选和证据引用。"""
+    doc = raws.get("motion-effects")
+    if not doc:
+        return ""
+    status = str(doc.get("status") or "unknown")
+    speed_ramps = doc.get("speedRamps")
+    if not isinstance(speed_ramps, list):
+        speed_ramps = []
+    keyframes = doc.get("keyframeCandidates")
+    if not isinstance(keyframes, list):
+        keyframes = []
+
+    first_start = next(
+        (
+            shot.get("finalStartMs")
+            for shot in shots
+            if isinstance(shot.get("finalStartMs"), int)
+        ),
+        0,
+    )
+    last_end = next(
+        (
+            shot.get("finalEndMs")
+            for shot in reversed(shots)
+            if isinstance(shot.get("finalEndMs"), int)
+        ),
+        first_start,
+    )
+    timeline_ms = max(int(last_end) - int(first_start), 1)
+
+    events: list[dict[str, object]] = []
+    for index, item in enumerate(keyframes):
+        if not isinstance(item, dict):
+            continue
+        time_ms = item.get("timeMs")
+        if not isinstance(time_ms, int):
+            continue
+        shot_id = item.get("shotID")
+        shot = (
+            next((s for s in shots if s.get("shotID") == shot_id), None)
+            if isinstance(shot_id, str)
+            else None
+        ) or _motion_shot_for_time(shots, time_ms)
+        inferred = item.get("inferredChange")
+        events.append(
+            {
+                "id": f"motion-keyframe-{index}",
+                "kind": str(item.get("property") or "keyframe"),
+                "label": _motion_property_label(item.get("property")),
+                "confidence": _confidence_label(item.get("confidence")),
+                "startMs": time_ms,
+                "endMs": time_ms,
+                "isPoint": True,
+                "shot": shot,
+                "summary": (
+                    inferred.get("text")
+                    if isinstance(inferred, dict) and isinstance(inferred.get("text"), str)
+                    else str(item.get("replicationHint") or "")
+                ),
+                "evidenceRefs": [
+                    str(ref) for ref in item.get("evidenceRefs", []) if isinstance(ref, str)
+                ],
+            }
+        )
+    for index, item in enumerate(speed_ramps):
+        if not isinstance(item, dict):
+            continue
+        start_ms = item.get("startMs")
+        end_ms = item.get("endMs")
+        if (
+            not isinstance(start_ms, int)
+            or not isinstance(end_ms, int)
+            or end_ms <= start_ms
+        ):
+            continue
+        events.append(
+            {
+                "id": f"motion-speed-{index}",
+                "kind": str(item.get("type") or "speed"),
+                "label": _motion_property_label(item.get("type")),
+                "confidence": _confidence_label(item.get("confidence")),
+                "startMs": start_ms,
+                "endMs": end_ms,
+                "isPoint": False,
+                "shot": _motion_shot_for_range(shots, start_ms, end_ms),
+                "summary": str(
+                    item.get("evidence") or item.get("replicationHint") or ""
+                ),
+                "evidenceRefs": [
+                    str(ref) for ref in item.get("evidenceRefs", []) if isinstance(ref, str)
+                ],
+            }
+        )
+
+    events.sort(key=lambda event: (int(event["startMs"]), int(event["endMs"])))
+    status_label = {
+        "complete": "已检测",
+        "skipped": "未运行",
+        "failed": "检测失败",
+    }.get(status, "待确认")
+    parts = [
+        '<div id="motion-timeline-band" class="motion-timeline-band" '
+        'aria-label="动效候选轨道">',
+        '<div class="timeline-lane-label">',
+        '<span>动效</span>',
+        f'<small>{len(events)} 个候选 · {html.escape(status_label)}</small>',
+        "</div>",
+        '<div class="motion-event-track" role="list">',
+    ]
+    if not events:
+        parts.append(
+            '<span class="motion-event-empty">暂无候选</span>'
+        )
+    for event in events:
+        start_ms = int(event["startMs"])
+        end_ms = int(event["endMs"])
+        duration = max(end_ms - start_ms, 0)
+        left = max(
+            0.0,
+            min(98.0, ((start_ms - int(first_start)) / timeline_ms) * 100),
+        )
+        width = (
+            2.8
+            if event["isPoint"]
+            else max((duration / timeline_ms) * 100, 3.2)
+        )
+        shot = event.get("shot")
+        shot_id = str(shot.get("shotID") or "") if isinstance(shot, dict) else ""
+        clip_src = _clip_src(out_dir, shot_id) if shot_id else None
+        src_attr = f' data-clip-src="{html.escape(clip_src)}"' if clip_src else ""
+        shot_attr = f' data-shot-id="{html.escape(shot_id)}"' if shot_id else ""
+        shot_start = shot.get("finalStartMs") if isinstance(shot, dict) else None
+        shot_end = shot.get("finalEndMs") if isinstance(shot, dict) else None
+        start_attr = f' data-start-ms="{shot_start}"' if isinstance(shot_start, int) else ""
+        end_attr = f' data-end-ms="{shot_end}"' if isinstance(shot_end, int) else ""
+        disabled = "" if clip_src else " disabled"
+        evidence_refs = " ".join(str(ref) for ref in event.get("evidenceRefs", []))
+        range_text = (
+            f"{_timecode(start_ms)}"
+            if event["isPoint"]
+            else f"{_timecode(start_ms)} – {_timecode(end_ms)}"
+        )
+        kind_class = "is-point" if event["isPoint"] else "is-range"
+        title_bits = [
+            str(event["label"]),
+            range_text,
+            str(event["confidence"]),
+        ]
+        summary = str(event.get("summary") or "")
+        if summary:
+            title_bits.append(summary)
+        parts.append(
+            f'<button type="button" class="motion-event shot-jump {kind_class}" '
+            f'role="listitem" style="--motion-left: {left:.2f}%; '
+            f'--motion-width: {width:.2f}%" '
+            f'data-motion-kind="{html.escape(str(event["kind"]))}"'
+            f' data-evidence-refs="{html.escape(evidence_refs)}"'
+            f'{shot_attr}{src_attr}{start_attr}{end_attr}{disabled} '
+            f'title="{html.escape(" · ".join(title_bits))}" '
+            f'aria-label="查看动效候选 {html.escape(str(event["label"]))}">'
+            f'<strong>{html.escape(str(event["label"]))}</strong>'
+            f'<span>{html.escape(range_text)}</span>'
+            '</button>'
+        )
+    parts.append("</div></div>")
+    return "".join(parts)
 
 
 def _story_timeline_band_html(
@@ -619,13 +1023,18 @@ def _timeline_html(
 ) -> str:
     total_duration = sum(_shot_duration_ms(shot) for shot in shots) or 1
     music_states = _music_by_shot(raws)
+    motion_context = _motion_context_by_shot(raws, shots)
     parts = [
         '<section id="shot-timeline" class="timeline-card card" aria-label="镜头时间线">',
         '<div class="card-header"><div>',
         '<h2 class="card-title">镜头与故事时间线</h2>',
-        '<p class="card-description">上方是故事段，下方是镜头切分；金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。</p>',
+        '<p class="card-description">'
+        "故事、动效候选与镜头切分按同一时间轴排列；"
+        "金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。"
+        "</p>",
         '</div><span class="badge badge-outline">按时长</span></div>',
         _story_timeline_band_html(raws, shots, out_dir),
+        _motion_timeline_band_html(raws, shots, out_dir),
         '<div class="shot-timeline-band" aria-label="镜头轨道">',
         '<div class="timeline-lane-label"><span>镜头</span><small>'
         f"{len(shots)} 个切分"
@@ -643,9 +1052,26 @@ def _timeline_html(
         clip_src = _clip_src(out_dir, shot_id)
         reasons = _merged_review_reasons(shot, review_reasons_by_shot.get(shot_id, []))
         music_state = music_states.get(shot_id, "unknown")
+        motion = motion_context.get(shot_id)
+        motion_count = 0
+        if motion is not None:
+            summary = motion.get("summary", {})
+            motion_count = (
+                int(summary.get("candidateCount", 0))
+                if isinstance(summary, dict)
+                and isinstance(summary.get("candidateCount"), int)
+                else 0
+            )
+            motion_count += (
+                len(motion.get("speedRamps", []))
+                if isinstance(motion.get("speedRamps"), list)
+                else 0
+            )
         class_names = ["timeline-shot", "shot-jump"]
         if reasons:
             class_names.append("is-review")
+        if motion_count:
+            class_names.append("is-motion")
         if music_state == "music":
             class_names.append("is-music")
         elif music_state == "unknown":
@@ -658,6 +1084,8 @@ def _timeline_html(
         if isinstance(start_ms, int) and isinstance(end_ms, int):
             title_bits.append(f"{_timecode(start_ms)}–{_timecode(end_ms)}")
         title_bits.append(f"BGM={music_state}")
+        if motion_count:
+            title_bits.append(f"运动复刻候选={motion_count} 个")
         if reasons:
             title_bits.append("复核：" + "；".join(reasons))
         parts.append(
@@ -703,6 +1131,7 @@ def _shot_inspector_json(
     ]
     shot_items = []
     story_context = _story_context_by_shot(raws)
+    motion_context = _motion_context_by_shot(raws, shots)
     for shot in shots:
         shot_id = str(shot.get("shotID", ""))
         start_ms = shot.get("finalStartMs")
@@ -752,6 +1181,7 @@ def _shot_inspector_json(
                     review_reasons_by_shot.get(shot_id, []),
                 ),
                 "story": story_context.get(shot_id),
+                "motionEffects": motion_context.get(shot_id),
                 "groups": grouped_fields,
             }
         )
