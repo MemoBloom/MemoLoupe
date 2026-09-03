@@ -156,7 +156,7 @@ DEFAULT_CONFIG: dict = {
         "maxCompletionTokens": 4096,
         "thinkingMode": "disabled",
         "maxRetries": 3,
-        "transport": "videoDataURI",
+        "transport": "mediaDataURI",
     },
     "textModel": {
         "baseUrl": None,

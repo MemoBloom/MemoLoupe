@@ -102,14 +102,13 @@ class TestHappyPath:
 
         request = doc["request"]
         assert request["model"] == "mock-unified-1"
-        assert request["clipTransport"] == "videoDataURI"
+        assert request["clipTransport"] == "mediaDataURI"
         assert request["externalFrameExtraction"] is False
         assert request["batchSize"] == 2
         assert request["sourceRevisionID"] == "a1b2c3d4e5f6"
         assert request["shortClipPolicy"] == {
             "minimumDurationMs": 2000,
-            "recoveryMinimumDurationMs": 2000,
-            "recoveryWidth": 720,
+            "imageProxyWidth": 720,
         }
         assert doc["retryPolicy"] == {
             "maxRetries": 3,

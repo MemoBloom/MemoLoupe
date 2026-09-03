@@ -150,7 +150,7 @@
     }
   },
   "properties": {
-    "schemaVersion": { "const": 2 },
+    "schemaVersion": { "const": 3 },
     "service": { "const": "unifiedAudioVideo" },
     "schemaFingerprint": { "type": "string" },
     "request": {
@@ -170,7 +170,7 @@
       "properties": {
         "model": { "type": "string" },
         "fallbackModel": { "type": ["string", "null"] },
-        "clipTransport": { "const": "videoDataURI" },
+        "clipTransport": { "const": "mediaDataURI" },
         "batchSize": { "type": "integer", "minimum": 1 },
         "concurrency": { "type": "integer", "minimum": 1 },
         "externalFrameExtraction": { "const": false },
@@ -185,13 +185,11 @@
           "additionalProperties": true,
           "required": [
             "minimumDurationMs",
-            "recoveryMinimumDurationMs",
-            "recoveryWidth"
+            "imageProxyWidth"
           ],
           "properties": {
             "minimumDurationMs": { "type": "integer", "minimum": 0 },
-            "recoveryMinimumDurationMs": { "type": "integer", "minimum": 0 },
-            "recoveryWidth": { "type": "integer", "minimum": 1 }
+            "imageProxyWidth": { "type": "integer", "minimum": 1 }
           }
         }
       }

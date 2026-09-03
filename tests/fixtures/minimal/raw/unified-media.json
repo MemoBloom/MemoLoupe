@@ -85,15 +85,14 @@
   ],
   "request": {
     "batchSize": 4,
-    "clipTransport": "videoDataURI",
+    "clipTransport": "mediaDataURI",
     "concurrency": 10,
     "externalFrameExtraction": false,
     "mediaResolution": "default",
     "model": "mimo-v2.5",
     "shortClipPolicy": {
-      "minimumDurationMs": 800,
-      "recoveryMinimumDurationMs": 2000,
-      "recoveryWidth": 720
+      "minimumDurationMs": 2000,
+      "imageProxyWidth": 720
     },
     "sourceRevisionID": "0123456789ab",
     "videoFPS": 10.0
@@ -104,7 +103,7 @@
     "maxRetries": 3
   },
   "schemaFingerprint": "ac7589aacd9be2c2",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "service": "unifiedAudioVideo",
   "shotStatuses": {
     "SH0001": "succeeded"

@@ -61,7 +61,7 @@ from memoloupe.media.audio_energy import AUDIO_ENERGY_VERSION, detect_audio_ener
 from memoloupe.media.audio_music import AUDIO_MUSIC_VERSION, detect_music
 from memoloupe.media.clips import (
     CLIP_BUILD_VERSION,
-    PADDED_MIN_MS,
+    PROXY_WIDTH,
     SHORT_CLIP_MS,
     build_clips,
 )
@@ -419,11 +419,11 @@ def build_camera_motion_stub(shots: list[dict], media: dict, config: dict) -> di
 
 
 def unified_stub_schema_fingerprint() -> str:
-    """unified-media v2 stub 指纹（无真实模型时仍必须随契约失效）。"""
+    """unified-media v3 stub 指纹（无真实模型时仍必须随契约失效）。"""
     return fingerprint(
         {
             "prompt": "none",
-            "schema": "unified-media.v2",
+            "schema": "unified-media.v3",
             "vocab": 3,
             "parser": "groups.v2",
         }
@@ -435,13 +435,13 @@ def build_unified_media_stub(clips: list[dict], media: dict, config: dict) -> di
     model_cfg = config.get("unifiedModel", {})
     shot_statuses = {clip["shotID"]: "pending" for clip in clips}
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "service": "unifiedAudioVideo",
         "schemaFingerprint": unified_stub_schema_fingerprint(),
         "request": {
             "model": "unavailable-m1",
             "fallbackModel": None,
-            "clipTransport": "videoDataURI",
+            "clipTransport": "mediaDataURI",
             "batchSize": int(model_cfg.get("batchSize", 4)),
             "concurrency": int(model_cfg.get("concurrency", 10)),
             "externalFrameExtraction": False,
@@ -450,8 +450,7 @@ def build_unified_media_stub(clips: list[dict], media: dict, config: dict) -> di
             "sourceRevisionID": media.get("source", {}).get("revisionID"),
             "shortClipPolicy": {
                 "minimumDurationMs": SHORT_CLIP_MS,
-                "recoveryMinimumDurationMs": PADDED_MIN_MS,
-                "recoveryWidth": 720,
+                "imageProxyWidth": PROXY_WIDTH,
             },
         },
         "retryPolicy": {

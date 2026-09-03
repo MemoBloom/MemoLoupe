@@ -248,16 +248,15 @@
   "permanentFailureShots": 0,
   "request": {
     "batchSize": 4,
-    "clipTransport": "videoDataURI",
+    "clipTransport": "mediaDataURI",
     "concurrency": 10,
     "externalFrameExtraction": false,
     "fallbackModel": "mimo-v2.5",
     "mediaResolution": "default",
     "model": "mimo-v2.5",
     "shortClipPolicy": {
-      "minimumDurationMs": 800,
-      "recoveryMinimumDurationMs": 2000,
-      "recoveryWidth": 720
+      "minimumDurationMs": 2000,
+      "imageProxyWidth": 720
     },
     "sourceRevisionID": "a1b2c3d4e5f6",
     "videoFPS": 10.0
@@ -268,7 +267,7 @@
     "maxRetries": 3
   },
   "schemaFingerprint": "ac7589aacd9be2c2",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "service": "unifiedAudioVideo",
   "shotStatuses": {
     "SH0001": "succeeded",

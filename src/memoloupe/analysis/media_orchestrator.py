@@ -49,7 +49,7 @@ from memoloupe.core.atomic_io import read_json, write_json_atomic
 from memoloupe.core.errors import MemoLoupeError
 from memoloupe.core.hashing import fingerprint
 from memoloupe.core.logging import get_logger
-from memoloupe.media.clips import PADDED_MIN_MS, PROXY_WIDTH, SHORT_CLIP_MS
+from memoloupe.media.clips import PROXY_WIDTH, SHORT_CLIP_MS
 from memoloupe.services.base import PermanentServiceError, TransientServiceError
 from memoloupe.services.unified_media import AnalysisGroup, ModelClip, UnifiedMediaService
 
@@ -544,7 +544,7 @@ def run_unified_media_analysis(
         status = "partial"
 
     document = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "service": "unifiedAudioVideo",
         "schemaFingerprint": fingerprint(
             {"groupFingerprints": {group.name: group.fingerprint for group in groups}}
@@ -552,7 +552,7 @@ def run_unified_media_analysis(
         "request": {
             "model": _service_model_name(service),
             "fallbackModel": fallback_model,
-            "clipTransport": "videoDataURI",
+            "clipTransport": "mediaDataURI",
             "batchSize": batch_size,
             "concurrency": concurrency,
             "externalFrameExtraction": False,
@@ -561,8 +561,7 @@ def run_unified_media_analysis(
             "sourceRevisionID": source_revision,
             "shortClipPolicy": {
                 "minimumDurationMs": SHORT_CLIP_MS,
-                "recoveryMinimumDurationMs": PADDED_MIN_MS,
-                "recoveryWidth": PROXY_WIDTH,
+                "imageProxyWidth": PROXY_WIDTH,
             },
         },
         "retryPolicy": {

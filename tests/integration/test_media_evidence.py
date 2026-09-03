@@ -163,38 +163,36 @@ def test_build_clips_structure_and_proxy(media_dir: Path, pool: FFmpegPool, tmp_
         duration_ms = float(info["format"]["duration"]) * 1000
         assert abs(duration_ms - 1000) <= 100
 
-        # 模型代理：宽 720、fps 10
+        # 短镜头（<2s，clips.v4）模型代理：镜头中点单帧 JPEG，宽 720
+        assert proxy.suffix == ".jpg"
         pinfo = _ffprobe_json(
             proxy,
             "-select_streams", "v:0",
-            "-show_entries", "stream=width,avg_frame_rate",
-            "-show_entries", "format=duration",
+            "-show_entries", "stream=width",
         )
-        stream = pinfo["streams"][0]
-        assert stream["width"] == 720
-        num, den = stream["avg_frame_rate"].split("/")
-        assert float(num) / float(den) == pytest.approx(10.0)
+        assert pinfo["streams"][0]["width"] == 720
 
         norm = clip["modelNormalization"]
         assert norm["cacheKey"]
         assert norm["file"] == clip["modelFile"]
-        assert isinstance(norm["strategy"], str)
-        # 1s < 2000ms 模型最短输入时长（qwen 约束，D-058），补齐到 2s
-        assert norm["padded"] is True
-        assert clip["modelDurationMs"] >= 1900
+        assert norm["strategy"] == "frame-midpoint-w720"
+        # 静帧代理的 modelDurationMs 语义为模型输入所代表的镜头时长
+        assert clip["modelDurationMs"] == 1000
 
 
-def test_build_clips_short_clip_padded(media_dir: Path, pool: FFmpegPool, tmp_path: Path) -> None:
+def test_build_clips_short_clip_image_proxy(media_dir: Path, pool: FFmpegPool, tmp_path: Path) -> None:
     source = media_dir / "three_color.mp4"
     shots = [{"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 600}]
     clips = build_clips(source, shots, True, DEFAULT_CONFIG, tmp_path, pool=pool)
     assert len(clips) == 1
     clip = clips[0]
-    assert clip["modelNormalization"]["padded"] is True
-    # 补齐到至少 2000ms
-    assert clip["modelDurationMs"] >= 2000
-    pinfo = _ffprobe_json(tmp_path / clip["modelFile"], "-show_entries", "format=duration")
-    assert float(pinfo["format"]["duration"]) * 1000 >= 1900
+    assert clip["modelNormalization"]["strategy"] == "frame-midpoint-w720"
+    # 静帧代理：modelDurationMs 即镜头时长，不做补齐
+    assert clip["modelDurationMs"] == 600
+    proxy = tmp_path / clip["modelFile"]
+    assert proxy.suffix == ".jpg"
+    pinfo = _ffprobe_json(proxy, "-select_streams", "v:0", "-show_entries", "stream=width")
+    assert pinfo["streams"][0]["width"] == 720
 
 
 def test_audio_energy_labels(media_dir: Path, pool: FFmpegPool) -> None:
