@@ -783,6 +783,35 @@ clip 与镜头边界；MiMo 通路同样兼容（其本已接受补齐后的短 
 模型对无法可靠定位证据的 hook 返回 null（合法，不编造）。
 `PROFILE_PROMPT_VERSION` 升为 v2 使旧 distill checkpoint 失效。
 
+### D-061：motion-effects 运动复刻候选检测（Phase 05-07）
+
+决策：Phase 1 新增确定性 raw artifact `raw/motion-effects.json`
+（`ArtifactName.MOTION_EFFECTS`，schema v1），吸收 L7“动效复刻参数候选”
+能力。从最终像素推断后期动效候选：曲线变速区域
+（low_motion_or_freeze / high_motion_region / impact_cut）与关键帧点候选
+（position / scale / shake / exposure_or_opacity）。
+
+边界（2026-09-03 与目标文档一致）：
+
+- 全部结论都是“最终像素推断候选”，不是剪辑工程真值；每条固定
+  `needsVisualConfirmation=true`、`confidence` 与可解析 `evidenceRefs`
+  （schema 用 const 锁死）；
+- 候选不得覆盖 `camera-motion.json` 与 `quality-flags.json`；
+  high_motion_region 不得直接写成快放；
+- 第一版不写入 `style-profile.json`；检测结果不是 absence——显式跳过写
+  `status=skipped` stub（usageNote 明示不隐含 absence 结论）；
+- 步骤位次：detect_quality → detect_motion_effects →
+  unified_media_analysis → analyze_camera_motion；可选可 `--skip`，
+  dry-run 自动写 skipped stub；
+- 缓存指纹 = shots（final 边界）+ motionEffects 配置 + 算法版本；
+  候选按 final 区间归属镜头，`--align` 后自动失效。
+
+算法（纯确定性、无模型、无 OpenCV）：ffmpeg 抽帧 → 96×54 灰度 →
+NumPy 帧差/边缘加权运动能量 → 暴力块匹配估平移 → 五档缩放假设检验 →
+平移二阶差分估 shake → 分位数自适应阈值 → cut guard 抑制切点附近
+position/scale/shake（exposure 允许在切点）。默认 `sampleFps=8.0`
+（只此配置键影响行为，其余为算法常量并写入 analysis 自证）。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：
@@ -852,6 +881,20 @@ clip 与镜头边界；MiMo 通路同样兼容（其本已接受补齐后的短 
 - 风格分布按镜头数还是时长加权；当前默认镜头数。
 - hosted coverage 的确定规则。
 - audio boundary aligned 的 slot 聚合阈值。
+
+### A-008 motion-effects（Phase 05-07，2026-09-03 新增）
+
+- 帧差/边缘加权能量公式与 96×54 采样尺寸；
+- 平移块匹配的 maxTranslationPx 与残差归一；
+- 五档缩放假设检验的档位与 zoomScore 聚合；
+- 分位数自适应阈值（P20/P80/P90/P92）与置信度分段（1.25×/1.8×）；
+- minimumRegionMs=250 对慢速缩放/长镜头是否过敏感；
+- sampleFps=8 对短闪白/枪口火光/2-4 帧震动是否欠采样；
+- exposure 允许在切点、position/scale/shake 的 cut guard 边界。
+
+真实样例：disney.MP4（56.6s，63 镜头，含大量演唱/运镜）产出 79 个
+变速区域与 94 个关键帧候选（多数 low/medium），待黄金视频逐项回调。
+
 
 ## 5. 尚缺但不阻塞实现的信息
 

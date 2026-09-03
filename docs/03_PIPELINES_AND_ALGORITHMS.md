@@ -39,6 +39,7 @@ probe_media
   │          ├─ build_clips_and_model_proxies
   │          ├─ detect_audio_energy
   │          ├─ detect_quality
+  │          ├─ detect_motion_effects
   │          ├─ analyze_camera_motion
   │          └─ unified_media_analysis
   ├─ run_asr
@@ -52,6 +53,14 @@ probe_media
 ```
 
 实现可并行化独立分支，但输出语义不得依赖线程完成顺序。
+
+`detect_motion_effects`（Phase 05-07，决策 D-061）是可选确定性步骤，位次在
+`detect_quality` 之后、`unified_media_analysis` 之前，产出
+`raw/motion-effects.json` 运动复刻候选证据。全部候选固定
+`needsVisualConfirmation=true`（最终像素推断，非剪辑真值），不得覆盖
+camera-motion/quality-flags；`--skip detect_motion_effects` 或 dry-run 写
+`status=skipped` stub（不隐含 absence）。缓存指纹 = shots（final 边界）+
+motionEffects 配置 + 算法版本。
 
 ### 2.2 媒体探测
 

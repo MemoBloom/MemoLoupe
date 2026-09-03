@@ -60,6 +60,14 @@
   media/text=`qwen3.8-flash`、asr=`qwen3-asr-flash`，两模型已用真实 key
   实测可用。注意 `qwen-audio-asr-flash` 该名称不存在（404）。
 - 全量测试：`1125 passed, 6 skipped`。
+- motion-effects 已交付（2026-09-03，决策 D-061）：Phase 1 新增确定性 raw
+  artifact `raw/motion-effects.json`（运动复刻候选检测：曲线变速区域
+  low/high/impact + 关键帧 position/scale/shake/exposure 候选，全部
+  needsVisualConfirmation=true；不覆盖 camera-motion/quality-flags；第一版
+  不进 style-profile），含 schema v1、`--skip detect_motion_effects` 与
+  dry-run 显式 skipped stub、cross-artifact shotID/evidenceRefs 校验、
+  shot HTML “运动复刻候选/待视觉确认”清单。执行目标见
+  `docs/superpowers/plans/2026-09-03-motion-effects-development-goal.md`。
 - BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
   anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`
   只读重算由 0 个 music 镜头提升为 59 个（决策 D-049）。
@@ -76,7 +84,7 @@
 |---|---|---|---|
 | 03 | Phase 1 收尾并交付完整故事分析 | M2 | ✅ 已完成（03-01~03-04） |
 | 04 | 交付 schema v2 风格档案 | Phase 03 | ✅ 已完成（04-01~04-03） |
-| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 05-01A~D、05-02、05-03 框架、05-04、05-05 已完成；05-03 校准与 05-06 待外部输入 |
+| 05 | 真实服务、完整词表、真实样例校准与体验收尾 | Phase 03/04 | 05-01A~D、05-02、05-03 框架、05-04、05-05、05-07（motion-effects v1）已完成；05-03 校准与 05-06 待外部输入 |
 
 ## 4. Phase 03：渲染收尾与故事分析
 

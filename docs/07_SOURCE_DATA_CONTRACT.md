@@ -55,6 +55,7 @@
 | `unified-media.json` | `raw/unified-media.json` | 统一音视频模型理解结果 |
 | `camera-motion.json` | `raw/camera-motion.json` | Apple Vision 运镜候选 |
 | `quality-flags.json` | `raw/quality-flags.json` | 画质/音质问题检测 |
+| `motion-effects.json` | `raw/motion-effects.json` | 运动复刻候选检测（Phase 05-07） |
 | `audio-energy.json` | `raw/audio-energy.json` | 镜头响度 |
 | `story-blocks.json` | `raw/story-blocks.json` | 故事块与故事插槽 |
 | `style-profile.json` | `style-profile.json` | 复刻用结构与风格 Profile |
@@ -854,6 +855,52 @@
   ]
 }
 ```
+
+## motion-effects.json
+
+### 用途
+
+保存从最终像素推断的后期动效复刻候选（曲线变速区域与关键帧点候选）。
+**所有候选都是“最终像素推断候选”，不是剪辑工程真值**：每条固定
+`needsVisualConfirmation=true`、携带 `confidence` 与可解析 `evidenceRefs`，
+由人工在 shot 工作台视觉复核后决定是否采纳。候选不得覆盖
+`camera-motion.json`（运镜）与 `quality-flags.json`（质量风险）的判断；
+第一版不写入 `style-profile.json`（决策 D-061）。
+
+### 文件级结构
+
+顶层字段：`schemaVersion`（const 1）、`status`
+（complete/skipped/failed）、`analysis`、`frameMetrics`、`speedRamps`、
+`keyframeCandidates`、`digest`、`shots`。
+
+### 字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---:|---|
+| analysis.method | string | 是 | `frameDifferenceMotionEffectCandidates` |
+| analysis.algorithmVersion | string | 是 | `motion-effects.v1` |
+| analysis.sourceRevisionID | string/null | 是 | 与 media.json 一致 |
+| analysis.analyzedRange | {startMs,endMs} | 是 | 全轨分析范围 |
+| analysis.sampleFps/sampleWidth/sampleHeight/frameCount | number/int | 是 | 采样自证 |
+| analysis.thresholds | object | 是 | 本次运行的自适应阈值 |
+| analysis.limitations | string[] | 是 | 局限声明（不可分离运动来源等） |
+| frameMetrics[] | object | 否 | 逐采样帧对信号（见 schema） |
+| speedRamps[] | object | 否 | 区域候选 |
+| keyframeCandidates[] | object | 否 | 点候选 |
+| digest.items | object[] | 是 | 报告摘要（Top 12，低置信保留在 raw） |
+| digest.usageNote | string | 是 | 全部条目待视觉确认；skipped 不隐含 absence |
+| shots[] | object | 是 | 逐镜头候选计数/属性（用于覆盖校验） |
+
+`speedRamps[]`：`type` ∈ {low_motion_or_freeze, high_motion_region,
+impact_cut}、startMs/endMs/durationMs、avgMotion、confidence、evidence、
+replicationHint、needsVisualConfirmation=true、evidenceRefs。
+`keyframeCandidates[]`：`shotID`（必须存在于 shots.json）、timeMs、
+`property` ∈ {position, scale, exposure_or_opacity, shake}、inferredChange
+（含 sample/source 像素估计或亮度差）、confidence、replicationHint、
+needsVisualConfirmation=true、evidenceRefs。
+
+`evidenceRefs` 指向 `raw/motion-effects.json#frameMetrics[N]`；cross-artifact
+校验要求候选 shotID 存在且 refs 可解析。
 
 ## audio-energy.json
 
