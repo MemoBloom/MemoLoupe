@@ -27,21 +27,27 @@ Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg. On macOS (
 uv sync
 uv sync --extra asr-local   # optional: local ASR (FireRedVAD + MLX Whisper)
 
-# 2. Run the three stages (works without any API key; unconfigured models
-#    degrade explicitly while deterministic analysis is unaffected)
+# 2. Connect your model provider (interactive; API key goes to the OS
+#    Keychain, never to a plaintext file)
+uv run memoloupe connect add qwen     # or: connect add mimo
+uv run memoloupe connect status       # inspect; connect test runs a health check
+
+# 3. Run the three stages (pipelines automatically use the active provider;
+#    without one they degrade explicitly while deterministic analysis
+#    is unaffected)
 uv run memoloupe shot    ./video.mp4 --output-dir ./out
 uv run memoloupe story   --output-dir ./out
 uv run memoloupe profile --output-dir ./out
 
-# 3. Validate artifacts (schema + cross-file consistency + HTML semantics)
+# 4. Validate artifacts (schema + cross-file consistency + HTML semantics)
 uv run memoloupe validate ./out --strict
 
-# 4. Review
+# 5. Review
 open ./out/shot-analysis.html                    # or just open it in a browser
 uv run memoloupe review --output-dir ./out       # localhost review UI
 ```
 
-Configure a cloud model ([MiMo](https://api.xiaomimimo.com) or any OpenAI-compatible endpoint) to get fully distilled semantics in story/profile:
+Prefer environment variables over `connect`? The legacy env path still works and is used when no active provider exists:
 
 ```bash
 cp .env.example .env   # fill in MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*

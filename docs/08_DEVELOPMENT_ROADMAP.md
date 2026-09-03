@@ -42,6 +42,12 @@
 - 本地 ASR provider 已交付（2026-08-28，决策 D-045）：
   `asr.provider=local-fireredvad-mlx`，FireRedVAD 人声切分 +
   MLX whisper-large-v3-turbo 识别，optional extra `asr-local`。
+- connect-first CLI 已交付（2026-09-02，决策 D-053~D-055，分支
+  `feat/connect-cli`）：`memoloupe connect` 命令组（add/status/test/
+  switch/remove/list）、connections.json 连接存储 + Keychain 凭据、
+  qwen/mimo provider 注册表、shot/story/profile 自动叠加 active provider、
+  `asr.provider=auto` 本地优先路由；`shot --help` 分发缺陷已修复。
+  `memoloupe login`（官方托管服务）保留为未来项，不在本期。
 - 全量测试：`1125 passed, 6 skipped`。
 - BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
   anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`

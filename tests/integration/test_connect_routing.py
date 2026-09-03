@@ -166,3 +166,79 @@ class TestStoryCliProviderRouting:
 
         assert code == EXIT_OK
         assert "connect add qwen" in capsys.readouterr().err
+
+
+class TestShotCliProviderRouting:
+    """shot 管道同样经 active provider 叠加 unifiedModel（pipeline 本体拦截）。"""
+
+    def test_active_provider_reaches_unified_model_config(
+        self, connections_path, secrets, tmp_path, monkeypatch, capsys
+    ) -> None:
+        import memoloupe.cli.shot_analysis as shot_cli
+        from memoloupe.analysis.shot_pipeline import PipelineReport
+
+        store = ConnectionStore(connections_path)
+        store.upsert_provider(_record(), make_active=True)
+        secrets.set("qwen", FAKE_KEY)
+
+        captured: dict = {}
+
+        def fake_run(self, request):
+            captured["config"] = request.config
+            return PipelineReport(
+                phase="shot",
+                status="complete",
+                steps=[],
+                warnings=[],
+                artifacts=[],
+                elapsed_ms=0,
+            )
+
+        monkeypatch.setattr(shot_cli, "_tool_available", lambda binary: True)
+        monkeypatch.setattr(shot_cli.ShotAnalysisPipeline, "run", fake_run)
+        source = tmp_path / "video.mp4"
+        source.write_bytes(b"fake")
+
+        code = shot_cli.run_shot_analysis(
+            [str(source), "--output-dir", str(tmp_path / "out")]
+        )
+
+        assert code == EXIT_OK
+        unified_cfg = captured["config"]["unifiedModel"]
+        assert unified_cfg["baseUrl"] == BASE_URL
+        assert unified_cfg["apiKey"] == FAKE_KEY
+        assert unified_cfg["model"] == "qwen3.5-omni"
+        assert "connect status" in capsys.readouterr().err
+
+    def test_mock_services_skips_provider_resolution(
+        self, connections_path, secrets, tmp_path, monkeypatch, capsys
+    ) -> None:
+        """--mock-services 不读连接存储：即使 active provider 缺凭据也不报错。"""
+        import memoloupe.cli.shot_analysis as shot_cli
+        from memoloupe.analysis.shot_pipeline import PipelineReport
+
+        store = ConnectionStore(connections_path)
+        store.upsert_provider(_record(), make_active=True)
+        # 故意不保存凭据；mock 模式不应触碰连接存储。
+
+        monkeypatch.setattr(shot_cli, "_tool_available", lambda binary: True)
+        monkeypatch.setattr(
+            shot_cli.ShotAnalysisPipeline,
+            "run",
+            lambda self, request: PipelineReport(
+                phase="shot",
+                status="complete",
+                steps=[],
+                warnings=[],
+                artifacts=[],
+                elapsed_ms=0,
+            ),
+        )
+        source = tmp_path / "video.mp4"
+        source.write_bytes(b"fake")
+
+        code = shot_cli.run_shot_analysis(
+            [str(source), "--output-dir", str(tmp_path / "out"), "--mock-services"]
+        )
+
+        assert code == EXIT_OK

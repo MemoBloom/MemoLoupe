@@ -27,21 +27,25 @@ MemoLoupe 是一个**拉片分析工具**：给它一段参考视频，它把视
 uv sync
 uv sync --extra asr-local   # 可选：本地语音识别（FireRedVAD + MLX Whisper）
 
-# 2. 跑三阶段（无需任何 API key 也能跑；模型未配置时对应步骤显式降级，
+# 2. 连接模型服务（交互式；API key 存系统 Keychain，绝不写入明文文件）
+uv run memoloupe connect add qwen     # 或：connect add mimo
+uv run memoloupe connect status       # 查看连接；connect test 做健康检查
+
+# 3. 跑三阶段（管道自动使用当前 provider；未配置时对应步骤显式降级，
 #    确定性分析不受影响）
 uv run memoloupe shot    ./video.mp4 --output-dir ./out
 uv run memoloupe story   --output-dir ./out
 uv run memoloupe profile --output-dir ./out
 
-# 3. 校验产物（schema + 跨文件一致性 + HTML 语义）
+# 4. 校验产物（schema + 跨文件一致性 + HTML 语义）
 uv run memoloupe validate ./out --strict
 
-# 4. 查看与校对
+# 5. 查看与校对
 open ./out/shot-analysis.html                    # 或直接用浏览器打开
 uv run memoloupe review --output-dir ./out       # localhost 人工校对界面
 ```
 
-配置云端模型（[MiMo](https://api.xiaomimimo.com) 或任意 OpenAI 兼容端点）后，story/profile 会产出模型蒸馏的完整语义：
+不想用 `connect`？传统环境变量配置仍然可用（无 active provider 时生效）：
 
 ```bash
 cp .env.example .env   # 填入 MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*

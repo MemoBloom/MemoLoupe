@@ -642,6 +642,45 @@ Phase 2 的认知连续性，并减少“故事段重复列出全部镜头”的
 理由：品牌 logo 为深色文字设计，深色页面上不可读；统一浅色品牌主题让
 README 与审片工作台视觉一致。story-analysis.html 本次保持现状。
 
+### D-053：connect 连接存储与 Keychain 凭据
+
+决策：`memoloupe connect` 的非机密连接配置（baseUrl、模型选择、能力开关）
+存用户级 `~/.config/memoloupe/connections.json`（schema version 1，原子写 +
+权限 0o600，`MEMOLOUPE_CONNECTIONS_PATH` 可覆盖供测试注入）；API key 永不
+写入该文件，macOS 上经 stdlib `/usr/bin/security` CLI 存系统 Keychain
+（service=`memoloupe`，account=`provider:<id>`，不引 keyring），其他环境
+降级为进程内 MemorySecretStore 并告警，`MEMOLOUPE_SECRET_STORE=memory` 可
+强制。`MEMOLOUPE_CONNECTIONS_PATH`/`MEMOLOUPE_SECRET_STORE` 是 connect 子
+系统的保留变量，`load_config` 的配置树解析显式跳过它们。
+
+理由：凭据与配置分离满足"密钥不进快照/日志/指纹"的既有约束；stdlib
+security CLI 避免新依赖；保留变量白名单避免与配置树命名空间互相踩坑。
+
+### D-054：active provider 管道叠加策略
+
+决策：`connect/runtime.py::resolve_active_provider(config)` 在 shot/story/
+profile 三个 CLI 的 `load_config()` 之后叠加：active provider 存在时用其
+baseUrl/models + SecretStore 凭据覆盖 `unifiedModel`/`textModel` 连接三要素
+（深拷贝，不改入参；`capabilities.asr` 且 `models.asr` 非空时同步覆盖 `asr`
+三要素，但 `asr.provider` 是 transport 语义不覆盖）。source 三态：
+`provider`/`env`（unifiedModel 或 textModel 已配齐）/`none`。provider 已建
+但凭据缺失是显式错误（提示 connect test / connect add）；`none` 时保持
+"显式降级不中断"契约，只追加含 `memoloupe connect add qwen` 的 warning，
+不硬失败。
+
+理由：叠加点收敛在 CLI 入口，服务构造层完全不动；硬失败会违反 docs/03 §7
+的降级契约（未配置模型必须产出显式 skipped 产物而非中断）。
+
+### D-055：`asr.provider=auto` 自动路由
+
+决策：新增 `asr.provider=auto`——本地依赖（fireredvad/mlx-whisper）可用则
+用 `LocalFireRedVadMlxASR`；否则远程三项齐全走既有远程构造；皆无则返回
+None 并记非静默 warning（含 connect 引导与 `uv sync --extra asr-local`
+提示）。默认值保持 `openai-json` 不变；auto 是显式 opt-in。
+
+理由：connect-first 体验下用户不应感知 ASR 的单独配置；但改动默认值会把
+"未配置 ASR"的既有降级语义变成隐式本地模型下载，违反显式性原则。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

@@ -1,6 +1,6 @@
 # Connect-First CLI 实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 实现 `memoloupe connect` 命令组，让用户用一条命令连接自己的模型服务（qwen/mimo），管道自动使用 active provider；顺带修复 `shot --help` 分发缺陷。
 
@@ -33,7 +33,7 @@
 - Consumes: 现有 `run_shot_analysis(argv)` / `run_story_analysis(argv)` / `run_profile_build(argv)`
 - Produces: `memoloupe shot --help` 输出 shot_analysis.py 的完整帮助（含 `--output-dir`、`--mock-services` 等）；行为变化仅限 help/参数解析入口
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 新建 `tests/integration/test_cli_dispatch.py`：
 
@@ -63,12 +63,12 @@ def test_subcommand_help_shows_full_parser(command, expected, capsys):
     assert expected in out
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/integration/test_cli_dispatch.py -q`
 Expected: shot 用例 FAIL（`--output-dir` 不在浅层帮助中），story/profile 通过。
 
-- [ ] **Step 3: 修复分发**
+- [x] **Step 3: 修复分发**
 
 `src/memoloupe/cli/main.py::_dispatch`，在 review 分流前加：
 
@@ -79,12 +79,12 @@ Expected: shot 用例 FAIL（`--output-dir` 不在浅层帮助中），story/pro
 
 主 parser 中 shot 子 parser 条目保留（顶层 `--help` 列表需要），但其 REMAINDER 分支从此不可达，可保留作兜底。
 
-- [ ] **Step 4: 运行确认通过 + 既有回归**
+- [x] **Step 4: 运行确认通过 + 既有回归**
 
 Run: `uv run pytest tests/integration/test_cli_dispatch.py tests/e2e -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/memoloupe/cli/main.py tests/integration/test_cli_dispatch.py
@@ -152,7 +152,7 @@ def get_provider_spec(provider_id: str) -> ProviderSpec: ...  # 未知 id 抛 Co
 
 - provider 默认值：qwen = `https://dashscope.aliyuncs.com/compatible-mode/v1` / media `qwen3.5-omni` / text `qwen-plus` / asr None / caps `{mediaUnderstanding: True, text: True, asr: False}`；mimo = `https://api.xiaomimimo.com/v1` / media `mimo-2.5` / text `mimo-v2.5` / asr None / caps 同 qwen。
 
-- [ ] **Step 1: 写失败测试**（三个测试文件）
+- [x] **Step 1: 写失败测试**（三个测试文件）
 
 store 测试要点（`tmp_path` 注入路径）：
 - 不存在文件 → `load()` 返回空骨架
@@ -171,12 +171,12 @@ registry 测试要点：
 - `PROVIDERS` 恰好含 qwen/mimo；两个 spec 字段完整、capabilities 是 bool
 - `get_provider_spec("openai-compatible")` 抛错并提示支持的 id 列表
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/unit/test_connect_store.py tests/unit/test_connect_secrets.py tests/unit/test_connect_registry.py -q`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: 实现三个模块**
+- [x] **Step 3: 实现三个模块**
 
 要点：
 - `store.py`：复用 `core/atomic_io.read_json/write_json_atomic`；校验函数 `_validate(data)` 集中所有显式拒绝；provider record 必填 `providerId/baseUrl/models/capabilities`，`models` 必填 `media`/`text` 键（asr 可为 None）；写文件权限 `chmod 0o600`。
@@ -184,12 +184,12 @@ Expected: FAIL（模块不存在）
 - `registry.py`：纯数据 + 查找。
 - `connect/__init__.py`：re-export 公共接口。
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `uv run pytest tests/unit/test_connect_*.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/memoloupe/connect tests/unit/test_connect_store.py tests/unit/test_connect_secrets.py tests/unit/test_connect_registry.py
@@ -209,7 +209,7 @@ git commit -m "feat(connect): connection store, secret store and provider regist
 - Consumes: Task 2 的 `ConnectionStore` / `SecretStore` / `get_provider_spec` / `PROVIDERS`
 - Produces: `run_connect(argv: Sequence[str]) -> int`；`_dispatch` 识别 `connect` 前缀；`memoloupe --help` 列出 connect
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/integration/test_connect_cli.py`，全部用 `tmp_path` 构造 `ConnectionStore` + `MemorySecretStore` 注入（`run_connect` 接受可选 `store=`/`secrets=` 参数，默认 None 走全局默认），health check 用 monkeypatch 拦 `connect` 模块内的 HTTP 函数：
 
@@ -220,19 +220,19 @@ git commit -m "feat(connect): connection store, secret store and provider regist
 - `switch qwen` / `remove qwen`（remove 后 secret 也被删）/ `list`
 - 未知 provider `add foo` → 退出码 2
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/integration/test_connect_cli.py -q`
 Expected: FAIL
 
-- [ ] **Step 3: 实现 cli/connect.py**
+- [x] **Step 3: 实现 cli/connect.py**
 
 - health check：`GET {baseUrl}/models`，`Authorization: Bearer <key>`，超时 15s，用 stdlib urllib；2xx 通过；网络/非 2xx → 失败但只报状态码与脱敏错误（复用 `services/base.py` 的 `redact_text`）。
 - `add` 交互模式：`getpass.getpass` 收 key，其余 `input(f"... [{default}]")` 回车取默认；非 TTY 且无 `--api-key-env` 时按缺 key 报错（不挂起）。
 - `add` 流程：校验 providerId → 收集参数（flags 优先，缺失则交互）→ `store.upsert_provider(record, make_active=False)` → `secrets.set()` → health check → 通过则 `store.set_active()` 并打印 `memoloupe shot video.mp4 --output-dir out` 等下一步；失败打 warning（退出码仍 0）。
 - `main.py::_dispatch` 加 `if argv[:1] == ["connect"]: return run_connect(argv[1:])`；`_build_parser` 加 `sub.add_parser("connect", help="连接模型服务提供商（qwen/mimo）")`。
 
-- [ ] **Step 4: 运行确认通过 + CLI 手测**
+- [x] **Step 4: 运行确认通过 + CLI 手测**
 
 ```bash
 uv run pytest tests/integration/test_connect_cli.py tests/integration/test_cli_dispatch.py -q
@@ -243,7 +243,7 @@ MEMOLOUPE_CONNECTIONS_PATH=/tmp/ml-conn.json MEMOLOUPE_SECRET_STORE=memory uv ru
 
 Expected: 测试 PASS；help 正常；status 输出 onboarding 提示且退出码 0。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/memoloupe/cli/connect.py src/memoloupe/cli/main.py tests/integration/test_connect_cli.py
@@ -278,7 +278,7 @@ def resolve_active_provider(
     """
 ```
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 runtime 单测：
 - 有 active provider + secret：返回 config 的 `unifiedModel.baseUrl/apiKey/model`、`textModel.*` 被 provider 值覆盖，其余分组不变；source="provider"；原 config dict 不被修改
@@ -293,23 +293,23 @@ runtime 单测：
 - 两者皆无时 warning 文案含 `memoloupe connect add`
 - `--mock-text-model` / `--mock-services` 路径完全不受影响
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/unit/test_connect_runtime.py tests/integration/test_connect_routing.py -q`
 Expected: FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 - `runtime.py`：纯函数叠加；叠加用 deep merge 的新 dict（不改入参）；provider 的 models.media → `unifiedModel.model`，models.text → `textModel.model`，baseUrl/key 同理；capabilities.asr=True 且 models.asr 非空时叠加 asr 组（baseUrl/apiKey/model + provider 保持远程 transport 原值或默认 openai-json——注意 asr.provider 是 transport 语义，不覆盖）。
 - 三个 CLI 模块：`load_config()` 之后调 `resolve_active_provider(config)`；source="none" 时把现有"未配置"warning 文案改为含 `memoloupe connect add qwen` 的 onboarding 提示（保持降级不中断）。
 - shot 管道的 `_build_unified_service`/`_build_asr_service` 不改（它们收到的 config 已被叠加）。
 
-- [ ] **Step 4: 运行确认通过 + 全量**
+- [x] **Step 4: 运行确认通过 + 全量**
 
 Run: `uv run pytest tests/unit/test_connect_runtime.py tests/integration/test_connect_routing.py tests/integration/test_story_cli.py -q && uv run pytest -q`
 Expected: PASS（全量 1161+新增）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/memoloupe/connect/runtime.py src/memoloupe/cli/shot_analysis.py src/memoloupe/cli/story_analysis.py src/memoloupe/cli/profile_build.py tests/unit/test_connect_runtime.py tests/integration/test_connect_routing.py
@@ -328,28 +328,28 @@ git commit -m "feat(connect): route pipelines through the active provider"
 - Consumes: 现有 `build_asr_service(config)` 工厂、`_remote_service_is_configured` 语义
 - Produces: `asr.provider == "auto"` 为合法值；路由顺序：本地依赖可用 → `LocalFireRedVadMlxASR`；远程三项齐全 → 现有远程构造；否则 None + 显式 warning
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 - `provider="auto"` 且 monkeypatch 本地依赖可用（拦截本地可用性探测函数）→ 返回本地服务实例
 - `provider="auto"` 本地不可用、远程齐全 → 返回远程服务
 - `provider="auto"` 两者皆无 → None，且 caplog/输出含非静默说明
 - 既有 provider 值（openai-json/openai-multipart/local-fireredvad-mlx）行为回归不变
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `uv run pytest tests/unit/test_asr_auto.py -q`
 Expected: FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `build_asr_service` 开头处理 `provider == "auto"`：本地可用性探测（`importlib.util.find_spec("fireredvad")` 与 `find_spec("mlx_whisper")` 均非 None）→ 构造 `LocalFireRedVadMlxASR`（与现有 local 分支同参）；否则远程三项齐全 → 走现有远程分支；否则 `log_warning`（中文说明 + connect 提示）并返回 None。
 
-- [ ] **Step 4: 运行确认通过 + 相关回归**
+- [x] **Step 4: 运行确认通过 + 相关回归**
 
 Run: `uv run pytest tests/unit/test_asr_auto.py tests/unit/test_asr_local.py tests/unit/test_config.py -q`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/memoloupe/services/asr.py tests/unit/test_asr_auto.py
@@ -367,17 +367,17 @@ git commit -m "feat(asr): auto provider routing (local first, remote fallback, e
 - Modify: `.env.example`（asr auto 注释）
 - Modify: `CLI_CONNECT_TODO.md`（勾选已完成项）
 
-- [ ] **Step 1: docs/06 追加三条决策**
+- [x] **Step 1: docs/06 追加三条决策**
 
 D-053：connect 连接存储与 Keychain 凭据（路径、schema v1、stdlib security CLI、不引 keyring、memory store 测试注入）。
 D-054：active provider 路由叠加策略（叠加点在三 CLI 的 load_config 后；服务构造不动；"none" 时保持降级契约、warning 改 onboarding 文案而不硬失败的理由）。
 D-055：`asr.provider=auto`（local first → remote → 显式降级；默认值不变的理由）。
 
-- [ ] **Step 2: docs/08 更新**
+- [x] **Step 2: docs/08 更新**
 
 在 roadmap 中记录 connect-first 切片（对应 TODO §1-§9 的完成状态，login 保留为未来项）。
 
-- [ ] **Step 3: README 快速开始更新**（英文为主、中文同步）
+- [x] **Step 3: README 快速开始更新**（英文为主、中文同步）
 
 把 Quick start 的第 2 步前插入 connect 流程：
 
@@ -387,11 +387,11 @@ uv run memoloupe connect add qwen   # connect your model provider (interactive)
 
 并说明：不配 provider 时仍可运行（确定性分析 + 显式降级），env 配置路径保留。
 
-- [ ] **Step 4: CLI_CONNECT_TODO.md 勾选**
+- [x] **Step 4: CLI_CONNECT_TODO.md 勾选**
 
 把 §1/§2 最小交付/§3/§4/§5/§6/§7/§8/§9/§10/§11 中已完成项勾掉；`--out` 别名与 story/profile 位置参数保持未勾选并注明"未纳入本期"。
 
-- [ ] **Step 5: 全量验证 + 手工 CLI 检查**
+- [x] **Step 5: 全量验证 + 手工 CLI 检查**
 
 ```bash
 uv run pytest -q
@@ -405,7 +405,7 @@ MEMOLOUPE_CONNECTIONS_PATH=/tmp/ml-conn-check.json MEMOLOUPE_SECRET_STORE=memory
 
 Expected: 全量 PASS；各 help 完整；status 输出 onboarding 提示。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/06_DECISIONS_AND_ASSUMPTIONS.md docs/08_DEVELOPMENT_ROADMAP.md README.md README.zh-CN.md .env.example CLI_CONNECT_TODO.md
