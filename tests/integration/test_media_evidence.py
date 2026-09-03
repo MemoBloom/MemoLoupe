@@ -195,6 +195,34 @@ def test_build_clips_short_clip_image_proxy(media_dir: Path, pool: FFmpegPool, t
     assert pinfo["streams"][0]["width"] == 720
 
 
+def test_build_clips_long_shot_video_proxy(media_dir: Path, pool: FFmpegPool, tmp_path: Path) -> None:
+    source = media_dir / "three_color.mp4"
+    shots = [{"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 2500}]
+    clips = build_clips(source, shots, True, DEFAULT_CONFIG, tmp_path, pool=pool)
+
+    assert len(clips) == 1
+    clip = clips[0]
+    assert clip["modelFile"].endswith(".mp4")
+    norm = clip["modelNormalization"]
+    assert norm["cacheKey"]
+    assert norm["file"] == clip["modelFile"]
+    assert norm["strategy"] == "reencode-w720-fps10"
+    assert "padded" not in norm
+
+    # 视频代理：宽 720、fps 10、实测时长约 2500ms
+    proxy = tmp_path / clip["modelFile"]
+    pinfo = _ffprobe_json(
+        proxy,
+        "-select_streams", "v:0",
+        "-show_entries", "stream=width,avg_frame_rate:format=duration",
+    )
+    stream = pinfo["streams"][0]
+    assert stream["width"] == 720
+    num, den = stream["avg_frame_rate"].split("/")
+    assert float(num) / float(den) == pytest.approx(10.0)
+    assert clip["modelDurationMs"] >= 2400
+
+
 def test_audio_energy_labels(media_dir: Path, pool: FFmpegPool) -> None:
     shots = [
         {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 2000},
