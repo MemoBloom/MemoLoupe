@@ -20,10 +20,16 @@ class TestProviders:
             assert spec.default_base_url.startswith("https://")
             assert spec.default_media_model
             assert spec.default_text_model
-            assert spec.default_asr_model is None
             assert set(spec.capabilities) == {"mediaUnderstanding", "text", "asr"}
             assert all(isinstance(v, bool) for v in spec.capabilities.values())
             assert spec.health_check_path == "/models"
+            # asr 能力与 transport 必须一致：有 ASR 能力的 provider 必须声明 transport。
+            if spec.capabilities["asr"]:
+                assert spec.default_asr_model
+                assert spec.asr_transport
+            else:
+                assert spec.default_asr_model is None
+                assert spec.asr_transport is None
 
     def test_qwen_defaults(self) -> None:
         spec = PROVIDERS["qwen"]
@@ -39,12 +45,15 @@ class TestProviders:
     def test_mimo_defaults(self) -> None:
         spec = PROVIDERS["mimo"]
         assert spec.default_base_url == "https://api.xiaomimimo.com/v1"
-        assert spec.default_media_model == "mimo-2.5"
+        assert spec.default_media_model == "mimo-v2.5"
         assert spec.default_text_model == "mimo-v2.5"
+        # D-057：MiMo ASR（mimo-v2.5-asr）走 chat/completions + input_audio。
+        assert spec.default_asr_model == "mimo-v2.5-asr"
+        assert spec.asr_transport == "mimo-chat"
         assert spec.capabilities == {
             "mediaUnderstanding": True,
             "text": True,
-            "asr": False,
+            "asr": True,
         }
 
 

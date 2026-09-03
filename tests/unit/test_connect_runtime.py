@@ -114,9 +114,21 @@ class TestProviderOverlay:
         assert resolved["asr"]["baseUrl"] == BASE_URL
         assert resolved["asr"]["apiKey"] == FAKE_KEY
         assert resolved["asr"]["model"] == "qwen3-asr-flash"
-        # asr.provider 是 transport 语义（openai-json/openai-multipart/local-…），不覆盖
+        # record 未声明 asrTransport：asr.provider 保留原值
         assert resolved["asr"]["provider"] == config["asr"]["provider"]
         assert resolved["asr"]["vad"] == config["asr"]["vad"]
+
+    def test_provider_with_asr_transport_overlays_provider(
+        self, tmp_path: Path
+    ) -> None:
+        # record 声明 asrTransport（如 mimo-chat）→ asr.provider 同步覆盖（D-057）。
+        config = _config()
+        record = _record(asr_model="mimo-v2.5-asr", asr_capability=True)
+        record["asrTransport"] = "mimo-chat"
+        store = _store(tmp_path, record)
+        resolved, _ = resolve_active_provider(config, store=store, secrets=_secrets())
+        assert resolved["asr"]["provider"] == "mimo-chat"
+        assert resolved["asr"]["model"] == "mimo-v2.5-asr"
 
     def test_missing_secret_raises_with_connect_hint(self, tmp_path: Path) -> None:
         store = _store(tmp_path, _record())

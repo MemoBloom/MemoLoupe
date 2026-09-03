@@ -22,6 +22,8 @@ class ProviderSpec:
     default_asr_model: str | None
     capabilities: dict[str, bool]  # mediaUnderstanding / text / asr
     health_check_path: str  # OpenAI 兼容端点，固定 "/models"
+    #: ASR transport（services.asr 的 provider 值）；None 表示无 ASR 能力。
+    asr_transport: str | None = None
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
@@ -39,11 +41,13 @@ PROVIDERS: dict[str, ProviderSpec] = {
         provider_id="mimo",
         label="小米 MiMo",
         default_base_url="https://api.xiaomimimo.com/v1",
-        default_media_model="mimo-2.5",
+        default_media_model="mimo-v2.5",
         default_text_model="mimo-v2.5",
-        default_asr_model=None,
-        capabilities={"mediaUnderstanding": True, "text": True, "asr": False},
+        # MiMo ASR（mimo-v2.5-asr）走 chat/completions + input_audio（D-057）。
+        default_asr_model="mimo-v2.5-asr",
+        capabilities={"mediaUnderstanding": True, "text": True, "asr": True},
         health_check_path="/models",
+        asr_transport="mimo-chat",
     ),
 }
 

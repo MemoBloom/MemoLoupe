@@ -51,6 +51,10 @@
 - shot+story 合并流程已交付（2026-09-03，决策 D-056）：`memoloupe shot`
   默认链式执行故事分析，主流程收敛为 `shot`（分析）+ `profile`（导出）
   两条命令；独立 `memoloupe story` 保留为校对后重跑入口。
+- MiMo ASR 已交付（2026-09-03，决策 D-057）：`asr.provider=mimo-chat`
+  （chat/completions + input_audio，窗口切片）；mimo provider 声明 ASR
+  能力，`connect add mimo` 后管道自动走 mimo-v2.5-asr。mimo-v2.5-tts
+  已实测可用，但不属于产品边界，不集成。
 - 全量测试：`1125 passed, 6 skipped`。
 - BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
   anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`

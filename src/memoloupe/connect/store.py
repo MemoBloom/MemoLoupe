@@ -66,6 +66,9 @@ def _validate_record(record: dict) -> None:
             raise ConnectionStoreError(f"provider record 的 models 缺少非空字符串键 {key!r}")
     if "asr" in models and models["asr"] is not None and not isinstance(models["asr"], str):
         raise ConnectionStoreError("provider record 的 models.asr 必须是字符串或 None")
+    transport = record.get("asrTransport")
+    if transport is not None and not isinstance(transport, str):
+        raise ConnectionStoreError("provider record 的 asrTransport 必须是字符串或 None")
     if not isinstance(record["capabilities"], dict):
         raise ConnectionStoreError("provider record 的 capabilities 必须是对象")
 

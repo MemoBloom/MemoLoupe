@@ -35,15 +35,19 @@ __all__ = [
     "ASRService",
     "OpenAICompatibleASR",
     "MultipartOpenAICompatibleASR",
+    "MiMoChatASR",
     "build_asr_service",
     "local_asr_available",
     "PROVIDER_AUTO",
+    "PROVIDER_MIMO_CHAT",
 ]
 
 #: 支持的 provider / transport。
 PROVIDER_JSON = "openai-json"
 PROVIDER_MULTIPART = "openai-multipart"
 PROVIDER_LOCAL = "local-fireredvad-mlx"
+#: MiMo ASR（mimo-v2.5-asr）：chat/completions + input_audio，非 transcriptions 端点。
+PROVIDER_MIMO_CHAT = "mimo-chat"
 #: connect-first：自动路由——本地依赖优先，远程 provider 兜底，否则显式降级。
 PROVIDER_AUTO = "auto"
 
@@ -292,11 +296,171 @@ class MultipartOpenAICompatibleASR:
         return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
 
 
+def _decode_wav_range(
+    ffmpeg_path: str,
+    media_path: Path,
+    start_ms: int,
+    end_ms: int | None,
+    out_path: Path,
+    timeout_sec: float,
+) -> None:
+    """ffmpeg 解码 [start_ms, end_ms) 为 16kHz mono s16le wav（供 MiMo ASR 切片）。"""
+    from memoloupe.media.proc import run_process
+
+    argv = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{start_ms / 1000:.3f}",
+        "-i",
+        str(media_path),
+    ]
+    if end_ms is not None:
+        argv += ["-t", f"{(end_ms - start_ms) / 1000:.3f}"]
+    argv += [
+        "-vn", "-ac", "1", "-ar", "16000",
+        "-acodec", "pcm_s16le", "-f", "wav", "-y", str(out_path),
+    ]
+    run_process(argv, timeout_sec=timeout_sec)
+
+
+class MiMoChatASR:
+    """MiMo ASR 适配器（``mimo-v2.5-asr``，D-057）。
+
+    与 OpenAI ``/audio/transcriptions`` 形态的差异：
+
+    - 端点是 ``{baseUrl}/chat/completions``，音频以 ``input_audio``
+      data URL（base64 wav）放进 messages；
+    - 响应 ``choices[0].message.content`` 是**纯文本，不含时间戳**。
+      因此客户端按固定窗口（``asr.windowSec``）切片，segment 的
+      startMs/endMs 取窗口边界——这是客户端切片产生的确定性事实，
+      不是模型声称的时间，记录在 ``raw_extras.provider.windowed``。
+    - 窗口内文本为空（纯音乐/静默）时不产生 segment。
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str | None,
+        model: str,
+        timeout_sec: float = 120.0,
+        window_sec: float = 30.0,
+        ffmpeg_path: str = "ffmpeg",
+        decode_timeout_sec: float = 600.0,
+    ) -> None:
+        if not api_key:
+            raise CapabilityUnavailableError("asr", "未配置 api_key")
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_sec = timeout_sec
+        self._window_ms = int(window_sec * 1000)
+        self._ffmpeg_path = ffmpeg_path
+        self._decode_timeout_sec = decode_timeout_sec
+
+    def transcribe(self, media_path: Path, request: ASRRequest) -> ASRResult:
+        import tempfile
+        import wave
+
+        start_ms = int(request.start_ms)
+        with tempfile.TemporaryDirectory(prefix="memoloupe-mimo-asr-") as work:
+            work_dir = Path(work)
+            full = work_dir / "full.wav"
+            _decode_wav_range(
+                self._ffmpeg_path, media_path, start_ms, request.end_ms,
+                full, self._decode_timeout_sec,
+            )
+            with wave.open(str(full), "rb") as wf:
+                total_ms = wf.getnframes() * 1000 // wf.getframerate()
+            segments: list[dict] = []
+            for win_start in range(0, total_ms, self._window_ms):
+                win_end = min(win_start + self._window_ms, total_ms)
+                clip = work_dir / f"win-{win_start}.wav"
+                _decode_wav_range(
+                    self._ffmpeg_path, full, win_start, win_end,
+                    clip, self._decode_timeout_sec,
+                )
+                text = self._transcribe_window(clip, request.language)
+                if text:
+                    segments.append(
+                        {
+                            "startMs": start_ms + win_start,
+                            "endMs": start_ms + win_end,
+                            "text": text,
+                            "speaker": None,
+                            "confidence": None,
+                        }
+                    )
+        return ASRResult(
+            segments=tuple(segments),
+            raw_extras={
+                "provider": {
+                    "transport": PROVIDER_MIMO_CHAT,
+                    "model": self._model,
+                    # 时间是客户端窗口边界，不是模型输出。
+                    "windowed": True,
+                    "windowMs": self._window_ms,
+                }
+            },
+        )
+
+    def _transcribe_window(self, clip: Path, language: str | None) -> str:
+        """单窗口转写；响应结构非法抛 :class:`PermanentServiceError`。"""
+        try:
+            audio_bytes = clip.read_bytes()
+        except OSError as exc:
+            raise PermanentServiceError(
+                f"asr media unreadable: {type(exc).__name__}"
+            ) from None
+        payload = {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": "data:audio/wav;base64,"
+                                + base64.b64encode(audio_bytes).decode("ascii")
+                            },
+                        }
+                    ],
+                }
+            ],
+            "asr_options": {
+                "language": language if language in ("zh", "en") else "auto"
+            },
+        }
+        response = http_json_post(
+            f"{self._base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            payload=payload,
+            timeout_sec=self._timeout_sec,
+        )
+        choices = response.get("choices")
+        if (
+            not isinstance(choices, list)
+            or not choices
+            or not isinstance(choices[0], dict)
+        ):
+            raise PermanentServiceError("mimo asr response: 缺少 choices")
+        content = choices[0].get("message", {})
+        text = content.get("content") if isinstance(content, dict) else None
+        if not isinstance(text, str):
+            raise PermanentServiceError("mimo asr response: message.content 不是字符串")
+        return text.strip()
+
+
 def build_asr_service(config: dict) -> ASRService | None:
     """按 ``config["asr"]`` 构造 ASR 服务；未配置/未启用时返回 None。
 
     ``provider`` 取值：``openai-json``（默认，JSON + base64）、
     ``openai-multipart``（multipart 文件上传，``fileField`` 可配置）、
+    ``mimo-chat``（MiMo chat/completions + input_audio，窗口切片）、
     ``local-fireredvad-mlx``（本地 FireRedVAD + MLX Whisper）、
     ``auto``（本地依赖可用则本地，否则远程三项齐全走远程，皆无则显式降级）。
     """
@@ -324,6 +488,17 @@ def build_asr_service(config: dict) -> ASRService | None:
     if not (api_key and base_url and model):
         return None
     timeout_sec = float(asr_cfg.get("timeoutSec", 120.0))
+    if provider == PROVIDER_MIMO_CHAT:
+        ffmpeg_cfg = config.get("ffmpeg", {}) if isinstance(config, dict) else {}
+        return MiMoChatASR(
+            base_url=str(base_url),
+            api_key=str(api_key),
+            model=str(model),
+            timeout_sec=timeout_sec,
+            window_sec=float(asr_cfg.get("windowSec", 30)),
+            ffmpeg_path=str(ffmpeg_cfg.get("ffmpegPath", "ffmpeg")),
+            decode_timeout_sec=float(ffmpeg_cfg.get("scanTimeoutSec", 600.0)),
+        )
     if provider == PROVIDER_MULTIPART:
         return MultipartOpenAICompatibleASR(
             base_url=str(base_url),

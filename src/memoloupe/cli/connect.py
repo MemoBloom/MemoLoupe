@@ -189,6 +189,8 @@ def _cmd_add(args: argparse.Namespace, store: ConnectionStore, secrets: SecretSt
         "baseUrl": base_url,
         "models": {"media": media_model, "text": text_model, "asr": asr_model},
         "capabilities": dict(spec.capabilities),
+        # ASR transport（如 mimo-chat）；无 ASR 能力的 provider 为 None。
+        "asrTransport": spec.asr_transport,
     }
     try:
         store.upsert_provider(record, make_active=False)

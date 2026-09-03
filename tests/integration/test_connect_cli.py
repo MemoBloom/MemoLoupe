@@ -84,6 +84,24 @@ class TestConnectAdd:
         out = capsys.readouterr().out
         assert "memoloupe shot" in out
 
+    def test_add_mimo_includes_asr_capability_and_transport(
+        self, store, secrets, health_ok, monkeypatch
+    ):
+        """D-057：mimo record 携带 ASR 能力与 mimo-chat transport。"""
+        from memoloupe.cli.connect import run_connect
+
+        monkeypatch.setenv("TEST_CONNECT_KEY", FAKE_KEY)
+        code = run_connect(
+            ["add", "mimo", "--api-key-env", "TEST_CONNECT_KEY"],
+            store=store,
+            secrets=secrets,
+        )
+        assert code == EXIT_OK
+        record = store.load()["providers"]["mimo"]
+        assert record["models"]["asr"] == "mimo-v2.5-asr"
+        assert record["capabilities"]["asr"] is True
+        assert record["asrTransport"] == "mimo-chat"
+
     def test_add_health_failure_saves_config_but_not_active(
         self, store, secrets, health_fail, monkeypatch, capsys
     ):

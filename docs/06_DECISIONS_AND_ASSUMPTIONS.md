@@ -696,6 +696,27 @@ story 完成后重渲 `shot-analysis.html`，保证工作台故事轨道为最�
 理由：用户的主心智模型是"分析（shot+story）→ 导出（profile）"两步；
 工作台本已合并 story 呈现（D-051），链式执行消除中间命令与过期渲染。
 
+### D-057：MiMo chat ASR（mimo-chat transport）
+
+决策：新增 `asr.provider=mimo-chat`（`MiMoChatASR`）。MiMo ASR
+（mimo-v2.5-asr）不走 `/audio/transcriptions`，而是
+`/chat/completions` + `input_audio` data URL（base64 wav）；响应是纯文本、
+**不含时间戳**，因此客户端按固定窗口（`asr.windowSec`，默认 30s）用
+ffmpeg 切片，segment 时间取窗口边界（确定性事实，非模型声称，记录于
+`raw_extras.provider.windowed`）。窗口内纯音乐/静默（空文本）不产生
+segment。registry 中 mimo 声明 `capabilities.asr=True` +
+`asrTransport="mimo-chat"`，connect record 携带该字段，runtime 叠加时同步
+覆盖 `asr.provider`。
+
+已实测（2026-09-03，真实 API key）：`mimo-v2.5-asr` 歌词转写正确；
+`mimo-v2.5-tts`（chat/completions + `audio={format,voice}` 参数）产出合法
+24kHz wav。TTS 不属于 MemoLoupe 产品边界（分析工具，不合成语音），只验证
+API 可用性，不进入代码。
+
+理由：MiMo 无 transcriptions 端点，强制套 openai-json/multipart 适配器会把
+供应商格式扩散到业务层；独立 transport 保持契约（ASRRequest/ASRResult）
+不变。无时间戳是供应商能力限制，窗口边界时间是可解释的最保守表达。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

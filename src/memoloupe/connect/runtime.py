@@ -4,8 +4,9 @@
 
 1. connections.json 有 active provider → 用其 baseUrl/模型与 SecretStore
    凭据覆盖 ``unifiedModel``/``textModel`` 的连接三要素（provider 声明 ASR
-   能力且配置了 ASR 模型时同步覆盖 ``asr`` 的三要素；``asr.provider`` 是
-   transport 语义，不覆盖），返回 source="provider"；
+   能力且配置了 ASR 模型时同步覆盖 ``asr`` 的三要素；record 携带
+   ``asrTransport`` 时同步覆盖 ``asr.provider``，未携带则保留原 transport），
+   返回 source="provider"；
 2. 无 active provider 但 env/配置文件已把 ``unifiedModel`` 或
    ``textModel`` 配齐（baseUrl/apiKey/model 均非空）→ 原样返回，
    source="env"；
@@ -93,7 +94,11 @@ def resolve_active_provider(
     capabilities = record.get("capabilities", {})
     asr_model = models.get("asr")
     if capabilities.get("asr") and isinstance(asr_model, str) and asr_model:
-        resolved.setdefault("asr", {}).update(
-            {"baseUrl": base_url, "apiKey": api_key, "model": asr_model}
-        )
+        asr_overlay: dict = {"baseUrl": base_url, "apiKey": api_key, "model": asr_model}
+        # record 声明了 ASR transport（如 mimo-chat）时同步覆盖 asr.provider；
+        # 未声明时保留原值（asr.provider 默认 openai-json）。
+        transport = record.get("asrTransport")
+        if isinstance(transport, str) and transport:
+            asr_overlay["provider"] = transport
+        resolved.setdefault("asr", {}).update(asr_overlay)
     return resolved, SOURCE_PROVIDER
