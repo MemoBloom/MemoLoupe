@@ -761,6 +761,28 @@ clip 与镜头边界；MiMo 通路同样兼容（其本已接受补齐后的短 
 理由：补齐段是冻结画面+静音，对理解无信息量且可能误导；短镜头内容
 变化小，单帧更具代表性，请求体从 MB 级视频降到 KB 级图像。
 
+### D-060：profile 蒸馏 prompt 明确 hook/payoff.L3.shotIds 证据引用语义
+
+现象（2026-09-03 qwen 真实蒸馏实测）：`profile_distill` 请求返回
+`hook.L3.shotIds: []`，被解析器拒绝（`L3.shotIds 必须是非空数组`），
+蒸馏失败、仅保留确定性聚合。根因是 prompt 指令自相矛盾：铁律警告模型
+不得输出/修改任何 ID（受保护确定性字段），同时要求 hook/payoff 填写
+镜头 ID；叠加“无法判断填空数组”的默认，模型只能返回空数组。
+
+决策：蒸馏 prompt 升级到 `profile-prompt.v2`：
+
+- 每个 block 摘要行追加 `shots=[...]`（story-blocks 中该块的真实
+  shotIDs），给模型提供可引用的证据清单；
+- 铁律明确区分“禁止复述/修改确定性字段与 ID 清单”和“hook/payoff 的
+  L3.shotIds 属于证据引用，允许且必须从 shots= 清单中挑选”；
+- 空 shotIds 永不合法；对 hook/payoff 无把握时整个字段置 null，
+  禁止回空数组。
+
+解析/校验器不放松（引用必须闭合、非空、属于所引用 blockId）。实测
+（qwen3.8-flash，disney.MP4）：修复后蒸馏 complete，主观字段齐全；
+模型对无法可靠定位证据的 hook 返回 null（合法，不编造）。
+`PROFILE_PROMPT_VERSION` 升为 v2 使旧 distill checkpoint 失效。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

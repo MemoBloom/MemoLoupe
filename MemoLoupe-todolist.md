@@ -154,8 +154,8 @@
 > profile（Phase 3，`style-profile.json`）是产品核心价值"沉淀可复刻的风格配方"的载体，
 > 目前仅完成构建链路（T3.x），以下为后续待办：
 
-- [ ] **T6.1 真实数据端到端验证**：对 Disney 完整产物（本地 ASR + mimo-v2.5 unified + story）跑 `memoloupe profile`，人工核对确定性聚合数值与蒸馏质量。
-- [ ] **T6.2 真实文本模型蒸馏联调**：接入真实文本模型端点验证 profile_distill（当前只有 mock 演示与结构校验）。
+- [x] **T6.1 真实数据端到端验证**（2026-09-03 qwen disney.MP4 全链路已跑通：shot+story+profile 均 complete、validate --strict 0 错误；数值核对结论由用户确认）
+- [x] **T6.2 真实文本模型蒸馏联调**（2026-09-03 qwen3.8-flash 实测：profile_distill 首次暴露 prompt 空 shotIds 缺陷，经 D-060 prompt v2 修复后 complete，主观字段齐全，hook 对无把握时合法返回 null；旧 distill checkpoint 随 prompt 版本失效）
 - [ ] **T6.3 Profile 结果可视化**：style-profile.json 的 HTML 呈现（对齐 shot/story 工作台品牌风格），让用户能直接阅读风格档案。
 
 ---
