@@ -1,10 +1,10 @@
 """证据 clip 与模型代理构建（docs/03 §2.6，unified-media.json 的 clips[]）。
 
 - 证据 clip：按 final 区间精确重编码（libx264/aac），避免 keyframe copy 漂移；
-- 模型代理：统一宽 720、fps 10；短于 2000ms 的 clip 同时用 tpad/apad
-  补齐画面与音频到 2000ms（只影响模型输入，不改变证据 clip 和镜头边界）。
-  2000ms 下限来自云端模型的最短视频约束（qwen3.8-flash 实测拒绝 <2s，
-  报 "The video file is too short"）。
+- 模型代理：统一宽 720。短于 2000ms 的镜头输出中点帧 JPG 图像代理
+  （静帧对短镜头更具代表性，且绕开云端模型的最短视频约束，D-059）；
+  其余输出 fps 10 的重编码视频代理。代理只影响模型输入，不改变证据
+  clip 和镜头边界。
 """
 
 from __future__ import annotations
@@ -15,17 +15,18 @@ from pathlib import Path
 from memoloupe.core.hashing import content_revision_id
 from memoloupe.core.ids import validate_shot_id
 from memoloupe.core.time_ranges import seconds_to_ms
+from memoloupe.media.frames import representative_time_ms
 
-CLIP_BUILD_VERSION = "clips.v3"
+CLIP_BUILD_VERSION = "clips.v4"
 
 # 模型代理统一参数（docs/03 §2.6 恢复策略）
 PROXY_WIDTH = 720
 PROXY_FPS = 10
-#: 短镜头判定阈值：低于模型最短输入时长（2s）的 clip 一律补齐。
-#: 历史上为 800ms，但 qwen3.8-flash 要求视频 ≥2s（D-058），800ms~2s 的
-#: clip 会被云端拒绝，故阈值与补齐目标对齐。
+#: 模态切换阈值：低于 2000ms 的镜头用中点帧图像代理（qwen3.8-flash 要求
+#: 视频输入 ≥2s，D-058；短镜头改用图像由 D-059 决策）。
 SHORT_CLIP_MS = 2000
-PADDED_MIN_MS = 2000
+#: 图像代理 JPEG 质量（ffmpeg -q:v，越小越好）
+IMAGE_PROXY_JPEG_QUALITY = 3
 
 
 def clip_file_rel(shot_id: str) -> str:
@@ -36,15 +37,8 @@ def proxy_file_rel(shot_id: str, cache_key4: str) -> str:
     return f"clips/model-proxy/{validate_shot_id(shot_id)}-{cache_key4}.mp4"
 
 
-def proxy_needs_padding(duration_ms: int) -> bool:
-    return duration_ms < SHORT_CLIP_MS
-
-
-def proxy_pad_duration_sec(duration_ms: int) -> float:
-    """tpad 需要补的秒数；不需要补齐时为 0。"""
-    if not proxy_needs_padding(duration_ms):
-        return 0.0
-    return (PADDED_MIN_MS - duration_ms) / 1000.0
+def image_proxy_file_rel(shot_id: str, cache_key4: str) -> str:
+    return f"clips/model-proxy/{validate_shot_id(shot_id)}-{cache_key4}.jpg"
 
 
 def _sec(ms: int) -> str:
@@ -77,12 +71,9 @@ def model_proxy_argv(
     out_path: str,
     *,
     has_audio: bool,
-    pad_sec: float,
 ) -> list[str]:
-    """模型代理：宽 720、fps 10，短镜头强制音画等长后输出 faststart MP4。"""
+    """模型代理：宽 720、fps 10，输出 faststart MP4。"""
     vf = f"scale={PROXY_WIDTH}:-2,fps={PROXY_FPS}"
-    if pad_sec > 0:
-        vf += f",tpad=stop_mode=clone:stop_duration={pad_sec:g}"
     argv = [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
         "-ss", _sec(start_ms), "-to", _sec(end_ms), "-i", source,
@@ -91,13 +82,7 @@ def model_proxy_argv(
         "-pix_fmt", "yuv420p",
     ]
     if has_audio:
-        if pad_sec > 0:
-            # 只补视频会产生 video=2s、audio=<800ms 的不等长 MP4；MiMo 的
-            # Base64 视频入口会将其判为 Invalid request parameters。
-            argv += ["-af", f"apad=whole_dur={PADDED_MIN_MS / 1000:g}"]
         argv += ["-c:a", "aac", "-b:a", "96k"]
-        if pad_sec > 0:
-            argv += ["-shortest"]
     else:
         argv += ["-an"]
     argv += ["-movflags", "+faststart"]
@@ -105,15 +90,27 @@ def model_proxy_argv(
     return argv
 
 
-def model_normalization(*, cache_key: str, file: str, padded: bool) -> dict:
-    strategy = f"reencode-w{PROXY_WIDTH}-fps{PROXY_FPS}"
-    if padded:
-        strategy += f"+tpad-clone-apad-{PADDED_MIN_MS}ms-avsync"
+def image_proxy_argv(ffmpeg: str, source: str, time_ms: int, out_path: str) -> list[str]:
+    """图像代理：镜头中点单帧，宽 720 JPEG。"""
+    return [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", f"{time_ms / 1000:.3f}", "-i", source,
+        "-frames:v", "1",
+        "-vf", f"scale={PROXY_WIDTH}:-2",
+        "-q:v", str(IMAGE_PROXY_JPEG_QUALITY),
+        out_path,
+    ]
+
+
+def model_normalization(*, cache_key: str, file: str, kind: str) -> dict:
+    if kind == "image":
+        strategy = f"frame-midpoint-w{PROXY_WIDTH}"
+    else:
+        strategy = f"reencode-w{PROXY_WIDTH}-fps{PROXY_FPS}"
     return {
         "strategy": strategy,
         "cacheKey": cache_key,
         "file": file,
-        "padded": padded,
     }
 
 
@@ -175,17 +172,29 @@ def build_clips(
             timeout_sec=timeout,
         )
 
-        proxy_rel = proxy_file_rel(shot_id, revision4)
-        pad_sec = proxy_pad_duration_sec(duration_ms)
-        proxy_path = proxy_dir / f"{shot_id}-{revision4}.mp4"
-        pool.run(
-            model_proxy_argv(
-                ffmpeg, str(source), start_ms, end_ms, str(proxy_path),
-                has_audio=has_audio, pad_sec=pad_sec,
-            ),
-            timeout_sec=timeout,
-        )
-        model_duration_ms = _probe_duration_ms(proxy_path, config, pool)
+        if duration_ms < SHORT_CLIP_MS:
+            frame_ms = representative_time_ms(start_ms, end_ms)
+            proxy_rel = image_proxy_file_rel(shot_id, revision4)
+            proxy_path = proxy_dir / f"{shot_id}-{revision4}.jpg"
+            pool.run(
+                image_proxy_argv(ffmpeg, str(source), frame_ms, str(proxy_path)),
+                timeout_sec=timeout,
+            )
+            # 静帧没有可探测时长；语义为"模型输入所代表的镜头时长"
+            model_duration_ms = duration_ms
+            kind = "image"
+        else:
+            proxy_rel = proxy_file_rel(shot_id, revision4)
+            proxy_path = proxy_dir / f"{shot_id}-{revision4}.mp4"
+            pool.run(
+                model_proxy_argv(
+                    ffmpeg, str(source), start_ms, end_ms, str(proxy_path),
+                    has_audio=has_audio,
+                ),
+                timeout_sec=timeout,
+            )
+            model_duration_ms = _probe_duration_ms(proxy_path, config, pool)
+            kind = "video"
 
         items.append(
             {
@@ -197,7 +206,7 @@ def build_clips(
                 "modelFile": proxy_rel,
                 "modelDurationMs": model_duration_ms,
                 "modelNormalization": model_normalization(
-                    cache_key=cache_key, file=proxy_rel, padded=pad_sec > 0
+                    cache_key=cache_key, file=proxy_rel, kind=kind
                 ),
             }
         )

@@ -1,42 +1,34 @@
-"""media/clips.py 单元测试：路径、补齐决策、argv 结构与 normalization（不跑 ffmpeg）。"""
+"""media/clips.py 单元测试：路径、模态切换、argv 结构与 normalization（不跑 ffmpeg）。"""
 
 from __future__ import annotations
 
 from memoloupe.media.clips import (
     CLIP_BUILD_VERSION,
+    SHORT_CLIP_MS,
     clip_file_rel,
     evidence_clip_argv,
+    image_proxy_argv,
+    image_proxy_file_rel,
     model_normalization,
-    proxy_file_rel,
-    proxy_needs_padding,
-    proxy_pad_duration_sec,
     model_proxy_argv,
+    proxy_file_rel,
 )
 
 
 def test_version_constant() -> None:
-    assert CLIP_BUILD_VERSION == "clips.v3"
+    assert CLIP_BUILD_VERSION == "clips.v4"
+
+
+def test_short_clip_threshold() -> None:
+    # 模态切换阈值 2000ms（qwen3.8-flash 视频输入 ≥2s，D-058/D-059）
+    assert SHORT_CLIP_MS == 2000
 
 
 def test_clip_paths_forward_slash() -> None:
     assert clip_file_rel("SH0001") == "clips/SH0001.mp4"
     assert proxy_file_rel("SH0002", "a1b2") == "clips/model-proxy/SH0002-a1b2.mp4"
-    assert "\\" not in proxy_file_rel("SH0002", "a1b2")
-
-
-def test_padding_decision() -> None:
-    # 阈值与补齐目标对齐为 2000ms（qwen3.8-flash 要求视频 ≥2s，D-058）。
-    assert proxy_needs_padding(799)
-    assert proxy_needs_padding(1999)
-    assert not proxy_needs_padding(2000)
-    assert not proxy_needs_padding(3203)
-
-
-def test_pad_duration_to_2000ms() -> None:
-    assert proxy_pad_duration_sec(600) == 1.4
-    assert proxy_pad_duration_sec(800) == 1.2
-    assert proxy_pad_duration_sec(1000) == 1.0
-    assert proxy_pad_duration_sec(2000) == 0.0
+    assert image_proxy_file_rel("SH0003", "a1b2") == "clips/model-proxy/SH0003-a1b2.jpg"
+    assert "\\" not in image_proxy_file_rel("SH0003", "a1b2")
 
 
 def test_evidence_argv_reencodes_no_stream_copy() -> None:
@@ -53,36 +45,48 @@ def test_evidence_argv_reencodes_no_stream_copy() -> None:
     assert "-an" in no_audio
 
 
-def test_proxy_argv_normalization_and_tpad() -> None:
+def test_proxy_argv_normalization_no_padding() -> None:
     argv = model_proxy_argv(
-        "ffmpeg", "/in/src.mp4", 0, 600, "/out/p.mp4", has_audio=True, pad_sec=1.4
+        "ffmpeg", "/in/src.mp4", 0, 3203, "/out/p.mp4", has_audio=True
     )
     text = " ".join(argv)
     assert "scale=720:-2" in text
     assert "fps=10" in text
-    assert "tpad=stop_mode=clone:stop_duration=1.4" in text
-    # MiMo 会拒绝视频已补帧、音频仍保持原短时长的 MP4；短镜头必须同时
-    # 补静音并用 shortest 截成同一目标时长。
-    assert "apad=whole_dur=2" in text
-    assert "-shortest" in argv
+    assert "tpad" not in text
+    assert "apad" not in text
+    assert "-shortest" not in argv
     assert "+faststart" in argv
     assert "libx264" in text and "aac" in text
-    unpadded = model_proxy_argv(
-        "ffmpeg", "/in/src.mp4", 0, 1000, "/out/p.mp4", has_audio=False, pad_sec=0.0
+    no_audio = model_proxy_argv(
+        "ffmpeg", "/in/src.mp4", 0, 3203, "/out/p.mp4", has_audio=False
     )
-    assert not any("tpad" in a for a in unpadded)
-    assert not any("apad" in a for a in unpadded)
-    assert "-shortest" not in unpadded
-    assert "-an" in unpadded
+    assert "-an" in no_audio
 
 
-def test_model_normalization_structure() -> None:
-    norm = model_normalization(
-        cache_key="proxy-a1b2",
-        file="clips/model-proxy/SH0001-a1b2.mp4",
-        padded=True,
+def test_image_proxy_argv_midframe_jpg() -> None:
+    argv = image_proxy_argv("ffmpeg", "/in/src.mp4", 500, "/out/p.jpg")
+    text = " ".join(argv)
+    assert "-ss 0.500" in text
+    assert "-frames:v 1" in text
+    assert "scale=720:-2" in text
+    assert "-q:v 3" in text
+    assert argv[-1] == "/out/p.jpg"
+
+
+def test_model_normalization_kinds() -> None:
+    video = model_normalization(
+        cache_key="proxy-a1b2", file="clips/model-proxy/SH0001-a1b2.mp4", kind="video"
     )
-    assert norm["cacheKey"] == "proxy-a1b2"
-    assert norm["file"] == "clips/model-proxy/SH0001-a1b2.mp4"
-    assert norm["padded"] is True
-    assert isinstance(norm["strategy"], str)
+    assert video == {
+        "strategy": "reencode-w720-fps10",
+        "cacheKey": "proxy-a1b2",
+        "file": "clips/model-proxy/SH0001-a1b2.mp4",
+    }
+    image = model_normalization(
+        cache_key="proxy-a1b2", file="clips/model-proxy/SH0001-a1b2.jpg", kind="image"
+    )
+    assert image == {
+        "strategy": "frame-midpoint-w720",
+        "cacheKey": "proxy-a1b2",
+        "file": "clips/model-proxy/SH0001-a1b2.jpg",
+    }
