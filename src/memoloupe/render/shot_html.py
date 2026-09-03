@@ -761,6 +761,35 @@ def _motion_shot_for_range(shots: list[dict], start_ms: int, end_ms: int) -> dic
     return None
 
 
+_MOTION_COMPACT_WIDTH_PCT = 4.5
+_MOTION_LANE_GAP_PCT = 0.4
+_MOTION_POINT_OCCUPANCY_PCT = 1.2
+
+
+def _assign_motion_lanes(events: list[dict[str, object]]) -> int:
+    """把动效事件按显示占用贪心分配到泳道，返回泳道总数。
+
+    每个事件需已带 ``left``/``width``（时间轴百分比）与 ``isPoint`` 键；
+    点事件按 ``_MOTION_POINT_OCCUPANCY_PCT`` 占位。函数给每个事件写入
+    ``lane`` 键（从 0 开始）。纯函数：无随机、无时间依赖。
+    """
+    lane_rights: list[float] = []
+    for event in events:
+        left = float(event["left"])  # type: ignore[arg-type]
+        if event["isPoint"]:
+            occupancy = _MOTION_POINT_OCCUPANCY_PCT
+        else:
+            occupancy = float(event["width"])  # type: ignore[arg-type]
+        lane = 0
+        while lane < len(lane_rights) and left < lane_rights[lane] + _MOTION_LANE_GAP_PCT:
+            lane += 1
+        if lane == len(lane_rights):
+            lane_rights.append(0.0)
+        lane_rights[lane] = left + occupancy
+        event["lane"] = lane
+    return len(lane_rights)
+
+
 def _motion_timeline_band_html(
     raws: dict[str, dict | None],
     shots: list[dict],

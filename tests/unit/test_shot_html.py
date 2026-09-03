@@ -18,7 +18,11 @@ from pathlib import Path
 import pytest
 
 from memoloupe.analysis.observations import Source, ValueState
-from memoloupe.render.shot_html import SHOT_RENDER_VERSION, render_shot_html
+from memoloupe.render.shot_html import (
+    SHOT_RENDER_VERSION,
+    _assign_motion_lanes,
+    render_shot_html,
+)
 from memoloupe.validate.html_contract import validate_html
 
 FIXTURE_FULL = Path(__file__).parent.parent / "fixtures" / "output_full"
@@ -597,3 +601,42 @@ class TestReviewReasonsAndBoundary:
         html = render_shot_html(work).read_text(encoding="utf-8")
         assert 'id="validation-summary"' in html
         assert "未提供检查结果" in html
+
+
+class TestAssignMotionLanes:
+    def _event(self, left, width, is_point=False):
+        return {"left": left, "width": width, "isPoint": is_point}
+
+    def test_empty_events_return_zero_lanes(self):
+        assert _assign_motion_lanes([]) == 0
+
+    def test_non_overlapping_events_share_lane_zero(self):
+        events = [self._event(0.0, 10.0), self._event(12.0, 10.0)]
+        assert _assign_motion_lanes(events) == 1
+        assert [e["lane"] for e in events] == [0, 0]
+
+    def test_overlapping_events_spill_to_next_lane(self):
+        events = [self._event(0.0, 10.0), self._event(5.0, 10.0)]
+        assert _assign_motion_lanes(events) == 2
+        assert [e["lane"] for e in events] == [0, 1]
+
+    def test_third_event_reuses_first_lane_when_free(self):
+        events = [
+            self._event(0.0, 10.0),
+            self._event(5.0, 10.0),
+            self._event(20.0, 10.0),
+        ]
+        assert _assign_motion_lanes(events) == 2
+        assert [e["lane"] for e in events] == [0, 1, 0]
+
+    def test_point_event_uses_compact_occupancy(self):
+        # 点事件按 1.2% 占位：left=2.0 的点事件不占住 left=5.0 之后的泳道。
+        events = [self._event(2.0, 2.8, is_point=True), self._event(5.0, 10.0)]
+        assert _assign_motion_lanes(events) == 1
+        assert [e["lane"] for e in events] == [0, 0]
+
+    def test_gap_prevents_visual_touching(self):
+        # 0.4% 间隙：left=10.2 紧跟 right=10.0 但小于 gap，仍分行。
+        events = [self._event(0.0, 10.0), self._event(10.2, 5.0)]
+        assert _assign_motion_lanes(events) == 2
+        assert [e["lane"] for e in events] == [0, 1]
