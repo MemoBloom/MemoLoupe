@@ -672,3 +672,9 @@ class TestAssignMotionLanes:
         events = [self._event(0.0, 10.0), self._event(10.2, 5.0)]
         assert _assign_motion_lanes(events) == 2
         assert [e["lane"] for e in events] == [0, 1]
+
+    def test_exact_gap_touch_shares_lane(self):
+        # left == 上一事件 right + gap(0.4)：恰好贴满间隙时允许共行。
+        events = [self._event(0.0, 10.0), self._event(10.4, 5.0)]
+        assert _assign_motion_lanes(events) == 1
+        assert [e["lane"] for e in events] == [0, 0]
