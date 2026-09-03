@@ -139,6 +139,21 @@ class TestDistillPrompt:
         prompt = build_profile_distill_prompt(_aggregate(), _story())
         assert distill_prompt_has_no_media(prompt)
 
+    def test_prompt_block_lines_carry_reference_shot_ids(self):
+        # hook/payoff.L3.shotIds 是引用而非编造：prompt 必须给出 block→镜头映射
+        # （真实链路中 qwen 因缺此信息而返回空数组，见 D-060）。
+        prompt = build_profile_distill_prompt(_aggregate(), _story())
+        assert "B0001" in prompt
+        assert "shots=" in prompt
+        assert "SH0001" in prompt
+        # 指令必须明确空数组非法、不确定置 null。
+        assert "空数组" in prompt and "null" in prompt
+
+    def test_prompt_exempts_hook_l3_reference_from_deterministic_ban(self):
+        prompt = build_profile_distill_prompt(_aggregate(), _story())
+        # 铁律的 ID 禁令不得误伤 hook 证据引用：两种意图都必须在 prompt 中显式说明。
+        assert "不得" in prompt and "L3.shotIds" in prompt
+
 
 class TestParse:
     def test_valid_response_parses(self):
@@ -209,6 +224,12 @@ class TestParse:
         payload = json.loads(_distill_response())
         payload["hook"]["L3"]["shotIds"] = ["SH0003"]
         with pytest.raises(Exception, match="不属于 blockId"):
+            parse_profile_distill(json.dumps(payload), _aggregate(), _story())
+
+    def test_hook_empty_shot_ids_rejected(self):
+        payload = json.loads(_distill_response())
+        payload["hook"]["L3"]["shotIds"] = []
+        with pytest.raises(Exception, match="shotIds 必须是非空数组"):
             parse_profile_distill(json.dumps(payload), _aggregate(), _story())
 
     def test_hook_missing_form_rejected(self):
