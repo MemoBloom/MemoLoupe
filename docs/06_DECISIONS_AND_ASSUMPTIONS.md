@@ -747,6 +747,20 @@ clip 与镜头边界；MiMo 通路同样兼容（其本已接受补齐后的短 
 理由：与 D-057 相同——保持 ASR 契约不变，供应商差异收敛在
 `asr_options` 与 transport 标记。
 
+### D-059：短镜头模型代理改用中点帧图像（clips.v4，unified-media v3）
+
+决策：`durationMs < 2000` 的镜头不再用 tpad/apad 补齐视频，改输出 final
+区间中点帧 JPG（宽 720）作为模型代理；transport 按文件后缀选择
+`image_url`/`video_url` part，对 qwen 与 mimo 统一生效。
+`modelNormalization.strategy` 标记为 `frame-midpoint-w720`；图像代理的
+`modelDurationMs` 取镜头真实 durationMs。unified-media schemaVersion
+升 3：`clipTransport` 改为 `mediaDataURI`，`shortClipPolicy` 改为
+`{minimumDurationMs, imageProxyWidth}`。v2 产物不再通过校验；output/
+下均为开发样例，重跑即可，无迁移负担。
+
+理由：补齐段是冻结画面+静音，对理解无信息量且可能误导；短镜头内容
+变化小，单帧更具代表性，请求体从 MB 级视频降到 KB 级图像。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

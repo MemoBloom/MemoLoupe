@@ -526,19 +526,19 @@
 
 | 字段 | 类型 | 必填 | 允许值/单位 | 来源 | 说明 |
 |---|---|---:|---|---|---|
-| schemaVersion | integer | 是 | `2` | 系统 | unified-media 契约版本 |
+| schemaVersion | integer | 是 | `3` | 系统 | unified-media 契约版本 |
 | service | string | 是 | `unifiedAudioVideo` | 系统 | 服务类型 |
 | schemaFingerprint | string | 是 | 16 位 hash | 系统 | prompt/schema 指纹 |
 | request.model | string | 是 | model name | 系统 | 主模型 |
 | request.fallbackModel | string/null | 否 | model name | 系统 | 备用模型 |
-| request.clipTransport | string | 是 | `videoDataURI` | 系统 | clip 传输方式 |
+| request.clipTransport | string | 是 | `mediaDataURI` | 系统 | clip 传输方式 |
 | request.batchSize | integer | 是 | count | 系统 | 每批 clip 数 |
 | request.concurrency | integer | 是 | count | 系统 | 并发批次数 |
 | request.externalFrameExtraction | boolean | 是 | false | 系统 | 统一模型不读取外部抽帧 |
 | request.videoFPS | number | 是 | fps | 系统 | 模型输入 fps |
 | request.mediaResolution | string | 是 | default/low/high | 系统 | 模型输入分辨率 |
 | request.sourceRevisionID | string/null | 是 | revisionID | media.json | 源文件版本 |
-| request.shortClipPolicy | object | 是 | policy | 系统 | 短 clip 补齐策略 |
+| request.shortClipPolicy | object | 是 | policy | 系统 | 短 clip 模态切换策略（图像代理阈值与宽度） |
 | clips | array | 是 | clip[] | ffmpeg | 每个镜头证据 clip 和模型输入 clip |
 | clip.shotID | string | 是 | `SH0001` | shots.json | 镜头 ID |
 | clip.startMs | integer | 是 | ms | shots.json | clip 起点 |
@@ -547,7 +547,7 @@
 | clip.file | string | 是 | 相对路径 | ffmpeg | 原始证据 clip |
 | clip.modelFile | string | 是 | 相对路径 | ffmpeg | 模型输入 clip |
 | clip.modelDurationMs | integer | 是 | ms | 系统 | 模型输入时长 |
-| clip.modelNormalization | object/null | 否 | normalization | 系统 | proxy/补帧/缩放信息 |
+| clip.modelNormalization | object/null | 否 | normalization | 系统 | proxy/缩放信息 |
 | batches | array | 是 | batch[] | 系统/模型 | 批量请求结果 |
 | batch.batchID | string | 是 | `B0001` | 系统 | 批次 ID |
 | batch.shotIDs | array | 是 | string[] | 系统 | 批次镜头 |
@@ -606,13 +606,13 @@
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "service": "unifiedAudioVideo",
   "schemaFingerprint": "86ad19c6afbf1a02",
   "request": {
     "model": "mimo-v2.5",
     "fallbackModel": "mimo-v2.5",
-    "clipTransport": "videoDataURI",
+    "clipTransport": "mediaDataURI",
     "batchSize": 4,
     "concurrency": 10,
     "externalFrameExtraction": false,
@@ -620,9 +620,8 @@
     "mediaResolution": "default",
     "sourceRevisionID": "a1b2c3d4e5f6",
     "shortClipPolicy": {
-      "minimumDurationMs": 800,
-      "recoveryMinimumDurationMs": 2000,
-      "recoveryWidth": 720
+      "minimumDurationMs": 2000,
+      "imageProxyWidth": 720
     }
   },
   "retryPolicy": {
@@ -640,7 +639,7 @@
       "modelFile": "clips/model-proxy/SH0001-a1b2.mp4",
       "modelDurationMs": 3203,
       "modelNormalization": {
-        "strategy": "shared-audio-proxy",
+        "strategy": "reencode-w720-fps10",
         "cacheKey": "proxy-a1b2",
         "file": "clips/model-proxy/SH0001-a1b2.mp4"
       }

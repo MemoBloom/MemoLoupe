@@ -255,7 +255,7 @@ classification 允许：
 
 顶层：`service`、`schemaFingerprint`、`request`、`retryPolicy`、`clips`、`batches`、`shotStatuses`、`status`。
 
-`service` 固定 `unifiedAudioVideo`，`request.externalFrameExtraction` 固定 false，默认 transport 为 `videoDataURI`。
+`service` 固定 `unifiedAudioVideo`，`request.externalFrameExtraction` 固定 false，默认 transport 为 `mediaDataURI`（视频与短镜头图像代理混合）。
 
 模型镜头字段组：
 

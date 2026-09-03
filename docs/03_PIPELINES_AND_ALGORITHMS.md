@@ -190,10 +190,14 @@ FEATURE_WEIGHTS = (1.0, 0.8, 0.8, 0.6, 0.8, 0.8)
 - 路径 `clips/model-proxy/`；
 - 可统一宽度、fps、编码和音频参数；
 - 必须记录 normalization 和 cache key；
-- 短于 800 ms 的 clip 可补齐；恢复策略可补到至少 2000 ms、宽度 720；
-- 有音轨的短 clip 必须同时补帧与补静音，并截成音画等长的合法 MP4；
-- 模型代理使用 faststart 封装，避免只支持顺序读取的 Data URI 解码器失效；
-- 补齐只影响模型输入，不改变证据 clip 和镜头边界。
+- 短于 2000 ms 的镜头不生成视频代理，改用 final 区间中点帧 JPG
+  （宽 720）作为图像代理；该阈值来自云端模型最短视频约束（D-058），
+  图像化决策见 D-059；
+- 2000 ms 及以上的镜头生成宽 720、fps 10 的重编码视频代理；
+- 代理形态必须记录在 modelNormalization.strategy
+  （frame-midpoint-w720 / reencode-w720-fps10）；
+- 视频代理使用 faststart 封装，避免只支持顺序读取的 Data URI 解码器失效；
+- 代理只影响模型输入，不改变证据 clip 和镜头边界。
 
 禁止把外部抽取 JPEG 作为模型视频理解的替代输入。模型 request 的 `externalFrameExtraction=false`。
 
