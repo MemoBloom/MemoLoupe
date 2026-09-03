@@ -524,6 +524,25 @@ class TestCheckpoint:
         assert doc["status"] == "complete"
         assert service.calls, "指纹不匹配的 checkpoint 不得被复用"
 
+    def test_checkpoint_rejected_on_version_mismatch(self, tmp_path):
+        # 旧版本号（短镜头图像代理前的补齐视频时代，D-059）写入的 checkpoint
+        # 不得被复用，即使指纹与批次参数完全匹配
+        clips = _clips_info(2)
+        store = ArtifactStore(tmp_path)
+        config = _config()
+        # 先跑一次拿到真实指纹与合法结果
+        _run(store, clips, _good_service(["SH0001", "SH0002"]), config)
+        path = tmp_path / "checkpoints" / "unified-media-visual.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        checkpoint["version"] = "unified.v3"
+        path.write_text(json.dumps(checkpoint), encoding="utf-8")
+
+        service2 = _good_service(["SH0001", "SH0002"])
+        doc = _run(store, clips, service2, config)
+        assert doc["status"] == "complete"
+        visual_calls = [c["shot_ids"] for c in service2.calls if c["group"] == "visual"]
+        assert visual_calls == [("SH0001", "SH0002")], "旧版本 checkpoint 不得被复用"
+
     def test_checkpoint_rejects_invalid_entries(self, tmp_path):
         clips = _clips_info(2)
         store = ArtifactStore(tmp_path)

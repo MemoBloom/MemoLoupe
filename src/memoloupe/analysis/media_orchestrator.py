@@ -53,7 +53,10 @@ from memoloupe.media.clips import PROXY_WIDTH, SHORT_CLIP_MS
 from memoloupe.services.base import PermanentServiceError, TransientServiceError
 from memoloupe.services.unified_media import AnalysisGroup, ModelClip, UnifiedMediaService
 
-UNIFIED_MEDIA_VERSION = "unified.v3"
+#: checkpoint 复用键的一部分；模型输入语义变化时必须升版本使旧 checkpoint 失效。
+#: v4：短镜头模型代理从补齐视频改为中点帧图像（clips.v4，D-059），
+#: v3 及更早的 checkpoint 产自旧输入，复用会导致 clips[] 与 batches[] 不一致。
+UNIFIED_MEDIA_VERSION = "unified.v4"
 
 #: 指数退避基数（秒）：第 n 次重试前睡 base * 2**n（n 从 0 起）。
 _RETRY_BASE_SEC = 1.0
