@@ -35,11 +35,14 @@ __all__ = [
     "ASRService",
     "OpenAICompatibleASR",
     "MultipartOpenAICompatibleASR",
+    "WindowedChatASR",
     "MiMoChatASR",
+    "QwenChatASR",
     "build_asr_service",
     "local_asr_available",
     "PROVIDER_AUTO",
     "PROVIDER_MIMO_CHAT",
+    "PROVIDER_QWEN_CHAT",
 ]
 
 #: 支持的 provider / transport。
@@ -48,6 +51,8 @@ PROVIDER_MULTIPART = "openai-multipart"
 PROVIDER_LOCAL = "local-fireredvad-mlx"
 #: MiMo ASR（mimo-v2.5-asr）：chat/completions + input_audio，非 transcriptions 端点。
 PROVIDER_MIMO_CHAT = "mimo-chat"
+#: Qwen ASR（qwen3-asr-flash）：OpenAI 兼容 chat/completions + input_audio。
+PROVIDER_QWEN_CHAT = "qwen-chat"
 #: connect-first：自动路由——本地依赖优先，远程 provider 兜底，否则显式降级。
 PROVIDER_AUTO = "auto"
 
@@ -304,7 +309,7 @@ def _decode_wav_range(
     out_path: Path,
     timeout_sec: float,
 ) -> None:
-    """ffmpeg 解码 [start_ms, end_ms) 为 16kHz mono s16le wav（供 MiMo ASR 切片）。"""
+    """ffmpeg 解码 [start_ms, end_ms) 为 16kHz mono s16le wav（供窗口化 chat ASR 切片）。"""
     from memoloupe.media.proc import run_process
 
     argv = [
@@ -326,8 +331,8 @@ def _decode_wav_range(
     run_process(argv, timeout_sec=timeout_sec)
 
 
-class MiMoChatASR:
-    """MiMo ASR 适配器（``mimo-v2.5-asr``，D-057）。
+class WindowedChatASR:
+    """chat/completions + ``input_audio`` 的窗口化 ASR 基类（无时间戳传输）。
 
     与 OpenAI ``/audio/transcriptions`` 形态的差异：
 
@@ -338,7 +343,13 @@ class MiMoChatASR:
       startMs/endMs 取窗口边界——这是客户端切片产生的确定性事实，
       不是模型声称的时间，记录在 ``raw_extras.provider.windowed``。
     - 窗口内文本为空（纯音乐/静默）时不产生 segment。
+
+    子类通过类属性定制 provider 差异：``_TRANSPORT``（raw_extras 标记）、
+    ``_ERROR_PREFIX``（错误信息前缀）与 ``_build_asr_options(language)``。
     """
+
+    _TRANSPORT: str = ""
+    _ERROR_PREFIX: str = "chat asr"
 
     def __init__(
         self,
@@ -366,7 +377,7 @@ class MiMoChatASR:
         import wave
 
         start_ms = int(request.start_ms)
-        with tempfile.TemporaryDirectory(prefix="memoloupe-mimo-asr-") as work:
+        with tempfile.TemporaryDirectory(prefix="memoloupe-chat-asr-") as work:
             work_dir = Path(work)
             full = work_dir / "full.wav"
             _decode_wav_range(
@@ -398,7 +409,7 @@ class MiMoChatASR:
             segments=tuple(segments),
             raw_extras={
                 "provider": {
-                    "transport": PROVIDER_MIMO_CHAT,
+                    "transport": self._TRANSPORT,
                     "model": self._model,
                     # 时间是客户端窗口边界，不是模型输出。
                     "windowed": True,
@@ -406,6 +417,10 @@ class MiMoChatASR:
                 }
             },
         )
+
+    def _build_asr_options(self, language: str | None) -> dict:
+        """provider 特定的 ``asr_options``；空 dict 表示请求不携带该字段。"""
+        return {}
 
     def _transcribe_window(self, clip: Path, language: str | None) -> str:
         """单窗口转写；响应结构非法抛 :class:`PermanentServiceError`。"""
@@ -431,10 +446,10 @@ class MiMoChatASR:
                     ],
                 }
             ],
-            "asr_options": {
-                "language": language if language in ("zh", "en") else "auto"
-            },
         }
+        asr_options = self._build_asr_options(language)
+        if asr_options:
+            payload["asr_options"] = asr_options
         response = http_json_post(
             f"{self._base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self._api_key}"},
@@ -447,12 +462,61 @@ class MiMoChatASR:
             or not choices
             or not isinstance(choices[0], dict)
         ):
-            raise PermanentServiceError("mimo asr response: 缺少 choices")
+            raise PermanentServiceError(f"{self._ERROR_PREFIX} asr response: 缺少 choices")
         content = choices[0].get("message", {})
         text = content.get("content") if isinstance(content, dict) else None
+        if isinstance(text, list):
+            # 部分实现把 content 返回为分片数组（[{"text": ...}, ...]）。
+            text = "".join(
+                part.get("text", "")
+                for part in text
+                if isinstance(part, dict)
+            )
         if not isinstance(text, str):
-            raise PermanentServiceError("mimo asr response: message.content 不是字符串")
+            raise PermanentServiceError(
+                f"{self._ERROR_PREFIX} asr response: message.content 不是字符串"
+            )
         return text.strip()
+
+
+class MiMoChatASR(WindowedChatASR):
+    """MiMo ASR 适配器（``mimo-v2.5-asr``，D-057）。
+
+    ``asr_options.language`` 仅支持 ``zh``/``en``/``auto``，缺省按 auto。
+    """
+
+    _TRANSPORT = PROVIDER_MIMO_CHAT
+    _ERROR_PREFIX = "mimo"
+
+    def _build_asr_options(self, language: str | None) -> dict:
+        return {"language": language if language in ("zh", "en") else "auto"}
+
+
+#: Qwen3-ASR-Flash ``asr_options.language`` 的合法取值（文档 2026-09 核）。
+_QWEN_ASR_LANGUAGES = frozenset({
+    "zh", "yue", "en", "ja", "de", "ko", "ru", "fr", "pt", "ar", "it",
+    "es", "hi", "id", "th", "tr", "uk", "vi", "cs", "da", "fil", "fi",
+    "is", "ms", "no", "pl", "sv",
+})
+
+
+class QwenChatASR(WindowedChatASR):
+    """Qwen ASR 适配器（``qwen3-asr-flash``，OpenAI 兼容 chat/completions）。
+
+    与 mimo-chat 的差异：``asr_options.language`` 没有 ``auto`` 取值——
+    语言不确定时**省略**该字段由模型自动识别；显式 ``enable_itn=false``
+    （歌词/旁白不做反向文本规范化）。响应可能带 ``annotations``
+    （language/emotion），当前不消费。
+    """
+
+    _TRANSPORT = PROVIDER_QWEN_CHAT
+    _ERROR_PREFIX = "qwen"
+
+    def _build_asr_options(self, language: str | None) -> dict:
+        options: dict = {"enable_itn": False}
+        if language in _QWEN_ASR_LANGUAGES:
+            options["language"] = language
+        return options
 
 
 def build_asr_service(config: dict) -> ASRService | None:
@@ -460,7 +524,7 @@ def build_asr_service(config: dict) -> ASRService | None:
 
     ``provider`` 取值：``openai-json``（默认，JSON + base64）、
     ``openai-multipart``（multipart 文件上传，``fileField`` 可配置）、
-    ``mimo-chat``（MiMo chat/completions + input_audio，窗口切片）、
+    ``mimo-chat`` / ``qwen-chat``（chat/completions + input_audio，窗口切片）、
     ``local-fireredvad-mlx``（本地 FireRedVAD + MLX Whisper）、
     ``auto``（本地依赖可用则本地，否则远程三项齐全走远程，皆无则显式降级）。
     """
@@ -488,9 +552,10 @@ def build_asr_service(config: dict) -> ASRService | None:
     if not (api_key and base_url and model):
         return None
     timeout_sec = float(asr_cfg.get("timeoutSec", 120.0))
-    if provider == PROVIDER_MIMO_CHAT:
+    if provider in (PROVIDER_MIMO_CHAT, PROVIDER_QWEN_CHAT):
         ffmpeg_cfg = config.get("ffmpeg", {}) if isinstance(config, dict) else {}
-        return MiMoChatASR(
+        adapter = MiMoChatASR if provider == PROVIDER_MIMO_CHAT else QwenChatASR
+        return adapter(
             base_url=str(base_url),
             api_key=str(api_key),
             model=str(model),

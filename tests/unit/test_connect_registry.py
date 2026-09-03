@@ -34,12 +34,15 @@ class TestProviders:
     def test_qwen_defaults(self) -> None:
         spec = PROVIDERS["qwen"]
         assert spec.default_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        assert spec.default_media_model == "qwen3.5-omni"
-        assert spec.default_text_model == "qwen-plus"
+        assert spec.default_media_model == "qwen3.8-flash"
+        assert spec.default_text_model == "qwen3.8-flash"
+        # Qwen ASR（qwen3-asr-flash）走 OpenAI 兼容 chat/completions + input_audio。
+        assert spec.default_asr_model == "qwen3-asr-flash"
+        assert spec.asr_transport == "qwen-chat"
         assert spec.capabilities == {
             "mediaUnderstanding": True,
             "text": True,
-            "asr": False,
+            "asr": True,
         }
 
     def test_mimo_defaults(self) -> None:

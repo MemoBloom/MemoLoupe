@@ -107,7 +107,7 @@ class TestHappyPath:
         assert request["batchSize"] == 2
         assert request["sourceRevisionID"] == "a1b2c3d4e5f6"
         assert request["shortClipPolicy"] == {
-            "minimumDurationMs": 800,
+            "minimumDurationMs": 2000,
             "recoveryMinimumDurationMs": 2000,
             "recoveryWidth": 720,
         }

@@ -5,17 +5,18 @@
 
 ---
 
-## ISSUE-001: MiMo ASR（mimo-v2.5-asr）无词级/句级时间戳，story 聚块退化为 30s 窗口粒度
+## ISSUE-001: chat ASR（mimo-v2.5-asr / qwen3-asr-flash）无词级/句级时间戳，story 聚块退化为 30s 窗口粒度
 
-**状态**: Open（2026-09-03 记录）
+**状态**: Open（2026-09-03 记录；同日确认 qwen-chat 通路同样受限）
 **严重级别**: Medium — 功能可用，但 story 分块精度受限
 
 ### 现象
 
-使用 `asr.provider=mimo-chat`（mimo-v2.5-asr 模型）时，ASR 返回纯文本、
-**不携带任何时间戳**。客户端只能按固定窗口切片（默认 `asr.windowSec = 30s`，
-见 `src/memoloupe/services/asr.py` 的 `MiMoChatASR`），每个窗口产生一个 segment，
-其起止时间就是窗口边界（`raw_extras.provider.windowed = True`）。
+使用 `asr.provider=mimo-chat`（mimo-v2.5-asr）或 `asr.provider=qwen-chat`
+（qwen3-asr-flash）时，ASR 返回纯文本、**不携带任何时间戳**。客户端只能按
+固定窗口切片（默认 `asr.windowSec = 30s`，见 `src/memoloupe/services/asr.py`
+的 `WindowedChatASR`），每个窗口产生一个 segment，其起止时间就是窗口边界
+（`raw_extras.provider.windowed = True`）。
 
 ### 影响
 
@@ -27,9 +28,13 @@
 
 ### 根因
 
-mimo-v2.5-asr 的 chat completions 接口（`input_audio` data URL）响应只有纯文本，
-无 `segments` / `words` 时间戳字段（2026-09-03 实测确认）。这是服务端能力限制，
-不是客户端解析遗漏。
+mimo-v2.5-asr 与 qwen3-asr-flash 的 chat completions 接口（`input_audio`
+data URL）响应只有纯文本，无 `segments` / `words` 时间戳字段（2026-09-03
+两家均实测确认）。这是服务端能力限制，不是客户端解析遗漏。
+
+补充：Qwen 侧存在带时间戳的替代路径——`qwen3-asr-flash-filetrans`
+（DashScope 异步任务接口）支持句级/词级时间戳（`enable_words`），但要求
+音频为**公网可访问 URL**，无法直接用于本地文件，暂不可行。
 
 ### 候选方向
 
@@ -44,7 +49,8 @@ mimo-v2.5-asr 的 chat completions 接口（`input_audio` data URL）响应只�
 
 ### 相关代码 / 文档
 
-- `src/memoloupe/services/asr.py` — `MiMoChatASR`（窗口切片与 `windowed` 标记）
-- 配置：`asr.provider = "mimo-chat"`、`asr.windowSec`
-- 决策记录：`docs/06_DECISIONS_AND_ASSUMPTIONS.md` D-057
+- `src/memoloupe/services/asr.py` — `WindowedChatASR`（窗口切片与 `windowed`
+  标记，`MiMoChatASR` / `QwenChatASR` 共用）
+- 配置：`asr.provider = "mimo-chat" | "qwen-chat"`、`asr.windowSec`
+- 决策记录：`docs/06_DECISIONS_AND_ASSUMPTIONS.md` D-057、D-058
 - 验证产物：`output/disney-mimo-e2e-20260903/`（mimo 通路 e2e，story = 1 块）

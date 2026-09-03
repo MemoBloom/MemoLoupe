@@ -59,7 +59,12 @@ from memoloupe.core.logging import get_logger, log_step
 from memoloupe.media.audio_cuts import AUDIO_CUTS_VERSION, detect_audio_cuts
 from memoloupe.media.audio_energy import AUDIO_ENERGY_VERSION, detect_audio_energy
 from memoloupe.media.audio_music import AUDIO_MUSIC_VERSION, detect_music
-from memoloupe.media.clips import CLIP_BUILD_VERSION, build_clips
+from memoloupe.media.clips import (
+    CLIP_BUILD_VERSION,
+    PADDED_MIN_MS,
+    SHORT_CLIP_MS,
+    build_clips,
+)
 from memoloupe.media.concurrency import FFmpegPool
 from memoloupe.media.frames import FRAME_EXTRACTION_VERSION, extract_frames
 from memoloupe.media.probe import probe_media
@@ -444,8 +449,8 @@ def build_unified_media_stub(clips: list[dict], media: dict, config: dict) -> di
             "mediaResolution": str(model_cfg.get("mediaResolution", "default")),
             "sourceRevisionID": media.get("source", {}).get("revisionID"),
             "shortClipPolicy": {
-                "minimumDurationMs": 800,
-                "recoveryMinimumDurationMs": 2000,
+                "minimumDurationMs": SHORT_CLIP_MS,
+                "recoveryMinimumDurationMs": PADDED_MIN_MS,
                 "recoveryWidth": 720,
             },
         },

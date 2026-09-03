@@ -55,6 +55,10 @@
   （chat/completions + input_audio，窗口切片）；mimo provider 声明 ASR
   能力，`connect add mimo` 后管道自动走 mimo-v2.5-asr。mimo-v2.5-tts
   已实测可用，但不属于产品边界，不集成。
+- Qwen ASR 已交付（2026-09-03，决策 D-058）：`asr.provider=qwen-chat`
+  （`WindowedChatASR` 共享基类 + `QwenChatASR`）；qwen 默认模型更新为
+  media/text=`qwen3.8-flash`、asr=`qwen3-asr-flash`，两模型已用真实 key
+  实测可用。注意 `qwen-audio-asr-flash` 该名称不存在（404）。
 - 全量测试：`1125 passed, 6 skipped`。
 - BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
   anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`

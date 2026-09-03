@@ -1,8 +1,10 @@
 """证据 clip 与模型代理构建（docs/03 §2.6，unified-media.json 的 clips[]）。
 
 - 证据 clip：按 final 区间精确重编码（libx264/aac），避免 keyframe copy 漂移；
-- 模型代理：统一宽 720、fps 10；短于 800ms 的 clip 同时用 tpad/apad
+- 模型代理：统一宽 720、fps 10；短于 2000ms 的 clip 同时用 tpad/apad
   补齐画面与音频到 2000ms（只影响模型输入，不改变证据 clip 和镜头边界）。
+  2000ms 下限来自云端模型的最短视频约束（qwen3.8-flash 实测拒绝 <2s，
+  报 "The video file is too short"）。
 """
 
 from __future__ import annotations
@@ -14,12 +16,15 @@ from memoloupe.core.hashing import content_revision_id
 from memoloupe.core.ids import validate_shot_id
 from memoloupe.core.time_ranges import seconds_to_ms
 
-CLIP_BUILD_VERSION = "clips.v2"
+CLIP_BUILD_VERSION = "clips.v3"
 
 # 模型代理统一参数（docs/03 §2.6 恢复策略）
 PROXY_WIDTH = 720
 PROXY_FPS = 10
-SHORT_CLIP_MS = 800
+#: 短镜头判定阈值：低于模型最短输入时长（2s）的 clip 一律补齐。
+#: 历史上为 800ms，但 qwen3.8-flash 要求视频 ≥2s（D-058），800ms~2s 的
+#: clip 会被云端拒绝，故阈值与补齐目标对齐。
+SHORT_CLIP_MS = 2000
 PADDED_MIN_MS = 2000
 
 

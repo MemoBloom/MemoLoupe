@@ -717,6 +717,36 @@ API 可用性，不进入代码。
 供应商格式扩散到业务层；独立 transport 保持契约（ASRRequest/ASRResult）
 不变。无时间戳是供应商能力限制，窗口边界时间是可解释的最保守表达。
 
+### D-058：Qwen chat ASR（qwen-chat transport）与 qwen 默认模型
+
+决策：新增 `asr.provider=qwen-chat`（`QwenChatASR`），并把 `MiMoChatASR`
+的窗口化逻辑上提为共享基类 `WindowedChatASR`（ffmpeg 窗口切片、
+data URL 请求、窗口边界时间戳），两个 provider 仅以类属性定制
+`asr_options` 差异。Qwen 侧差异：`asr_options.language` 无 `auto` 取值，
+语言未知时**省略**该字段由模型自动识别；显式 `enable_itn=false`
+（歌词/旁白不做反向文本规范化）；容忍 content 为分片数组的响应形态。
+registry 中 qwen 声明 `capabilities.asr=True` + `asrTransport="qwen-chat"`，
+默认模型更新为 media/text=`qwen3.8-flash`、asr=`qwen3-asr-flash`。
+
+已实测（2026-09-03，真实 API key）：`qwen3-asr-flash` 英文歌词转写正确，
+响应带 annotations（language/emotion，当前不消费）；`qwen3.8-flash`
+图像理解正确（默认开启混合思考，多余输出落在 `reasoning_content`，
+不影响 content 解析）。注意：`qwen-audio-asr-flash` 这个名字不存在
+（404 model_not_found）；`qwen-audio-3.0-asr-flash` 存在但只支持
+DashScope 原生协议，OpenAI 兼容端点仅 qwen3-asr-flash 系列可用。
+无时间戳限制与 mimo-chat 相同（见 ISSUES.md ISSUE-001，对两个
+chat ASR 通路同等适用）。
+
+qwen3.8-flash 视频输入实测约束：**时长必须 ≥2s**，否则 400
+"The video file is too short"。据此把模型代理的短镜头补齐阈值
+`SHORT_CLIP_MS` 从 800ms 提为 2000ms（与补齐目标 `PADDED_MIN_MS`
+对齐），所有 <2s 的代理 clip 一律 tpad/apad 到 2s；`CLIP_BUILD_VERSION`
+升为 `clips.v3` 使旧代理缓存失效。补齐只影响模型输入，不改变证据
+clip 与镜头边界；MiMo 通路同样兼容（其本已接受补齐后的短 clip）。
+
+理由：与 D-057 相同——保持 ASR 契约不变，供应商差异收敛在
+`asr_options` 与 transport 标记。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

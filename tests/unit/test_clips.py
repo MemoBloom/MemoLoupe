@@ -15,7 +15,7 @@ from memoloupe.media.clips import (
 
 
 def test_version_constant() -> None:
-    assert CLIP_BUILD_VERSION == "clips.v2"
+    assert CLIP_BUILD_VERSION == "clips.v3"
 
 
 def test_clip_paths_forward_slash() -> None:
@@ -25,15 +25,18 @@ def test_clip_paths_forward_slash() -> None:
 
 
 def test_padding_decision() -> None:
+    # 阈值与补齐目标对齐为 2000ms（qwen3.8-flash 要求视频 ≥2s，D-058）。
     assert proxy_needs_padding(799)
-    assert not proxy_needs_padding(800)
+    assert proxy_needs_padding(1999)
+    assert not proxy_needs_padding(2000)
     assert not proxy_needs_padding(3203)
 
 
 def test_pad_duration_to_2000ms() -> None:
     assert proxy_pad_duration_sec(600) == 1.4
-    assert proxy_pad_duration_sec(800) == 0.0
-    assert proxy_pad_duration_sec(1000) == 0.0
+    assert proxy_pad_duration_sec(800) == 1.2
+    assert proxy_pad_duration_sec(1000) == 1.0
+    assert proxy_pad_duration_sec(2000) == 0.0
 
 
 def test_evidence_argv_reencodes_no_stream_copy() -> None:

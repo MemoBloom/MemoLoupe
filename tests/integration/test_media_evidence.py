@@ -179,9 +179,9 @@ def test_build_clips_structure_and_proxy(media_dir: Path, pool: FFmpegPool, tmp_
         assert norm["cacheKey"]
         assert norm["file"] == clip["modelFile"]
         assert isinstance(norm["strategy"], str)
-        # 1s >= 800ms，不补齐
-        assert norm["padded"] is False
-        assert 900 <= clip["modelDurationMs"] <= 1100
+        # 1s < 2000ms 模型最短输入时长（qwen 约束，D-058），补齐到 2s
+        assert norm["padded"] is True
+        assert clip["modelDurationMs"] >= 1900
 
 
 def test_build_clips_short_clip_padded(media_dir: Path, pool: FFmpegPool, tmp_path: Path) -> None:

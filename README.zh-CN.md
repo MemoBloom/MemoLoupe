@@ -69,7 +69,7 @@ uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 | `validate DIR` | 校验产物（schema + 跨文件 + HTML 语义） | `--strict`、`--json-report` |
 | `config` | 输出脱敏后的有效配置，并列出未配置的服务 | |
 
-模型配置解析顺序：**active provider（connect）→ 环境变量/`.env` → 显式降级**。ASR 由 `asr.provider` 控制：`auto`（本地优先，其次远程，否则显式降级）、`local-fireredvad-mlx`、`openai-json`（默认）、`openai-multipart`、`mimo-chat`（MiMo chat ASR；`connect add mimo` 时自动配置）。
+模型配置解析顺序：**active provider（connect）→ 环境变量/`.env` → 显式降级**。ASR 由 `asr.provider` 控制：`auto`（本地优先，其次远程，否则显式降级）、`local-fireredvad-mlx`、`openai-json`（默认）、`openai-multipart`、`mimo-chat`（MiMo chat ASR；`connect add mimo` 时自动配置）、`qwen-chat`（Qwen chat ASR，qwen3-asr-flash；`connect add qwen` 时自动配置）。
 
 退出码：`0` 完成（允许警告）· `2` 参数/配置错误 · `3` 输入/契约错误 · `4` ffmpeg/ffprobe 不可用 · `5` 阶段失败 · `6` 校验失败。
 

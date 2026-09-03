@@ -31,11 +31,13 @@ PROVIDERS: dict[str, ProviderSpec] = {
         provider_id="qwen",
         label="通义千问（DashScope 兼容模式）",
         default_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        default_media_model="qwen3.5-omni",
-        default_text_model="qwen-plus",
-        default_asr_model=None,
-        capabilities={"mediaUnderstanding": True, "text": True, "asr": False},
+        default_media_model="qwen3.8-flash",
+        default_text_model="qwen3.8-flash",
+        # Qwen ASR（qwen3-asr-flash）走 OpenAI 兼容 chat/completions + input_audio。
+        default_asr_model="qwen3-asr-flash",
+        capabilities={"mediaUnderstanding": True, "text": True, "asr": True},
         health_check_path="/models",
+        asr_transport="qwen-chat",
     ),
     "mimo": ProviderSpec(
         provider_id="mimo",

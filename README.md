@@ -71,7 +71,7 @@ Global: every command accepts `--env-file PATH` to load a `.env` file (never ove
 | `validate DIR` | Validate artifacts (schema + cross-file + HTML) | `--strict`, `--json-report` |
 | `config` | Print the redacted effective config and list unconfigured services | |
 
-Model configuration resolution order: **active provider (`connect`) → env/`.env` → explicit degrade**. ASR routing via `asr.provider`: `auto` (local first, then remote, else explicit degrade), `local-fireredvad-mlx`, `openai-json` (default), `openai-multipart`, `mimo-chat` (MiMo chat-completions ASR; set automatically by `connect add mimo`).
+Model configuration resolution order: **active provider (`connect`) → env/`.env` → explicit degrade**. ASR routing via `asr.provider`: `auto` (local first, then remote, else explicit degrade), `local-fireredvad-mlx`, `openai-json` (default), `openai-multipart`, `mimo-chat` (MiMo chat-completions ASR; set automatically by `connect add mimo`), `qwen-chat` (Qwen chat-completions ASR, qwen3-asr-flash; set automatically by `connect add qwen`).
 
 Exit codes: `0` done (warnings allowed) · `2` usage/config error · `3` input/contract error · `4` ffmpeg/ffprobe unavailable · `5` stage failed · `6` validation failed.
 
