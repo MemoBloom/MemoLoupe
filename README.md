@@ -12,8 +12,8 @@ MemoLoupe is a **film-analysis （拉片） tool**: give it a reference video, a
 
 | Command | Output | Contents |
 |---|---|---|
-| `memoloupe shot` | `shot-analysis.html` | Unified review workbench: dual story/shot timeline — content, camera, lighting and sound per shot, each linked back to its evidence |
-| `memoloupe story` | `story-analysis.html` | Story structure: story blocks, narrative slots and their relations; also merged into the workbench's dual timeline, where human review happens |
+| `memoloupe shot` | `shot-analysis.html` | Merged analysis (shots + story): dual story/shot timeline workbench — content, camera, lighting and sound per shot, each linked back to its evidence |
+| `memoloupe story` | `story-analysis.html` | Story structure (blocks, slots, relations). Runs automatically after `shot`; this standalone command is for re-runs after corrections |
 | `memoloupe profile` | `style-profile.json` | Style profile: structure/pacing/style distributions and remake notes (machine-readable contract) |
 
 Every conclusion in the HTML links back to raw evidence (clips, frames, audio segments). Anything the model is unsure about is explicitly marked — never dressed up as fact.
@@ -32,18 +32,19 @@ uv sync --extra asr-local   # optional: local ASR (FireRedVAD + MLX Whisper)
 uv run memoloupe connect add qwen     # or: connect add mimo
 uv run memoloupe connect status       # inspect; connect test runs a health check
 
-# 3. Run the three stages (pipelines automatically use the active provider;
-#    without one they degrade explicitly while deterministic analysis
-#    is unaffected)
+# 3. Analyze (shot runs story automatically afterwards — one command for
+#    both; pipelines use the active provider, and degrade explicitly
+#    without one while deterministic analysis is unaffected)
 uv run memoloupe shot    ./video.mp4 --output-dir ./out
-uv run memoloupe story   --output-dir ./out
+
+# 4. Export the style profile for remakes
 uv run memoloupe profile --output-dir ./out
 
-# 4. Validate artifacts (schema + cross-file consistency + HTML semantics)
+# 5. Validate artifacts (schema + cross-file consistency + HTML semantics)
 uv run memoloupe validate ./out --strict
 
-# 5. Review
-open ./out/shot-analysis.html                    # or just open it in a browser
+# 6. Review
+open ./out/shot-analysis.html                    # merged workbench: shots + story
 uv run memoloupe review --output-dir ./out       # localhost review UI
 ```
 
@@ -53,6 +54,26 @@ Prefer environment variables over `connect`? The legacy env path still works and
 cp .env.example .env   # fill in MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*
 uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 ```
+
+## CLI reference
+
+Global: every command accepts `--env-file PATH` to load a `.env` file (never overrides variables already set in the environment).
+
+| Command | Purpose | Key options |
+|---|---|---|
+| `connect add qwen\|mimo` | Connect a model provider; interactive, API key stored in the OS Keychain | `--api-key-env ENV`, `--base-url`, `--media-model`, `--text-model`, `--asr-model` (non-interactive) |
+| `connect status` / `test` / `switch` / `remove` / `list` | Inspect, health-check, switch, or delete connections | `test [provider]` defaults to the active one |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 merged: shot analysis, then story analysis automatically (`--skip-story` opts out) | `--skip-story`, `--gap-ms N`, `--skip STEP`, `--dry-run`, `--render-only`, `--strict`, `--max-shots N`, `--force STEP`, `--no-cache`, `--align-shot-boundaries-to-audio`, `--mock-services`, `--json-report` |
+| `story --output-dir DIR` | Standalone story re-run (e.g. after shot corrections; runs with `shot` by default) | `--allow-draft`, `--scaffold-only`, `--gap-ms N`, `--max-blocks N`, `--mock-text-model`, `--strict` |
+| `profile --output-dir DIR` | Phase 3: style profile (expects story artifacts) | `--skip-distill`, `--mock-text-model`, `--strict` |
+| `review --output-dir DIR` | localhost human-review UI | `--port 8765` |
+| `import-corrections FILE --output-dir DIR` | Import offline corrections and re-render | |
+| `validate DIR` | Validate artifacts (schema + cross-file + HTML) | `--strict`, `--json-report` |
+| `config` | Print the redacted effective config and list unconfigured services | |
+
+Model configuration resolution order: **active provider (`connect`) → env/`.env` → explicit degrade**. ASR routing via `asr.provider`: `auto` (local first, then remote, else explicit degrade), `local-fireredvad-mlx`, `openai-json` (default), `openai-multipart`.
+
+Exit codes: `0` done (warnings allowed) · `2` usage/config error · `3` input/contract error · `4` ffmpeg/ffprobe unavailable · `5` stage failed · `6` validation failed.
 
 ## How it works
 

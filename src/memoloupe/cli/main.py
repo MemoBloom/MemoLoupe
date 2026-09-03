@@ -3,8 +3,8 @@
 子命令：
 
 - ``memoloupe validate TARGET [--strict] [--json-report]``：校验一个 output-dir。
-- ``memoloupe shot``：Phase 1 镜头分析。
-- ``memoloupe story``：Phase 2 故事分析。
+- ``memoloupe shot``：Phase 1+2 合并流程（镜头分析 → 故事分析；--skip-story 只跑 Phase 1）。
+- ``memoloupe story``：Phase 2 故事分析（独立重跑入口，如 corrections 使 story 失效后）。
 - ``memoloupe profile``：Phase 3 风格档案。
 - ``memoloupe connect``：管理模型服务提供商连接（add/status/test/switch/remove/list）。
 - ``memoloupe review --output-dir DIR [--port 8765]``：localhost review server。
@@ -73,7 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # shot/story/profile 的参数由各自子命令模块自行解析，这里用 REMAINDER 透传。
-    p_shot = sub.add_parser("shot", help="Phase 1：镜头分析")
+    p_shot = sub.add_parser("shot", help="镜头 + 故事分析（Phase 1+2 合并流程）")
     p_shot.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
     p_review = sub.add_parser("review", help="启动 localhost 人工校对 review server")

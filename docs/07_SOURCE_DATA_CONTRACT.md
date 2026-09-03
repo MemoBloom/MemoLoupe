@@ -972,7 +972,7 @@
 {
   "status": "complete",
   "boundarySource": "model",
-  "gapMs": 1200,
+  "gapMs": 2000,
   "generatedAt": "2026-08-21T08:00:00+00:00",
   "blocks": [
     {

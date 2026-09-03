@@ -245,6 +245,7 @@ class TestScaffoldBlocking:
         assert len(read_blocks(work)["blocks"]) == 1
 
     def test_gap_boundary_below_equal_above(self, tmp_path):
+        # 显式 gap_ms=1200 锁定 >= 边界语义（小于/等于/大于），与默认值无关。
         for gap, expected_blocks in ((1199, 1), (1200, 2), (1201, 2)):
             work = write_out_dir(
                 tmp_path / f"out{gap}", shot_ranges=[(0, 3000), (3000, 6000)],
@@ -252,7 +253,7 @@ class TestScaffoldBlocking:
                     [segment(500, 1500), segment(1500 + gap, 5000)]
                 ),
             )
-            _run(work)
+            _run(work, gap_ms=1200)
             assert len(read_blocks(work)["blocks"]) == expected_blocks, f"gap={gap}"
 
     def test_silent_shot_between_runs_stays_in_previous_block(self, tmp_path):
@@ -343,7 +344,8 @@ class TestScaffoldDocument:
             tmp_path / "out", shot_ranges=[(0, 3000), (3000, 6000)],
             asr=asr_doc([segment(500, 1500), segment(3000, 5000)]),
         )
-        _run(work)
+        # 显式 gap_ms=1200：本用例锁定的是两块场景的字段/信号，与默认值无关。
+        _run(work, gap_ms=1200)
         doc = read_blocks(work)
         # 写盘已过 schema；再显式校验一次锁定契约。
         validate_artifact(ArtifactName.STORY_BLOCKS, doc)

@@ -681,6 +681,21 @@ None 并记非静默 warning（含 connect 引导与 `uv sync --extra asr-local`
 理由：connect-first 体验下用户不应感知 ASR 的单独配置；但改动默认值会把
 "未配置 ASR"的既有降级语义变成隐式本地模型下载，违反显式性原则。
 
+### D-056：shot+story 合并流程（三阶段 → 两命令）
+
+决策：`memoloupe shot` 默认在 Phase 1 完成后链式执行 Phase 2 故事分析，
+主流程只剩两条命令——`shot`（分析：镜头 + 故事）与 `profile`（风格档案）。
+链式 story 隐式 `--allow-draft`：独立 story 命令的 confirmed 门禁面向
+"先校对镜头、再跑故事"的两段式工作流；合并流程的校对发生在统一工作台
+之后，corrections 使 story 失效后用独立 `memoloupe story` 重跑。
+`--skip-story` 只跑 Phase 1；`--render-only` 不触发 story；shot 失败不链式；
+story 的退出码原样透传。`--mock-services` → story 用 mock 文本模型；
+`--dry-run` → story 只出确定性 scaffold；`--gap-ms` 由 shot 透传给 story。
+story 完成后重渲 `shot-analysis.html`，保证工作台故事轨道为最新。
+
+理由：用户的主心智模型是"分析（shot+story）→ 导出（profile）"两步；
+工作台本已合并 story 呈现（D-051），链式执行消除中间命令与过期渲染。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：
@@ -737,7 +752,11 @@ None 并记非静默 warning（含 connect 引导与 `uv sync --extra asr-local`
 
 ### A-006 故事聚块
 
-- gapMs 默认 1200 是否适合全部内容类型；
+- ~~gapMs 默认 1200 是否适合全部内容类型~~ → 已校准（2026-09-03）：
+  默认 1200 → **2000**。证据：disney.MP4（56.6s，连续演唱）多次本地 ASR
+  运行产生 1.2~1.7s 的段间间隙（whisper 对演唱段分句存在运行间不确定性，
+  VAD 输出稳定），1200 阈值会把这些段落内换气误判为叙事边界；≤2s 间隙
+  在音乐/演唱内容中不构成故事块边界。CLI `--gap-ms` 仍可显式覆盖。
 - 无 ASR 视频的视觉候选块策略；
 - 极短 block 合并。
 

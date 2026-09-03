@@ -48,6 +48,9 @@
   qwen/mimo provider 注册表、shot/story/profile 自动叠加 active provider、
   `asr.provider=auto` 本地优先路由；`shot --help` 分发缺陷已修复。
   `memoloupe login`（官方托管服务）保留为未来项，不在本期。
+- shot+story 合并流程已交付（2026-09-03，决策 D-056）：`memoloupe shot`
+  默认链式执行故事分析，主流程收敛为 `shot`（分析）+ `profile`（导出）
+  两条命令；独立 `memoloupe story` 保留为校对后重跑入口。
 - 全量测试：`1125 passed, 6 skipped`。
 - BGM `music.v2` 已修复连续演唱漏检：全轨 STFT 始终运行并融合 ASR gap
   anchor，使用谱平坦度约束、短缺口合并和持续静音门槛；`disney.MP4`

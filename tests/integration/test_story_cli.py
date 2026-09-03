@@ -134,6 +134,16 @@ class TestStoryCLI:
         second = _read_json(work / "raw" / "story-blocks.json")
         assert second["generatedAt"] == first["generatedAt"]
 
+    def test_story_rerenders_merged_workbench(self, tmp_path):
+        """story 完成后重渲 shot 工作台：故事轨道进入 shot-analysis.html（D-051）。"""
+        work = tmp_path / "out"
+        shutil.copytree(FIXTURE_FULL, work)
+        assert main([
+            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+        ]) == EXIT_OK
+        html = (work / "shot-analysis.html").read_text(encoding="utf-8")
+        assert 'id="story-timeline-band"' in html
+
     def test_missing_shot_analysis_is_input_error(self, tmp_path, capsys):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)

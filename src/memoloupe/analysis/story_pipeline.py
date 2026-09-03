@@ -3,7 +3,7 @@
 确定性 scaffold（03-02）：
 聚块算法（docs/03 §3.2，全程确定性）：
 
-1. ASR segments 按 ``(startMs, endMs)`` 排序，相邻间隔 ``>= gapMs``（默认 1200）
+1. ASR segments 按 ``(startMs, endMs)`` 排序，相邻间隔 ``>= gapMs``（默认 2000）
    切开成 speech run（停顿段）；
 2. :func:`segment_of` 为镜头定主停顿段：取时间交集最大的 run；零重叠时归入
    ``endMs <= startMs`` 的最晚 run（尾部静默跟随上一段），没有更早 run 时归入
@@ -104,7 +104,7 @@ class StoryAnalysisRequest:
     """故事分析请求。``allow_draft`` 由 03-04 CLI 层消费（草稿输入门禁）。"""
 
     output_dir: Path
-    gap_ms: int = 1200
+    gap_ms: int = 2000
     allow_draft: bool = False
     text_service: Any = None  # TextModelService；None 时只产 scaffold
     force: frozenset[str] = frozenset()

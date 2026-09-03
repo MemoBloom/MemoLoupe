@@ -167,7 +167,9 @@ DEFAULT_CONFIG: dict = {
         "maxTokens": 0,
     },
     "story": {
-        "gapMs": 1200,
+        # CALIBRATION A-006：1200 → 2000（2026-09-03，disney.MP4 证据：
+        # ≤2s 的演唱间隙是段落内换气，不是叙事边界）。
+        "gapMs": 2000,
         "boundarySource": "asr-gap",
     },
     "profile": {

@@ -109,7 +109,7 @@ class TestPhase2FullMockChain:
         assert story["status"] == "complete"
         assert story["boundarySource"] == "asr-gap"
         assert story["slots"], "mock 填充必须产出 slot"
-        # fixture ASR 两段间隔 1040ms < gapMs=1200 → 确定性聚块只有 1 块。
+        # fixture ASR 两段间隔 1040ms < gapMs=2000 → 确定性聚块只有 1 块。
         assert [b["storyBlockID"] for b in story["blocks"]] == ["B0001"]
         assert story["blocks"][0]["shotIDs"] == ["SH0001", "SH0002", "SH0003"]
 

@@ -45,6 +45,7 @@ from memoloupe.connect.runtime import (
 )
 from memoloupe.connect.store import ConnectionStoreError
 from memoloupe.render.corrections import document_status, load_corrections
+from memoloupe.render.shot_html import render_shot_html
 from memoloupe.render.story_html import render_story_html
 from memoloupe.services.mock import MockTextModelService
 
@@ -77,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Phase 2 故事分析：确定性聚块 scaffold + 可选文本模型叙事填充 + HTML 渲染。",
     )
     parser.add_argument("--output-dir", type=Path, required=True, help="输出目录（须已有 Phase 1 产物）")
-    parser.add_argument("--gap-ms", type=int, default=1200, help="ASR 停顿聚块阈值（毫秒，默认 1200）")
+    parser.add_argument("--gap-ms", type=int, default=2000, help="ASR 停顿聚块阈值（毫秒，默认 2000）")
     parser.add_argument(
         "--allow-draft",
         action="store_true",
@@ -263,6 +264,16 @@ def run_story_analysis(argv: Sequence[str]) -> int:
         except Exception as exc:
             render_failed = True
             print(f"  [warning] 渲染 story-analysis.html 失败：{exc}", file=sys.stderr)
+        # D-051：story 结果合并进 shot 工作台。story 完成后必须重渲
+        # shot-analysis.html，否则工作台的故事轨道停留在 story 之前的旧状态。
+        # 工作台重渲失败只记 warning，不影响 story 产物与退出码。
+        try:
+            render_shot_html(out_dir)
+        except Exception as exc:
+            print(
+                f"  [warning] 重渲 shot-analysis.html（合并故事轨道）失败：{exc}",
+                file=sys.stderr,
+            )
 
     if args.json_report:
         payload = report.to_dict()

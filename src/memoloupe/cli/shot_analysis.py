@@ -1,5 +1,10 @@
 """``memoloupe shot`` 子命令（docs/01 §10）。
 
+shot+story 合并流程（D-056）：默认在 Phase 1 镜头分析完成后链式执行
+Phase 2 故事分析（隐式 ``--allow-draft``——合并流程的校对发生在统一工作台
+之后，corrections 使 story 失效后用独立的 ``memoloupe story`` 重跑）；
+``--skip-story`` 只跑 Phase 1。``--render-only`` 不触发 story。
+
 ``run_shot_analysis(argv)`` 同时服务包内 CLI 与根级 ``run_shot_analysis.py``
 薄包装。退出码：
 
@@ -29,6 +34,7 @@ from memoloupe.analysis.shot_pipeline import (
 )
 from memoloupe.core.config import load_config
 from memoloupe.core.errors import ConfigError, MemoLoupeError
+from memoloupe.cli.story_analysis import run_story_analysis
 from memoloupe.connect.runtime import (
     SOURCE_NONE,
     SOURCE_PROVIDER,
@@ -50,12 +56,24 @@ _DRY_RUN_SKIPS = frozenset(SKIPPABLE_STEPS)
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="memoloupe shot",
-        description="Phase 1 镜头分析：探测、硬切检测、证据抽取、降级产物、HTML 与校验。",
+        description="镜头 + 故事分析（Phase 1+2 合并流程）：探测、硬切检测、证据抽取、"
+        "故事聚块、降级产物、HTML 与校验。",
     )
     parser.add_argument("input", type=Path, help="源视频路径")
     parser.add_argument("--output-dir", type=Path, required=True, help="输出目录")
     parser.add_argument("--start-ms", type=int, default=None, help="分析范围起点（毫秒）")
     parser.add_argument("--end-ms", type=int, default=None, help="分析范围终点（毫秒）")
+    parser.add_argument(
+        "--skip-story",
+        action="store_true",
+        help="只跑 Phase 1 镜头分析；默认 shot 完成后自动继续故事分析（合并流程）",
+    )
+    parser.add_argument(
+        "--gap-ms",
+        type=int,
+        default=2000,
+        help="故事聚块的 ASR 停顿阈值（毫秒，默认 2000；合并流程传给 story）",
+    )
     parser.add_argument(
         "--force",
         action="append",
@@ -228,7 +246,38 @@ def run_shot_analysis(argv: Sequence[str]) -> int:
     if args.strict and report.status == "partial":
         print("--strict：阶段为 partial，按失败处理", file=sys.stderr)
         return EXIT_STAGE_FAILED
-    return EXIT_OK
+    if args.skip_story:
+        return EXIT_OK
+    return _run_chained_story(args)
+
+
+def _run_chained_story(args: argparse.Namespace) -> int:
+    """shot+story 合并流程（D-056）：shot 成功后链式执行 story。
+
+    隐式 ``--allow-draft``：独立 ``memoloupe story`` 的 confirmed 门禁面向
+    "先校对镜头、再跑故事"的两段式工作流；合并流程的校对发生在统一工作台
+    之后，corrections 使 story 失效后用独立 story 命令重跑。
+
+    mock/dry-run 语义透传：``--mock-services`` → story 用 mock 文本模型；
+    ``--dry-run`` → story 只出确定性 scaffold（不调用文本模型）。
+    """
+    story_argv = [
+        "--output-dir",
+        str(args.output_dir),
+        "--allow-draft",
+        "--gap-ms",
+        str(args.gap_ms),
+    ]
+    if args.no_cache:
+        story_argv.append("--no-cache")
+    if args.strict:
+        story_argv.append("--strict")
+    if args.mock_services:
+        story_argv.append("--mock-text-model")
+    if args.dry_run:
+        story_argv.append("--scaffold-only")
+    print("── 故事分析（shot+story 合并流程）──")
+    return run_story_analysis(story_argv)
 
 
 def _run_render_only(out_dir: Path) -> int:

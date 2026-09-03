@@ -78,8 +78,10 @@ def _setup(tmp_path: Path) -> Path:
 
 
 def _run(work: Path, service) -> object:
+    # 显式 gap_ms=1200：_setup 的两段对白间隔 1500ms，这些用例锁定两块场景
+    # 的模型填充行为，与聚块默认值（2000，A-006）无关。
     return StoryAnalysisPipeline().run(
-        StoryAnalysisRequest(output_dir=work, text_service=service)
+        StoryAnalysisRequest(output_dir=work, text_service=service, gap_ms=1200)
     )
 
 

@@ -12,8 +12,8 @@ MemoLoupe 是一个**拉片分析工具**：给它一段参考视频，它把视
 
 | 命令 | 产物 | 内容 |
 |---|---|---|
-| `memoloupe shot` | `shot-analysis.html` | 统一审片工作台：镜头与故事双轨时间线，每个镜头的内容、运镜、光线、声音，逐镜可回看证据 |
-| `memoloupe story` | `story-analysis.html` | 故事结构：故事块、叙事插槽、块之间的关系；同时并入 shot 工作台的双轨时间线，人工复查在统一工作台完成 |
+| `memoloupe shot` | `shot-analysis.html` | 合并分析（镜头 + 故事）：双轨时间线审片工作台，每个镜头的内容、运镜、光线、声音，逐镜可回看证据 |
+| `memoloupe story` | `story-analysis.html` | 故事结构（故事块、叙事插槽、块间关系）。默认已随 `shot` 自动运行，此命令用于校对修正后的单独重跑 |
 | `memoloupe profile` | `style-profile.json` | 风格档案：叙事/节奏/风格的分布与复刻要点（机器可读契约） |
 
 所有结论都能在 HTML 里点回原始证据（clip、帧、音频段），模型拿不准的地方会明确标记，不会伪装成确定结论。
@@ -31,17 +31,18 @@ uv sync --extra asr-local   # 可选：本地语音识别（FireRedVAD + MLX Whi
 uv run memoloupe connect add qwen     # 或：connect add mimo
 uv run memoloupe connect status       # 查看连接；connect test 做健康检查
 
-# 3. 跑三阶段（管道自动使用当前 provider；未配置时对应步骤显式降级，
-#    确定性分析不受影响）
+# 3. 分析（shot 完成后自动继续 story，一条命令跑完；管道自动使用当前
+#    provider，未配置时对应步骤显式降级，确定性分析不受影响）
 uv run memoloupe shot    ./video.mp4 --output-dir ./out
-uv run memoloupe story   --output-dir ./out
+
+# 4. 导出风格档案（用于复刻）
 uv run memoloupe profile --output-dir ./out
 
-# 4. 校验产物（schema + 跨文件一致性 + HTML 语义）
+# 5. 校验产物（schema + 跨文件一致性 + HTML 语义）
 uv run memoloupe validate ./out --strict
 
-# 5. 查看与校对
-open ./out/shot-analysis.html                    # 或直接用浏览器打开
+# 6. 查看与校对
+open ./out/shot-analysis.html                    # 合并工作台：镜头 + 故事双轨
 uv run memoloupe review --output-dir ./out       # localhost 人工校对界面
 ```
 
@@ -51,6 +52,26 @@ uv run memoloupe review --output-dir ./out       # localhost 人工校对界面
 cp .env.example .env   # 填入 MEMOLOUPE_TEXTMODEL__* / MEMOLOUPE_UNIFIEDMODEL__*
 uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 ```
+
+## CLI 参考
+
+全局：所有命令都接受 `--env-file PATH` 加载 `.env`（不覆盖进程已有的环境变量）。
+
+| 命令 | 作用 | 常用选项 |
+|---|---|---|
+| `connect add qwen\|mimo` | 连接模型服务；交互式，API key 存系统 Keychain | `--api-key-env ENV`、`--base-url`、`--media-model`、`--text-model`、`--asr-model`（非交互） |
+| `connect status` / `test` / `switch` / `remove` / `list` | 查看、健康检查、切换、删除连接 | `test [provider]` 默认测当前 provider |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 合并流程：镜头分析后自动继续故事分析（`--skip-story` 退出合并） | `--skip-story`、`--gap-ms N`、`--skip STEP`、`--dry-run`、`--render-only`、`--strict`、`--max-shots N`、`--force STEP`、`--no-cache`、`--align-shot-boundaries-to-audio`、`--mock-services`、`--json-report` |
+| `story --output-dir DIR` | 独立重跑故事分析（如镜头校对修正后；默认已随 shot 运行） | `--allow-draft`、`--scaffold-only`、`--gap-ms N`、`--max-blocks N`、`--mock-text-model`、`--strict` |
+| `profile --output-dir DIR` | Phase 3：风格档案（需 story 产物） | `--skip-distill`、`--mock-text-model`、`--strict` |
+| `review --output-dir DIR` | localhost 人工校对界面 | `--port 8765` |
+| `import-corrections FILE --output-dir DIR` | 导入离线校对结果并重渲染 | |
+| `validate DIR` | 校验产物（schema + 跨文件 + HTML 语义） | `--strict`、`--json-report` |
+| `config` | 输出脱敏后的有效配置，并列出未配置的服务 | |
+
+模型配置解析顺序：**active provider（connect）→ 环境变量/`.env` → 显式降级**。ASR 由 `asr.provider` 控制：`auto`（本地优先，其次远程，否则显式降级）、`local-fireredvad-mlx`、`openai-json`（默认）、`openai-multipart`。
+
+退出码：`0` 完成（允许警告）· `2` 参数/配置错误 · `3` 输入/契约错误 · `4` ffmpeg/ffprobe 不可用 · `5` 阶段失败 · `6` 校验失败。
 
 ## 它是怎么工作的
 

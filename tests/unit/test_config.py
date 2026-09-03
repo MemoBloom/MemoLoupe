@@ -46,7 +46,7 @@ class TestDefaultConfig:
         assert DEFAULT_CONFIG["music"]["silentLevelDb"] == -55.0
         assert DEFAULT_CONFIG["music"]["musicMinimumRunMs"] == 400
         assert DEFAULT_CONFIG["music"]["musicMergeGapMs"] == 600
-        assert DEFAULT_CONFIG["story"]["gapMs"] == 1200
+        assert DEFAULT_CONFIG["story"]["gapMs"] == 2000
         assert DEFAULT_CONFIG["asr"]["baseUrl"] is None
         assert DEFAULT_CONFIG["asr"]["apiKey"] is None
         assert DEFAULT_CONFIG["asr"]["model"] is None

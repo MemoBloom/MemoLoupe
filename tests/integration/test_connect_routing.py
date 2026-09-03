@@ -200,7 +200,7 @@ class TestShotCliProviderRouting:
         source.write_bytes(b"fake")
 
         code = shot_cli.run_shot_analysis(
-            [str(source), "--output-dir", str(tmp_path / "out")]
+            [str(source), "--output-dir", str(tmp_path / "out"), "--skip-story"]
         )
 
         assert code == EXIT_OK
@@ -238,7 +238,13 @@ class TestShotCliProviderRouting:
         source.write_bytes(b"fake")
 
         code = shot_cli.run_shot_analysis(
-            [str(source), "--output-dir", str(tmp_path / "out"), "--mock-services"]
+            [
+                str(source),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--mock-services",
+                "--skip-story",
+            ]
         )
 
         assert code == EXIT_OK
