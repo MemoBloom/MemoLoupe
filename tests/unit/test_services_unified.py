@@ -189,8 +189,8 @@ class TestAnalyzeBatch:
         request_text = content[-1]
         assert request_text["type"] == "text"
         assert request_text["text"].startswith("分析镜头并输出 JSON")
-        assert "第 1 个 video_url = SH0001" in request_text["text"]
-        assert "第 2 个 video_url = SH0002" in request_text["text"]
+        assert "第 1 个 video_url（视频） = SH0001" in request_text["text"]
+        assert "第 2 个 video_url（视频） = SH0002" in request_text["text"]
         video_parts = [p for p in content if p["type"] == "video_url"]
         assert len(video_parts) == 2
         for clip, part in zip(clips, video_parts):
@@ -199,6 +199,34 @@ class TestAnalyzeBatch:
             url = part["video_url"]["url"]
             assert url.startswith("data:video/mp4;base64,")
             assert base64.b64decode(url.split(",", 1)[1]) == clip.proxy_path.read_bytes()
+
+    def test_image_clip_uses_image_url_part(self, server, tmp_path):
+        img = tmp_path / "SH0003.jpg"
+        img.write_bytes(b"jpeg-bytes")
+        clips = _clips(tmp_path) + [
+            ModelClip(shot_id="SH0003", proxy_path=img, duration_ms=600)
+        ]
+        server.handler.behavior = {"body": _chat_response("{}")}
+        _make(server).analyze_batch(clips, _group())
+        payload = json.loads(server.handler.captured["body"])
+        content = payload["messages"][0]["content"]
+        image_parts = [p for p in content if p["type"] == "image_url"]
+        assert len(image_parts) == 1
+        part = image_parts[0]
+        assert "fps" not in part and "media_resolution" not in part
+        url = part["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+        assert base64.b64decode(url.split(",", 1)[1]) == b"jpeg-bytes"
+        request_text = content[-1]["text"]
+        assert "第 3 个 image_url（静态图像） = SH0003" in request_text
+
+    def test_is_image_property(self, tmp_path):
+        assert ModelClip(
+            shot_id="SH0001", proxy_path=tmp_path / "a.JPG", duration_ms=1
+        ).is_image
+        assert not ModelClip(
+            shot_id="SH0001", proxy_path=tmp_path / "a.mp4", duration_ms=1
+        ).is_image
 
     @pytest.mark.parametrize("status", [429, 500, 503])
     def test_transient_status(self, server, tmp_path, status):

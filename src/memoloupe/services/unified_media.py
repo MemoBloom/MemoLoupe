@@ -37,6 +37,8 @@ __all__ = [
 _logger = get_logger("memoloupe.services.unified_media", phase="shot", step="unified")
 
 _VIDEO_MIME = "video/mp4"
+_IMAGE_MIME = "image/jpeg"
+_IMAGE_SUFFIXES = {".jpg", ".jpeg"}
 _TEMPERATURE = 0.0  # docs/03 §2.12：温度尽量低
 
 
@@ -45,8 +47,13 @@ class ModelClip:
     """一个待分析的镜头模型代理 clip。"""
 
     shot_id: str
-    proxy_path: Path  # clips/model-proxy/ 下的文件
+    proxy_path: Path  # clips/model-proxy/ 下的文件（.mp4 或 .jpg）
     duration_ms: int
+
+    @property
+    def is_image(self) -> bool:
+        """图像代理（短镜头中点帧）→ image_url part；否则 video_url。"""
+        return self.proxy_path.suffix.lower() in _IMAGE_SUFFIXES
 
 
 @dataclass(frozen=True)
@@ -72,7 +79,7 @@ class UnifiedMediaService(Protocol):
 class OpenAICompatibleUnifiedMedia:
     """OpenAI chat/completions 兼容的视频理解适配器。
 
-    请求构造：每个 clip 读文件转 base64 ``video/mp4`` Data URI，作为
+    请求构造：每个 clip 读文件转 base64 Data URI（视频为 ``video/mp4``，短镜头图像代理为 ``image/jpeg``），作为
     ``video_url`` content part 与 prompt 一起放入单条 user 消息；视频 part
     携带 MiMo/OpenAI 兼容扩展 ``fps`` 与 ``media_resolution``；
     ``temperature`` 取最低（0.0），并声明 ``response_format=json_object``。
@@ -149,8 +156,8 @@ class OpenAICompatibleUnifiedMedia:
     def analyze_batch(
         self, clips: Sequence[ModelClip], group: AnalysisGroup
     ) -> str:
-        # MiMo 官方视频示例以 video parts 在前、text part 在后；保持该顺序，
-        # 同时把 fps/media_resolution 放在 video_url 的同级。
+        # MiMo 官方视频示例以媒体 parts 在前、text part 在后；保持该顺序。
+        # 短镜头的图像代理走 image_url，不带 fps/media_resolution。
         content: list[dict] = []
         total_bytes = 0
         for clip in clips:
@@ -161,27 +168,40 @@ class OpenAICompatibleUnifiedMedia:
                     f"clip unreadable: shotID={clip.shot_id} {type(exc).__name__}"
                 ) from None
             total_bytes += len(data)
-            content.append(
-                {
-                    "type": "video_url",
-                    "video_url": {
-                        "url": f"data:{_VIDEO_MIME};base64,"
-                        + base64.b64encode(data).decode("ascii")
-                    },
-                    "fps": self._video_fps,
-                    "media_resolution": self._media_resolution,
-                }
-            )
+            encoded = base64.b64encode(data).decode("ascii")
+            if clip.is_image:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{_IMAGE_MIME};base64," + encoded
+                        },
+                    }
+                )
+            else:
+                content.append(
+                    {
+                        "type": "video_url",
+                        "video_url": {
+                            "url": f"data:{_VIDEO_MIME};base64," + encoded
+                        },
+                        "fps": self._video_fps,
+                        "media_resolution": self._media_resolution,
+                    }
+                )
         shot_mapping = "\n".join(
-            f"- 第 {index} 个 video_url = {clip.shot_id}"
+            f"- 第 {index} 个 "
+            f"{'image_url（静态图像）' if clip.is_image else 'video_url（视频）'}"
+            f" = {clip.shot_id}"
             for index, clip in enumerate(clips, 1)
         )
         request_prompt = (
             f"{group.prompt}\n"
-            "本批次输入视频与 shotID 的唯一映射如下（严格按 content 顺序）：\n"
+            "本批次输入媒体（视频或静态图像）与 shotID 的唯一映射如下"
+            "（严格按 content 顺序）：\n"
             f"{shot_mapping}\n"
-            "不要把视频内部时间点当成镜头；shots 数组只能使用上述 shotID，"
-            "并且每个 shotID 恰好返回一次。"
+            "不要把媒体内部时间点当成镜头；静态图像输入代表整个短镜头。"
+            "shots 数组只能使用上述 shotID，并且每个 shotID 恰好返回一次。"
         )
         content.append({"type": "text", "text": request_prompt})
         payload = {
