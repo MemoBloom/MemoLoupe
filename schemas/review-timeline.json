@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/review-timeline.json",
+  "title": "MemoLoupe review-timeline.json（Phase 06 确定性审片支持数据）",
+  "description": "帧 PTS 索引与音频波形 envelope。只承载确定性事实，不承载语义判断；不保存 PCM 或解码帧。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "status",
+    "sourceRevisionID",
+    "analysis",
+    "videoFrames",
+    "waveform"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": {
+      "description": "顶层状态：complete=两类索引均可用或显式 unavailable；partial=其一 failed；failed=全部失败。",
+      "enum": ["complete", "partial", "failed"]
+    },
+    "sourceRevisionID": { "type": "string", "minLength": 1 },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["method", "algorithmVersion", "analyzedRange"],
+      "properties": {
+        "method": { "type": "string" },
+        "algorithmVersion": { "type": "string" },
+        "analyzedRange": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startMs", "endMs"],
+          "properties": {
+            "startMs": { "type": "integer", "minimum": 0 },
+            "endMs": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "videoFrames": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "timingMode"],
+      "properties": {
+        "status": { "enum": ["complete", "unavailable", "failed"] },
+        "timingMode": {
+          "description": "pts-index=真实逐帧 PTS；unavailable=无可靠索引，UI 按平均帧率近似并明确标注。",
+          "enum": ["pts-index", "unavailable"]
+        },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "ptsMs": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "waveform": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["status", "channelMode"],
+      "properties": {
+        "status": { "enum": ["complete", "unavailable", "failed"] },
+        "channelMode": { "enum": ["mono-mixdown", "unavailable"] },
+        "binDurationMs": { "type": "integer", "minimum": 1 },
+        "binCount": { "type": "integer", "minimum": 0 },
+        "peaks": {
+          "description": "每个 bin 的归一化 [min, max]，取值 [-1, 1]；不保存 PCM。",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number", "minimum": -1, "maximum": 1 }
+          }
+        },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

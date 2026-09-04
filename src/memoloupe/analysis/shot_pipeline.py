@@ -74,7 +74,18 @@ from memoloupe.media.motion_effects import (
 )
 from memoloupe.media.probe import probe_media
 from memoloupe.media.quality import QUALITY_DETECTION_VERSION, detect_quality
+from memoloupe.media.review_timeline import (
+    REVIEW_TIMELINE_VERSION,
+    build_review_timeline,
+    build_review_timeline_stub,
+)
 from memoloupe.media.shots import SHOT_DETECTION_VERSION, detect_shots
+from memoloupe.analysis.shot_relations import (
+    SHOT_RELATIONS_VERSION,
+    build_shot_relations,
+    build_shot_relations_stub,
+)
+from memoloupe.services.shot_relation_model import build_shot_relation_service
 from memoloupe.render.shot_html import SHOT_RENDER_VERSION, render_shot_html
 from memoloupe.services.asr import build_asr_service
 from memoloupe.services.mock import MockASRService, default_mock_unified
@@ -108,6 +119,8 @@ SKIPPABLE_STEPS = frozenset(
         "detect_motion_effects",
         "unified_media_analysis",
         "analyze_camera_motion",
+        "build_review_timeline",
+        "build_shot_relations",
     }
 )
 
@@ -128,6 +141,8 @@ STEP_ORDER = (
     "detect_motion_effects",
     "unified_media_analysis",
     "analyze_camera_motion",
+    "build_review_timeline",
+    "build_shot_relations",
     "render_shot_html",
     "validate",
 )
@@ -171,6 +186,7 @@ class ShotAnalysisRequest:
     # 显式注入的服务实例（测试/嵌入用）；None 时按 mock_services/config 构造。
     asr_service: Any = None
     unified_service: Any = None
+    relation_service: Any = None
     # 05-04：显式跳过的可选步骤（写 skipped/unavailable 降级产物，不省略）。
     skip_steps: frozenset[str] = frozenset()
     # 05-04：调试模式——只保留前 N 个镜头（产物不满足完整范围契约，见 warning）。
@@ -984,7 +1000,7 @@ class ShotAnalysisPipeline:
                     "version": AUDIO_MUSIC_VERSION,
                 }
             )
-            run_artifact_step(
+            music_doc = run_artifact_step(
                 "detect_music",
                 ArtifactName.MUSIC_FLAGS,
                 music_fp,
@@ -1048,7 +1064,7 @@ class ShotAnalysisPipeline:
                     "version": AUDIO_ENERGY_VERSION,
                 }
             )
-            run_artifact_step(
+            energy_doc = run_artifact_step(
                 "detect_audio_energy",
                 ArtifactName.AUDIO_ENERGY,
                 energy_fp,
@@ -1147,13 +1163,91 @@ class ShotAnalysisPipeline:
                     "version": CAMERA_MOTION_VERSION,
                 }
             )
-            run_artifact_step(
+            camera_doc = run_artifact_step(
                 "analyze_camera_motion",
                 ArtifactName.CAMERA_MOTION,
                 camera_fp,
                 lambda: analyze_camera_motion(source, shots, media, config, pool=pool),
                 status_of=lambda d: (d.get("analysis") or {}).get("capabilityStatus"),
                 skip_fn=lambda: build_camera_motion_stub(shots, media, config),
+            )
+
+            # 12b. build_review_timeline（Phase 06-01：确定性帧索引 + 波形）----
+            rt_fp = fingerprint(
+                {
+                    "artifact": "review-timeline",
+                    "media": media_fp,
+                    "config": config_fingerprint(config, ["reviewTimeline"]),
+                    "version": REVIEW_TIMELINE_VERSION,
+                }
+            )
+            rt_doc = run_artifact_step(
+                "build_review_timeline",
+                ArtifactName.REVIEW_TIMELINE,
+                rt_fp,
+                lambda: build_review_timeline(source, media, config, pool=pool),
+                status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_review_timeline_stub(
+                    media, config, "用户显式跳过 build_review_timeline（--skip）"
+                ),
+            )
+
+            # 12c. build_shot_relations（Phase 06-03/04：pair 确定性 + 语义）----
+            relation_service = request.relation_service
+            if relation_service is None:
+                if request.mock_services:
+                    from memoloupe.services.mock import default_mock_shot_relation
+
+                    relation_service = default_mock_shot_relation()
+                else:
+                    relation_service = build_shot_relation_service(config)
+            rel_marker = _service_marker(
+                request.relation_service, request.mock_services, relation_service
+            )
+            rel_fp = fingerprint(
+                {
+                    "artifact": "shot-relations",
+                    "shots": shots_fp_eff,
+                    "audio-cuts": audio_cuts_fp,
+                    "asr": asr_fp,
+                    "audio-energy": energy_fp,
+                    "music-flags": music_fp,
+                    "camera-motion": camera_fp,
+                    "config": config_fingerprint(config, ["reviewTimeline"]),
+                    "service": rel_marker,
+                    "version": SHOT_RELATIONS_VERSION,
+                }
+            )
+
+            def produce_relations() -> dict:
+                return build_shot_relations(
+                    source,
+                    shots,
+                    config,
+                    out_dir,
+                    pool=pool,
+                    model_service=relation_service,
+                    source_revision_id=revision_id,
+                    energy_doc=energy_doc,
+                    music_doc=music_doc,
+                    camera_doc=camera_doc,
+                    asr_doc=asr_doc,
+                    audio_cuts_doc=audio_cuts_doc,
+                    review_timeline_doc=rt_doc,
+                )
+
+            run_artifact_step(
+                "build_shot_relations",
+                ArtifactName.SHOT_RELATIONS,
+                rel_fp,
+                produce_relations,
+                status_of=lambda d: d.get("status"),
+                skip_fn=lambda: build_shot_relations_stub(
+                    shots,
+                    config,
+                    revision_id,
+                    "用户显式跳过 build_shot_relations（--skip）",
+                ),
             )
 
             artifact_fps = {
@@ -1169,6 +1263,8 @@ class ShotAnalysisPipeline:
                 "motion-effects": motion_effects_fp,
                 "unified-media": unified_fp,
                 "camera-motion": camera_fp,
+                "review-timeline": rt_fp,
+                "shot-relations": rel_fp,
             }
 
             # 9. render_shot_html -----------------------------------------------

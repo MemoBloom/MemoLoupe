@@ -19,7 +19,7 @@ from memoloupe.core.errors import ContractError
 
 
 class ArtifactName(StrEnum):
-    """稳定数据契约中的 13 个 artifact 逻辑名。"""
+    """稳定数据契约中的 15 个 artifact 逻辑名。"""
 
     MEDIA = "media"
     SHOTS = "shots"
@@ -34,6 +34,8 @@ class ArtifactName(StrEnum):
     MOTION_EFFECTS = "motion-effects"
     STORY_BLOCKS = "story-blocks"
     STYLE_PROFILE = "style-profile"
+    REVIEW_TIMELINE = "review-timeline"
+    SHOT_RELATIONS = "shot-relations"
 
 
 # 仓库根/schemas（本文件位于 src/memoloupe/artifacts/schemas.py）

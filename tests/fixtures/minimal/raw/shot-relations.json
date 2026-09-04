@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "sourceRevisionID": "0123456789ab",
+  "analysis": {
+    "method": "adjacent-pair-deterministic-metrics",
+    "algorithmVersion": "shot-relations.v1",
+    "pairCount": 0,
+    "modelService": "none"
+  },
+  "relations": []
+}

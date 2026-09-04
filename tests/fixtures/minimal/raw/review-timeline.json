@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "sourceRevisionID": "0123456789ab",
+  "analysis": {
+    "method": "ffprobe-frame-pts-and-ffmpeg-audio-envelope",
+    "algorithmVersion": "review-timeline.v1",
+    "analyzedRange": {
+      "startMs": 0,
+      "endMs": 1000
+    }
+  },
+  "videoFrames": {
+    "status": "complete",
+    "timingMode": "pts-index",
+    "frameCount": 4,
+    "ptsMs": [
+      0,
+      333,
+      666,
+      999
+    ]
+  },
+  "waveform": {
+    "status": "unavailable",
+    "channelMode": "unavailable",
+    "reason": "夹具：无音轨"
+  }
+}

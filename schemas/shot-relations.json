@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memoloupe.local/schemas/shot-relations.json",
+  "title": "MemoLoupe shot-relations.json（Phase 06 相邻镜头关系）",
+  "description": "以相邻镜头对为主索引：确定性指标 + 可选模型语义 + 人工复核状态。pair 数量必须为 max(shotCount-1, 0)。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "status",
+    "sourceRevisionID",
+    "analysis",
+    "relations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["complete", "partial", "failed"] },
+    "sourceRevisionID": { "type": "string", "minLength": 1 },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["method", "algorithmVersion", "pairCount", "modelService"],
+      "properties": {
+        "method": { "type": "string" },
+        "algorithmVersion": { "type": "string" },
+        "pairCount": { "type": "integer", "minimum": 0 },
+        "modelService": {
+          "description": "语义层服务标记；none 表示未运行模型，语义保持显式 unknown。",
+          "type": "string"
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "pairID",
+          "leftShotID",
+          "rightShotID",
+          "boundaryMs",
+          "metrics",
+          "semantic",
+          "review"
+        ],
+        "properties": {
+          "pairID": {
+            "type": "string",
+            "pattern": "^SH\\d{4}--SH\\d{4}$"
+          },
+          "leftShotID": { "type": "string", "pattern": "^SH\\d{4}$" },
+          "rightShotID": { "type": "string", "pattern": "^SH\\d{4}$" },
+          "boundaryMs": { "type": "integer", "minimum": 0 },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "leftExitFrame": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["status"],
+                "properties": {
+                  "status": { "enum": ["complete", "unavailable", "failed"] },
+                  "fileRef": { "type": "string" },
+                  "timeMs": { "type": "integer", "minimum": 0 },
+                  "reason": { "type": "string" }
+                }
+              },
+              "rightEntryFrame": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["status"],
+                "properties": {
+                  "status": { "enum": ["complete", "unavailable", "failed"] },
+                  "fileRef": { "type": "string" },
+                  "timeMs": { "type": "integer", "minimum": 0 },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          },
+          "metrics": {
+            "description": "确定性指标：每项 value/status/evidenceRefs；不足者必须 unknown/unavailable，不得从缺失推断“没有变化”。",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "semantic": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "description": "unknown=模型未运行或该 pair 未评估；complete=字段齐备；failed=模型失败。",
+                "enum": ["unknown", "complete", "partial", "failed"]
+              },
+              "reason": { "type": "string" },
+              "fields": {
+                "description": "受控语义字段 → Observation 形状（state/value/confidence/source/evidenceRefs/verified）。",
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["needsReview", "reviewReasons"],
+            "properties": {
+              "needsReview": { "type": "boolean" },
+              "reviewReasons": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

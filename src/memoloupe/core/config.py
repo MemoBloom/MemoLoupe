@@ -99,6 +99,17 @@ DEFAULT_CONFIG: dict = {
     "motionEffects": {
         "sampleFps": 8.0,
     },
+    #: Phase 06 审片工作台：确定性帧索引与波形 envelope 参数。
+    #: 波形只存归一化 min/max envelope；bin 数超上限时自适应增大 bin 时长。
+    "reviewTimeline": {
+        "waveformSampleRate": 16000,
+        "waveformBinMs": 20,
+        "maxWaveformBins": 24000,
+        "waveformChunkSec": 120,
+        "framePtsTimeoutSec": 120.0,
+        "waveformTimeoutSec": 120.0,
+        "transitionFrameWidth": 320,
+    },
     "audioEnergy": {
         "sampleRate": 16000,
         "frameMs": 20,

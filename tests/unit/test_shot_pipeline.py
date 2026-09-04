@@ -160,6 +160,46 @@ def _fake_camera_motion(source, shots, media, config, *, pool=None) -> dict:
     return build_camera_motion_stub(shots, media, config)
 
 
+def _fake_review_timeline(source, media, config, *, pool=None) -> dict:
+    """确定性索引 fake：无 ffprobe 依赖的完整文档（单元夹具用）。"""
+    analyzed = media.get("analyzedRange", {"startMs": 0, "endMs": 1000})
+    start, end = int(analyzed["startMs"]), int(analyzed["endMs"])
+    span = max(end - start, 1)
+    pts = sorted({start, start + span // 2, end - 1})
+    return {
+        "schemaVersion": 1,
+        "status": "complete",
+        "sourceRevisionID": media.get("source", {}).get("revisionID", ""),
+        "analysis": {
+            "method": "fake",
+            "algorithmVersion": "review-timeline.v1",
+            "analyzedRange": {"startMs": start, "endMs": end},
+        },
+        "videoFrames": {
+            "status": "complete",
+            "timingMode": "pts-index",
+            "frameCount": len(pts),
+            "ptsMs": pts,
+        },
+        "waveform": {
+            "status": "unavailable",
+            "channelMode": "unavailable",
+            "reason": "fake：无音轨",
+        },
+    }
+
+
+def _fake_shot_relations(source, shots, config, out_dir, **kwargs) -> dict:
+    """切点关系 fake：N-1 个 pair、确定性指标落 unknown（单元夹具用）。"""
+    from memoloupe.analysis.shot_relations import build_shot_relations_stub
+
+    doc = build_shot_relations_stub(
+        shots, config, kwargs.get("source_revision_id", ""), "fake"
+    )
+    doc["status"] = "complete"
+    return doc
+
+
 def _fake_quality(source, shots, has_audio, config, *, pool) -> dict:
     return {
         "status": "complete",
@@ -257,6 +297,16 @@ def patched(monkeypatch):
         "analyze_camera_motion",
         counted("analyze_camera_motion", _fake_camera_motion),
     )
+    monkeypatch.setattr(
+        shot_pipeline,
+        "build_review_timeline",
+        counted("build_review_timeline", _fake_review_timeline),
+    )
+    monkeypatch.setattr(
+        shot_pipeline,
+        "build_shot_relations",
+        counted("build_shot_relations", _fake_shot_relations),
+    )
     monkeypatch.setattr(shot_pipeline, "render_shot_html", _fake_render)
     monkeypatch.setattr(shot_pipeline, "validate_output_dir", lambda root, *, strict=False: [])
     monkeypatch.setattr(shot_pipeline, "validate_html", lambda path, *, root=None, strict=False: [])
@@ -299,6 +349,8 @@ class TestHappyPath:
             "detect_motion_effects",
             "unified_media_analysis",
             "analyze_camera_motion",
+            "build_review_timeline",
+            "build_shot_relations",
             "render_shot_html",
             "validate",
         ]
@@ -313,6 +365,8 @@ class TestHappyPath:
                 "detect_audio_energy",
                 "detect_quality",
                 "detect_motion_effects",
+                "build_review_timeline",
+                "build_shot_relations",
                 "render_shot_html",
                 "validate",
             )
@@ -323,13 +377,16 @@ class TestHappyPath:
         assert _step(report, "detect_music").status == "skipped"
         assert _step(report, "unified_media_analysis").status == "skipped"
         assert _step(report, "analyze_camera_motion").status == "unavailable"
+        # Phase 06：确定性审片索引与切点关系默认运行
+        assert _step(report, "build_review_timeline").status == "complete"
+        assert _step(report, "build_shot_relations").status == "complete"
         # 所有步骤计时非负
         assert all(s.elapsed_ms >= 0 for s in report.steps)
         # 产物落盘（raw/*.json + HTML + manifest）
         for artifact in (
             "media", "shots", "frame-evidence", "audio-energy", "quality-flags",
             "asr", "music-flags", "audio-cuts", "camera-motion", "unified-media",
-            "motion-effects",
+            "motion-effects", "review-timeline", "shot-relations",
         ):
             assert (out_dir / "raw" / f"{artifact}.json").is_file(), artifact
             assert f"raw/{artifact}.json" in report.artifacts

@@ -55,6 +55,8 @@ RAW_FILES: tuple[str, ...] = (
     "camera-motion",
     "motion-effects",
     "story-blocks",
+    "review-timeline",
+    "shot-relations",
 )
 
 #: 非 value 状态的固定可见文案（docs/04 §3.3：absent 与 absent-claimed 必须不同）。
@@ -1215,6 +1217,179 @@ def _story_timeline_band_html(
     return "".join(parts)
 
 
+_METRIC_LABELS: dict[str, str] = {
+    "lumaDelta": "亮度差",
+    "audioLevelDeltaDb": "响度差",
+    "cameraMotionChange": "运动变化",
+    "audioCutAligned": "音频切点对齐",
+    "speechGapMs": "语音停顿",
+    "speechSpansBoundary": "对白跨切",
+    "musicContinuity": "音乐连续性",
+}
+
+
+def _review_workbench_view(raws: dict[str, dict | None]) -> dict:
+    """构建审片工作台视图模型（仅紧凑必需数据，不嵌入视频/PCM/模型全文）。"""
+    rt = raws.get("review-timeline") or {}
+    rel = raws.get("shot-relations") or {}
+    media = raws.get("media") or {}
+    source = media.get("source") or {}
+    analyzed = (rt.get("analysis") or {}).get("analyzedRange") or media.get(
+        "analyzedRange"
+    ) or {"startMs": 0, "endMs": 0}
+
+    frames = rt.get("videoFrames") or {}
+    if frames.get("timingMode") == "pts-index" and isinstance(frames.get("ptsMs"), list):
+        frame_source: dict = {
+            "mode": "pts",
+            "frameCount": frames.get("frameCount", len(frames["ptsMs"])),
+            "ptsMs": frames["ptsMs"],
+        }
+    else:
+        fps = source.get("frameRate")
+        frame_source = {
+            "mode": "approx",
+            "frameRate": fps if isinstance(fps, (int, float)) else None,
+            "reason": frames.get("reason") or "帧索引不可用，按平均帧率近似",
+        }
+
+    waveform = rt.get("waveform") or {}
+    wave_view: dict | None = None
+    if waveform.get("status") == "complete" and isinstance(waveform.get("peaks"), list):
+        wave_view = {
+            "binDurationMs": waveform.get("binDurationMs"),
+            "peaks": waveform["peaks"],
+        }
+    else:
+        wave_view = None
+
+    transitions: list[dict] = []
+    for r in rel.get("relations", []) or []:
+        if not isinstance(r, dict):
+            continue
+        metrics_view: dict[str, dict] = {}
+        for key, label in _METRIC_LABELS.items():
+            metric = (r.get("metrics") or {}).get(key)
+            if not isinstance(metric, dict):
+                continue
+            metrics_view[key] = {
+                "label": label,
+                "value": metric.get("value"),
+                "status": metric.get("status"),
+                "unit": metric.get("unit"),
+            }
+        semantic = r.get("semantic") or {}
+        fields = semantic.get("fields") or {}
+        transitions.append(
+            {
+                "pairID": r.get("pairID"),
+                "boundaryMs": r.get("boundaryMs"),
+                "leftShotID": r.get("leftShotID"),
+                "rightShotID": r.get("rightShotID"),
+                "needsReview": bool((r.get("review") or {}).get("needsReview")),
+                "reviewReasons": (r.get("review") or {}).get("reviewReasons", []),
+                "leftFrame": ((r.get("evidence") or {}).get("leftExitFrame") or {}).get("fileRef"),
+                "rightFrame": ((r.get("evidence") or {}).get("rightEntryFrame") or {}).get("fileRef"),
+                "metrics": metrics_view,
+                "semanticStatus": semantic.get("status", "unknown"),
+                "semanticReason": semantic.get("reason"),
+                "semanticFields": {
+                    "actionContinuity": fields.get("actionContinuity"),
+                    "eyelineContinuity": fields.get("eyelineContinuity"),
+                    "screenDirection": fields.get("screenDirection"),
+                    "spatialTemporalRelation": fields.get("spatialTemporalRelation"),
+                    "editMotivations": fields.get("editMotivations"),
+                    "relationSummary": fields.get("relationSummary"),
+                },
+            }
+        )
+
+    payload = {
+        "analyzedRange": analyzed,
+        "reviewTimelineStatus": rt.get("status", "unavailable"),
+        "reviewTimelineReason": (
+            ((rt.get("videoFrames") or {}).get("reason"))
+            if (rt.get("videoFrames") or {}).get("reason")
+            else (rt.get("waveform") or {}).get("reason")
+        ),
+        "frameSource": frame_source,
+        "waveform": wave_view,
+        "transitions": transitions,
+    }
+    return payload
+
+
+def _review_workbench_json(shots: list[dict], raws: dict[str, dict | None]) -> str:
+    """审片视图模型 → 可嵌入内联 script 的 JSON 字面量。"""
+    return _json_for_script(_review_workbench_view(raws))
+
+
+def _transition_band_html(review_workbench: dict, total_duration: int) -> str:
+    """切点关系轨道：按 boundaryMs 定位的标记按钮。"""
+    transitions = review_workbench["transitions"]
+    count = len(transitions)
+    review_count = sum(1 for t in transitions if t["needsReview"])
+    parts = [
+        '<div class="transition-band" aria-label="切点关系轨道">',
+        '<div class="timeline-lane-label"><span>切点</span><small>'
+        f"{count} 对 · {review_count} 需复核</small></div>",
+        '<div class="timeline-track transition-track" role="list">',
+    ]
+    if not transitions:
+        parts.append(
+            '<span class="band-status">切点关系不可用：shot-relations 未生成或为空</span>'
+        )
+    for t in transitions:
+        boundary = t.get("boundaryMs")
+        if not isinstance(boundary, int) or total_duration <= 0:
+            continue
+        left_pct = min(boundary / total_duration * 100, 100.0)
+        classes = ["transition-marker"]
+        if t["needsReview"]:
+            classes.append("is-review")
+        reasons = "；".join(t["reviewReasons"])
+        title_bits = [
+            str(t["pairID"]),
+            f"切点 {_timecode(boundary)}",
+        ]
+        if reasons:
+            title_bits.append("复核：" + reasons)
+        parts.append(
+            f'<button type="button" class="{" ".join(classes)}" role="listitem" '
+            f'style="--transition-left: {left_pct:.3f}%" '
+            f'data-pair-id="{html.escape(str(t["pairID"]))}" '
+            f'data-boundary-ms="{boundary}" '
+            f'title="{html.escape(" · ".join(title_bits))}" '
+            f'aria-label="查看切点 {html.escape(str(t["pairID"]))} 关系">'
+            f'<span aria-hidden="true"></span></button>'
+        )
+    parts.append("</div></div>")
+    return "".join(parts)
+
+
+def _waveform_band_html(review_workbench: dict) -> str:
+    """波形轨道：canvas 由浏览器侧从嵌入 envelope 绘制。"""
+    wave = review_workbench.get("waveform")
+    parts = [
+        '<div class="waveform-band" aria-label="音频波形轨道">',
+        '<div class="timeline-lane-label"><span>波形</span><small>'
+        + (
+            f"{wave['binDurationMs']}ms/bin"
+            if wave
+            else "不可用"
+        )
+        + "</small></div>",
+    ]
+    if wave:
+        parts.append('<canvas id="waveform-canvas" class="waveform-canvas" height="40" role="img" '
+                     'aria-label="音频波形包络图"></canvas>')
+    else:
+        reason = review_workbench.get("reviewTimelineReason") or "波形索引不可用"
+        parts.append(f'<span class="band-status">波形不可用：{html.escape(str(reason))}</span>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def _timeline_html(
     shots: list[dict],
     review_reasons_by_shot: dict[str, list[str]],
@@ -1226,6 +1401,7 @@ def _timeline_html(
     total_duration = sum(_shot_duration_ms(shot) for shot in shots) or 1
     music_states = _music_by_shot(raws)
     motion_context = _motion_context_by_shot(raws, shots)
+    review_workbench = _review_workbench_view(raws)
     parts = [
         '<section id="shot-timeline" class="timeline-card card" aria-label="镜头时间线">',
         '<div class="card-header"><div>',
@@ -1237,6 +1413,8 @@ def _timeline_html(
         '</div><span class="badge badge-outline">按时长</span></div>',
         _story_timeline_band_html(raws, shots, out_dir, story_overlay),
         _motion_timeline_band_html(raws, shots, out_dir),
+        _transition_band_html(review_workbench, total_duration),
+        _waveform_band_html(review_workbench),
         '<div class="shot-timeline-band" aria-label="镜头轨道">',
         '<div class="timeline-lane-label"><span>镜头</span><small>'
         f"{len(shots)} 个切分"
@@ -1817,6 +1995,7 @@ def render_shot_html(
             "null" if full_video_src is None else _js_string(full_video_src)
         ),
         "__REVIEW_REASONS_JSON__": _json_for_script(review_reasons_by_shot),
+        "__REVIEW_WORKBENCH_JSON__": _review_workbench_json(shots, raws),
         "__SHOT_INSPECTOR_JSON__": _shot_inspector_json(
             shots,
             observations_by_shot,

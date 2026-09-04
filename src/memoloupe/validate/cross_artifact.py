@@ -99,6 +99,10 @@ def _check_revision_consistency(
          lambda d: d.get("request", {}).get("sourceRevisionID")),
         (ArtifactName.STYLE_PROFILE.value, "$.source.sourceRevision",
          lambda d: d.get("source", {}).get("sourceRevision")),
+        (ArtifactName.REVIEW_TIMELINE.value, "$.sourceRevisionID",
+         lambda d: d.get("sourceRevisionID")),
+        (ArtifactName.SHOT_RELATIONS.value, "$.sourceRevisionID",
+         lambda d: d.get("sourceRevisionID")),
     ]
     for artifact, path, getter in links:
         doc = docs.get(artifact)
@@ -844,6 +848,184 @@ def _check_style_profile(docs: dict[str, dict], issues: list[ValidationIssue]) -
                 ))
 
 
+def _check_review_timeline(
+    docs: dict[str, dict], issues: list[ValidationIssue]
+) -> None:
+    """review-timeline.json：PTS 单调性/范围、波形 envelope 一致性。"""
+    doc = docs.get(ArtifactName.REVIEW_TIMELINE.value)
+    if not doc:
+        return
+    analyzed = (doc.get("analysis") or {}).get("analyzedRange") or {}
+    start_ms = analyzed.get("startMs")
+    end_ms = analyzed.get("endMs")
+
+    frames = doc.get("videoFrames") or {}
+    pts = frames.get("ptsMs")
+    if frames.get("timingMode") == "pts-index":
+        if not isinstance(pts, list) or not pts:
+            issues.append(_issue(
+                ArtifactName.REVIEW_TIMELINE.value, "$.videoFrames.ptsMs",
+                "timingMode=pts-index 时 ptsMs 必须为非空数组",
+                expected="非空数组", actual=type(pts).__name__,
+            ))
+        else:
+            prev: int | None = None
+            for i, ms in enumerate(pts):
+                path = f"$.videoFrames.ptsMs[{i}]"
+                if not isinstance(ms, int) or ms < 0:
+                    issues.append(_issue(
+                        ArtifactName.REVIEW_TIMELINE.value, path,
+                        "帧 PTS 必须是非负整数毫秒",
+                        expected="int >= 0", actual=repr(ms),
+                    ))
+                    continue
+                if prev is not None and ms < prev:
+                    issues.append(_issue(
+                        ArtifactName.REVIEW_TIMELINE.value, path,
+                        "ptsMs 必须单调不减（真实 PTS 排序后仍不得逆序）",
+                        expected=f">= {prev}", actual=str(ms),
+                    ))
+                prev = ms
+                if isinstance(start_ms, int) and isinstance(end_ms, int) \
+                        and not (start_ms <= ms < end_ms):
+                    issues.append(_issue(
+                        ArtifactName.REVIEW_TIMELINE.value, path,
+                        "帧 PTS 超出 analyzedRange [startMs, endMs)",
+                        expected=f"[{start_ms}, {end_ms})", actual=str(ms),
+                    ))
+            count = frames.get("frameCount")
+            if isinstance(count, int) and count != len(pts):
+                issues.append(_issue(
+                    ArtifactName.REVIEW_TIMELINE.value, "$.videoFrames.frameCount",
+                    "frameCount 与 ptsMs 长度不一致",
+                    expected=str(len(pts)), actual=str(count),
+                ))
+
+    waveform = doc.get("waveform") or {}
+    peaks = waveform.get("peaks")
+    if waveform.get("status") == "complete":
+        if not isinstance(peaks, list) or not peaks:
+            issues.append(_issue(
+                ArtifactName.REVIEW_TIMELINE.value, "$.waveform.peaks",
+                "waveform.status=complete 时 peaks 必须为非空数组",
+                expected="非空数组", actual=type(peaks).__name__,
+            ))
+        else:
+            bin_count = waveform.get("binCount")
+            if isinstance(bin_count, int) and bin_count != len(peaks):
+                issues.append(_issue(
+                    ArtifactName.REVIEW_TIMELINE.value, "$.waveform.binCount",
+                    "binCount 与 peaks 长度不一致",
+                    expected=str(len(peaks)), actual=str(bin_count),
+                ))
+            if not isinstance(waveform.get("binDurationMs"), int) \
+                    or waveform.get("binDurationMs", 0) < 1:
+                issues.append(_issue(
+                    ArtifactName.REVIEW_TIMELINE.value, "$.waveform.binDurationMs",
+                    "waveform.status=complete 时 binDurationMs 必须为正整数",
+                    expected="int >= 1", actual=repr(waveform.get("binDurationMs")),
+                ))
+            for i, pair in enumerate(peaks):
+                if (
+                    not isinstance(pair, list)
+                    or len(pair) != 2
+                    or not all(isinstance(v, (int, float)) for v in pair)
+                    or pair[0] > pair[1]
+                ):
+                    issues.append(_issue(
+                        ArtifactName.REVIEW_TIMELINE.value,
+                        f"$.waveform.peaks[{i}]",
+                        "波形 bin 必须为 [min, max] 且 min <= max",
+                        expected="[min, max], min<=max", actual=repr(pair),
+                    ))
+                    break  # 同类错误只报首个，避免刷屏
+
+
+def _check_shot_relations(
+    docs: dict[str, dict], issues: list[ValidationIssue]
+) -> None:
+    """shot-relations.json：pair 集合/顺序/边界与证据引用完备性。"""
+    doc = docs.get(ArtifactName.SHOT_RELATIONS.value)
+    shots_doc = docs.get(ArtifactName.SHOTS.value)
+    if not doc:
+        return
+    relations = doc.get("relations")
+    if not isinstance(relations, list):
+        return
+    shots = shots_doc.get("shots", []) if isinstance(shots_doc, dict) else []
+    shot_ids = [str(s.get("shotID")) for s in shots if isinstance(s, dict)]
+    expected_pairs = [
+        f"{shot_ids[i]}--{shot_ids[i + 1]}" for i in range(len(shot_ids) - 1)
+    ]
+
+    actual_pairs = [str(r.get("pairID")) for r in relations]
+    if doc.get("status") in ("complete", "partial") and actual_pairs != expected_pairs:
+        issues.append(_issue(
+            ArtifactName.SHOT_RELATIONS.value, "$.relations",
+            "pair 集合/顺序必须严格等于 shots.json 相邻对（N-1 个）",
+            expected=expected_pairs[:3].__str__() + f"... 共{len(expected_pairs)}",
+            actual=actual_pairs[:3].__str__() + f"... 共{len(actual_pairs)}",
+        ))
+
+    final_by_id = {
+        str(s.get("shotID")): (s.get("finalStartMs"), s.get("finalEndMs"))
+        for s in shots if isinstance(s, dict)
+    }
+    required_metrics = (
+        "lumaDelta",
+        "audioLevelDeltaDb",
+        "cameraMotionChange",
+        "audioCutAligned",
+        "speechGapMs",
+        "speechSpansBoundary",
+        "musicContinuity",
+    )
+    for i, rel in enumerate(relations):
+        if not isinstance(rel, dict):
+            continue
+        path_base = f"$.relations[{i}]"
+        left_id = str(rel.get("leftShotID", ""))
+        boundary = rel.get("boundaryMs")
+        final_end = final_by_id.get(left_id, (None, None))[1]
+        if isinstance(boundary, int) and isinstance(final_end, int) \
+                and boundary != final_end:
+            issues.append(_issue(
+                ArtifactName.SHOT_RELATIONS.value, path_base + ".boundaryMs",
+                "boundaryMs 必须等于左镜头 finalEndMs",
+                expected=str(final_end), actual=str(boundary),
+            ))
+        metrics = rel.get("metrics")
+        if doc.get("status") in ("complete", "partial"):
+            if not isinstance(metrics, dict):
+                issues.append(_issue(
+                    ArtifactName.SHOT_RELATIONS.value, path_base + ".metrics",
+                    "完整/部分状态下 metrics 必须存在",
+                    expected="object", actual=type(metrics).__name__,
+                ))
+                continue
+            for key in required_metrics:
+                if key not in metrics:
+                    issues.append(_issue(
+                        ArtifactName.SHOT_RELATIONS.value,
+                        path_base + f".metrics.{key}",
+                        "确定性指标缺失（数据不足必须落 unknown/unavailable 而非省略）",
+                        expected="metric 存在", actual="missing",
+                    ))
+            for key, metric in metrics.items():
+                if not isinstance(metric, dict):
+                    continue
+                refs = metric.get("evidenceRefs")
+                if metric.get("status") == "value" and (
+                    not isinstance(refs, list) or not refs
+                ):
+                    issues.append(_issue(
+                        ArtifactName.SHOT_RELATIONS.value,
+                        path_base + f".metrics.{key}.evidenceRefs",
+                        "status=value 的指标必须至少带一个 evidenceRef",
+                        expected="非空 evidenceRefs", actual=repr(refs),
+                    ))
+
+
 def _check_evidence_refs(
     docs: dict[str, dict], root: Path, issues: list[ValidationIssue]
 ) -> None:
@@ -901,9 +1083,18 @@ def _check_single_ref(
         ))
         return
     if not (root / parsed.file_path).is_file():
+        # 指向“整体缺失的 artifact”的引用不升级为 error：该 artifact 缺失
+        # 已由入口报 warning（缺失 ≠ 无效，降级运行时引用可整体悬空）。
+        is_missing_artifact = (
+            parsed.file_path in set(ARTIFACT_PATHS.values())
+            and parsed.file_path not in path_to_doc
+        )
         issues.append(_issue(
-            artifact, path, "evidenceRef 指向的文件不存在",
+            artifact, path,
+            "evidenceRef 指向的 artifact 缺失" if is_missing_artifact
+            else "evidenceRef 指向的文件不存在",
             expected="存在的相对路径", actual=ref,
+            severity="warning" if is_missing_artifact else "error",
         ))
         return
     if parsed.json_pointer is not None:
@@ -962,5 +1153,7 @@ def validate_output_dir(root: Path, *, strict: bool = False) -> list[ValidationI
     _check_unified_media(docs, issues)
     _check_story_blocks(docs, issues)
     _check_style_profile(docs, issues)
+    _check_review_timeline(docs, issues)
+    _check_shot_relations(docs, issues)
     _check_evidence_refs(docs, root, issues)
     return issues

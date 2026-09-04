@@ -125,15 +125,17 @@ class TestSchemaRegistry:
         assert SCHEMA_DIR.is_dir()
         assert (SCHEMA_DIR / "media.json").is_file()
 
-    def test_all_twelve_names_load(self) -> None:
-        # 命名需保持：固定 12 个 Phase 1/2 artifact + motion-effects（05-07）后
-        # 共 13 个；此处不断言具体数量，而是要求每个枚举都有可加载的 schema。
-        assert len(list(ArtifactName)) == 13
+    def test_all_names_load(self) -> None:
+        # 命名需保持：Phase 06 新增 review-timeline / shot-relations 后共 15 个。
+        # 此处不断言具体数量语义，而是要求每个枚举都有可加载的 schema。
+        assert len(list(ArtifactName)) == 15
         for name in ArtifactName:
             schema = load_schema(name)
             assert isinstance(schema, dict)
             assert schema_path(name).is_file()
         assert ArtifactName.MOTION_EFFECTS in set(ArtifactName)
+        assert ArtifactName.REVIEW_TIMELINE in set(ArtifactName)
+        assert ArtifactName.SHOT_RELATIONS in set(ArtifactName)
 
     def test_load_schema_is_cached(self) -> None:
         assert load_schema(ArtifactName.MEDIA) is load_schema(ArtifactName.MEDIA)

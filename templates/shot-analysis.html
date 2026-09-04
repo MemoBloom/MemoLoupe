@@ -434,6 +434,109 @@
   .timeline-lane-label small {
     line-height: 1.35;
   }
+  .transition-band,
+  .waveform-band {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 18px 12px;
+  }
+  .transition-track {
+    position: relative;
+    min-height: 36px;
+    border-radius: 8px;
+    background: var(--secondary);
+  }
+  .transition-marker {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    left: var(--transition-left, 0%);
+    width: 12px;
+    margin-left: -6px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--card);
+    cursor: pointer;
+  }
+  .transition-marker span {
+    display: block;
+    width: 2px;
+    height: 100%;
+    margin: 0 auto;
+    border-radius: 1px;
+    background: var(--muted-foreground);
+  }
+  .transition-marker:hover,
+  .transition-marker:focus-visible { border-color: var(--ring); }
+  .transition-marker.is-review { border-color: var(--warning-border); }
+  .transition-marker.is-review span { background: var(--warning); }
+  .band-status {
+    display: inline-block;
+    padding: 9px 2px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+  .waveform-canvas {
+    display: block;
+    width: 100%;
+    border-radius: 8px;
+    background: var(--secondary);
+  }
+  .player-timecode {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .kbd-help {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .kbd-help kbd {
+    display: inline-block;
+    min-width: 20px;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--card);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    text-align: center;
+  }
+  .pair-frame-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 10px 0;
+  }
+  .pair-frame-grid figure { margin: 0; }
+  .pair-frame-grid img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #000;
+  }
+  .pair-frame-grid figcaption {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+    text-align: center;
+  }
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 12px;
+  }
+  .metric-row dt { color: var(--muted-foreground); }
+  .metric-row dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .motion-lane-legend { display: block; margin-top: 2px; }
   .story-segment-track {
     display: flex;
@@ -1305,9 +1408,16 @@
         <div class="player-footer">
           <div class="player-actions">
             <button type="button" id="play-full-video">浏览完整视频</button>
-            <span>单镜头会按校对后的起止时间播放</span>
+            <span id="player-timecode" class="player-timecode" role="status" aria-live="off">--:--:--.---</span>
+            <span id="frame-precision" class="badge badge-outline">帧精度待确认</span>
+            <button type="button" id="toggle-kbd-help" aria-expanded="false" aria-controls="kbd-help">快捷键 ?</button>
           </div>
           <span>支持单镜头循环</span>
+        </div>
+        <div id="kbd-help" class="kbd-help" hidden>
+          <kbd>←</kbd>/<kbd>→</kbd> 逐帧 · <kbd>Shift</kbd>+<kbd>←</kbd>/<kbd>→</kbd> 跳镜头 ·
+          <kbd>K</kbd>/<kbd>Space</kbd> 暂停/播放 · <kbd>J</kbd>/<kbd>L</kbd> 反向/正向变速 ·
+          <kbd>I</kbd>/<kbd>O</kbd> 临时区间（不修改边界） · <kbd>T</kbd> 复制时间码 · <kbd>Esc</kbd> 清除区间
         </div>
       </section>
       <div class="side-stack">
@@ -1350,6 +1460,7 @@
   var DOCUMENT_TYPE = "shotAnalysis";
   var SOURCE_REVISION_ID = __SOURCE_REVISION_JS__;
   var REVIEW_REASONS = __REVIEW_REASONS_JSON__;
+  var REVIEW_WORKBENCH = __REVIEW_WORKBENCH_JSON__;
   var FULL_VIDEO_SRC = __FULL_VIDEO_SRC_JS__;
   var SHOT_INSPECTOR = __SHOT_INSPECTOR_JSON__;
 
@@ -1833,6 +1944,7 @@
 
   function renderShotInspector(shotId) {
     var shot = shotsById[shotId] || (SHOT_INSPECTOR.shots || [])[0];
+    lastInspectorShotId = shot ? shot.shotID : null;
     drawer.textContent = "";
     if (!shot) {
       appendText(drawer, "p", "", "暂无可显示的镜头详情。");
@@ -2002,6 +2114,307 @@
     });
   }
   bindShotJump(".shot-jump");
+
+  // ---- Phase 06 审片工作台：波形 / 切点关系 / 快捷键 -----------------------
+  var WB = REVIEW_WORKBENCH || {};
+  var transitionsById = {};
+  (WB.transitions || []).forEach(function (t) { transitionsById[t.pairID] = t; });
+  var frameSource = WB.frameSource || { mode: "approx" };
+  var ptsMs = frameSource.mode === "pts" && frameSource.ptsMs ? frameSource.ptsMs : null;
+  var timecodeEl = document.getElementById("player-timecode");
+  var precisionEl = document.getElementById("frame-precision");
+  var ioStartMs = null;
+  var ioEndMs = null;
+  var lastInspectorShotId = null;
+
+  function pad(n, w) { var s = String(n); while (s.length < w) { s = "0" + s; } return s; }
+  function formatTimecode(ms) {
+    if (typeof ms !== "number" || ms < 0 || !isFinite(ms)) { return "--:--:--.---"; }
+    return pad(Math.floor(ms / 3600000), 2) + ":" + pad(Math.floor(ms % 3600000 / 60000), 2) + ":"
+      + pad(Math.floor(ms % 60000 / 1000), 2) + "." + pad(Math.floor(ms % 1000), 3);
+  }
+  function isFullVideo() { return FULL_VIDEO_SRC && player.getAttribute("src") === FULL_VIDEO_SRC; }
+  function sourceNowMs() {
+    var clipMs = Math.round(player.currentTime * 1000);
+    return isFullVideo() ? clipMs : (currentStartMs || 0) + clipMs;
+  }
+  function updatePrecisionBadge() {
+    if (!precisionEl) { return; }
+    if (frameSource.mode === "pts") {
+      precisionEl.textContent = "PTS 索引 · " + frameSource.frameCount + " 帧";
+    } else {
+      precisionEl.textContent = "按平均帧率近似";
+      precisionEl.title = frameSource.reason || "无可靠逐帧 PTS 索引";
+    }
+  }
+  updatePrecisionBadge();
+
+  function frameIndexFor(ms) {
+    if (!ptsMs || !ptsMs.length) { return -1; }
+    var lo = 0, hi = ptsMs.length - 1, ans = 0;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (ptsMs[mid] <= ms) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return ans;
+  }
+  function stepFrame(dir) {
+    var ms = sourceNowMs();
+    var target;
+    if (ptsMs && ptsMs.length) {
+      var idx = frameIndexFor(ms) + dir;
+      idx = Math.max(0, Math.min(ptsMs.length - 1, idx));
+      target = ptsMs[idx];
+    } else {
+      var fps = frameSource.frameRate || 30;
+      target = Math.max(0, ms + dir * (1000 / fps));
+    }
+    seekFullVideo(target);
+    updateTimecode(target);
+  }
+  function seekFullVideo(ms) {
+    if (!FULL_VIDEO_SRC) { return; }
+    if (!isFullVideo()) {
+      currentStartMs = 0; currentEndMs = null;
+      player.setAttribute("src", FULL_VIDEO_SRC);
+    }
+    player.pause();
+    player.currentTime = Math.max(0, ms) / 1000;
+  }
+  function updateTimecode(forcedMs) {
+    if (!timecodeEl) { return; }
+    var ms = typeof forcedMs === "number" ? forcedMs : sourceNowMs();
+    var frameText = "";
+    if (ptsMs && ptsMs.length) {
+      frameText = " · 帧 " + (frameIndexFor(ms) + 1) + "/" + ptsMs.length;
+    }
+    var ioText = (ioStartMs !== null && ioEndMs !== null) ? " · I/O" : "";
+    timecodeEl.textContent = formatTimecode(ms) + frameText + ioText;
+  }
+  player.addEventListener("timeupdate", function () { updateTimecode(); });
+  player.addEventListener("seeked", function () { updateTimecode(); });
+
+  // 波形绘制：从嵌入 envelope 画 min/max 柱，不加载音频数据。
+  function drawWaveform() {
+    var canvas = document.getElementById("waveform-canvas");
+    if (!canvas || !WB.waveform || !WB.waveform.peaks) { return; }
+    var peaks = WB.waveform.peaks;
+    var dpr = window.devicePixelRatio || 1;
+    var cssWidth = canvas.clientWidth || canvas.parentNode.clientWidth;
+    var cssHeight = 40;
+    canvas.width = Math.max(1, Math.round(cssWidth * dpr));
+    canvas.height = Math.round(cssHeight * dpr);
+    var ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    var style = getComputedStyle(document.documentElement);
+    ctx.fillStyle = (style.getPropertyValue("--brand") || "#a57100").trim();
+    var mid = cssHeight / 2;
+    var step = cssWidth / peaks.length;
+    var barWidth = Math.max(step * 0.7, 0.5);
+    for (var i = 0; i < peaks.length; i++) {
+      var bin = peaks[i];
+      var yMax = mid - (bin[1] || 0) * (mid - 2);
+      var yMin = mid - (bin[0] || 0) * (mid - 2);
+      ctx.fillRect(i * step + (step - barWidth) / 2, yMin, barWidth, Math.max(yMax - yMin, 1));
+    }
+  }
+  if (WB.waveform) {
+    drawWaveform();
+    var resizeTimer = null;
+    window.addEventListener("resize", function () {
+      if (resizeTimer) { clearTimeout(resizeTimer); }
+      resizeTimer = setTimeout(drawWaveform, 150);
+    });
+  }
+
+  // 切点检查器：A/B 边界帧 + 指标 + 语义 + 复核原因。
+  function metricDisplay(metric) {
+    if (!metric) { return "未生成"; }
+    if (metric.status === "unavailable") { return "不可用"; }
+    if (metric.status !== "value" || metric.value === null || metric.value === undefined) { return "待确认"; }
+    var v = metric.value;
+    if (typeof v === "boolean") { return v ? "是" : "否"; }
+    if (typeof v === "number") { return String(Math.round(v * 1000) / 1000) + (metric.unit ? " " + metric.unit : ""); }
+    if (typeof v === "object") {
+      if (v.left !== undefined) { return (v.left || "?") + " → " + (v.right || "?"); }
+      return JSON.stringify(v);
+    }
+    return String(v);
+  }
+  function renderPairInspector(pairId) {
+    var pair = transitionsById[pairId];
+    drawer.textContent = "";
+    if (!pair) { appendText(drawer, "p", "", "未找到切点数据。"); return; }
+    var back = document.createElement("button");
+    back.type = "button";
+    back.textContent = "← 返回镜头详情";
+    back.addEventListener("click", function () {
+      if (lastInspectorShotId) { renderShotInspector(lastInspectorShotId); }
+    });
+    drawer.appendChild(back);
+    var titleRow = document.createElement("div");
+    titleRow.className = "inspector-title-row";
+    titleRow.style.marginTop = "10px";
+    appendText(titleRow, "h3", "inspector-shot-id", pair.pairID);
+    appendBadge(titleRow, pair.needsReview ? "需复核" : "正常", pair.needsReview ? "badge-warning" : "badge-success");
+    drawer.appendChild(titleRow);
+    appendText(drawer, "p", "inspector-timecode",
+      "切点 " + formatTimecode(pair.boundaryMs) + " · " + pair.leftShotID + " → " + pair.rightShotID);
+    (pair.reviewReasons || []).forEach(function (reason) {
+      appendBadge(drawer, reason, "badge-warning");
+    });
+    var grid = document.createElement("div");
+    grid.className = "pair-frame-grid";
+    [["左镜头末帧", pair.leftFrame], ["右镜头首帧", pair.rightFrame]].forEach(function (item) {
+      var fig = document.createElement("figure");
+      if (item[1]) {
+        var img = document.createElement("img");
+        img.src = item[1];
+        img.alt = pair.pairID + " " + item[0];
+        fig.appendChild(img);
+      } else {
+        appendText(fig, "div", "band-status", item[0] + "不可用");
+      }
+      appendText(fig, "figcaption", "", item[0]);
+      grid.appendChild(fig);
+    });
+    drawer.appendChild(grid);
+    appendText(drawer, "h4", "", "确定性指标");
+    var dl = document.createElement("dl");
+    Object.keys(pair.metrics || {}).forEach(function (key) {
+      var metric = pair.metrics[key];
+      var row = document.createElement("div");
+      row.className = "metric-row";
+      appendText(row, "dt", "", metric.label || key);
+      appendText(row, "dd", "", metricDisplay(metric));
+      dl.appendChild(row);
+    });
+    drawer.appendChild(dl);
+    appendText(drawer, "h4", "", "语义判断（模型）");
+    var semanticStatus = pair.semanticStatus || "unknown";
+    if (semanticStatus === "complete" && pair.semanticFields) {
+      var fieldLabels = {
+        actionContinuity: "动作承接", eyelineContinuity: "视线承接",
+        screenDirection: "屏幕方向", spatialTemporalRelation: "时空关系",
+        editMotivations: "剪辑动机", relationSummary: "摘要"
+      };
+      var sdl = document.createElement("dl");
+      Object.keys(fieldLabels).forEach(function (key) {
+        var obs = pair.semanticFields[key];
+        var row = document.createElement("div");
+        row.className = "metric-row";
+        appendText(row, "dt", "", fieldLabels[key]);
+        var valueText = "待确认";
+        if (obs && obs.state === "value") {
+          valueText = Array.isArray(obs.value) ? (obs.value.join("、") || "无") : String(obs.value);
+        } else if (obs && obs.state === "absent-claimed") {
+          valueText = "模型未发现";
+        } else if (obs && obs.note) {
+          valueText = "待确认（" + obs.note + "）";
+        }
+        appendText(row, "dd", "", valueText);
+        sdl.appendChild(row);
+      });
+      drawer.appendChild(sdl);
+      appendText(drawer, "p", "drawer-hint",
+        "语义为模型判断，不改变确定性指标；点击时间线镜头可回到镜头详情。");
+    } else if (semanticStatus === "failed") {
+      appendText(drawer, "p", "drawer-hint", "语义服务失败：" + (pair.semanticReason || "未知原因"));
+    } else {
+      appendText(drawer, "p", "drawer-hint", pair.semanticReason || "语义模型未运行，语义字段保持待确认。");
+    }
+  }
+  function bindTransitionJump() {
+    Array.prototype.forEach.call(document.querySelectorAll(".transition-marker"), function (btn) {
+      btn.addEventListener("click", function () {
+        var pairId = btn.getAttribute("data-pair-id");
+        var boundary = parseInt(btn.getAttribute("data-boundary-ms"), 10) || 0;
+        if (!transitionsById[pairId]) { return; }
+        seekFullVideo(Math.max(boundary - 500, 0));
+        renderPairInspector(pairId);
+      });
+    });
+  }
+  bindTransitionJump();
+
+  // 快捷键：输入控件聚焦时禁用，避免编辑误触。
+  function typingTarget() {
+    var el = document.activeElement;
+    return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"
+      || el.tagName === "SELECT" || el.isContentEditable);
+  }
+  function cycleRates(direction) {
+    var forward = [1, 2, 4], backward = [-1, -2, -4];
+    var list = direction < 0 ? backward : forward;
+    var rate = player.playbackRate || 1;
+    var idx = list.indexOf(rate);
+    var next = idx === -1 ? list[0] : list[(idx + 1) % list.length];
+    player.playbackRate = next;
+    if (player.paused) { player.play(); }
+    updateTimecode();
+  }
+  document.addEventListener("keydown", function (event) {
+    if (typingTarget()) { return; }
+    var key = event.key;
+    if (key === "ArrowLeft" || key === "ArrowRight") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        var dir = key === "ArrowRight" ? 1 : -1;
+        var shots = SHOT_INSPECTOR.shots || [];
+        var ms = sourceNowMs();
+        var targetShot = null;
+        shots.forEach(function (s) {
+          if (dir > 0 && s.startMs > ms && (!targetShot || s.startMs < targetShot.startMs)) { targetShot = s; }
+          if (dir < 0 && s.endMs <= ms && (!targetShot || s.endMs > targetShot.endMs)) { targetShot = s; }
+        });
+        if (targetShot) {
+          seekFullVideo(dir > 0 ? targetShot.startMs : Math.max(targetShot.endMs - 1, targetShot.startMs));
+          updateTimecode();
+        }
+      } else {
+        stepFrame(key === "ArrowRight" ? 1 : -1);
+      }
+      return;
+    }
+    if (key === "k" || key === "K" || key === " ") {
+      event.preventDefault();
+      if (player.paused) { player.play(); } else { player.pause(); player.playbackRate = 1; }
+      return;
+    }
+    if (key === "l" || key === "L") { event.preventDefault(); cycleRates(1); return; }
+    if (key === "j" || key === "J") { event.preventDefault(); cycleRates(-1); return; }
+    if (key === "i" || key === "I") { ioStartMs = sourceNowMs(); updateTimecode(); return; }
+    if (key === "o" || key === "O") {
+      var now = sourceNowMs();
+      if (ioStartMs !== null && now > ioStartMs) { ioEndMs = now; }
+      updateTimecode();
+      return;
+    }
+    if (key === "Escape") { ioStartMs = null; ioEndMs = null; updateTimecode(); return; }
+    if (key === "t" || key === "T") {
+      var text = formatTimecode(sourceNowMs());
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      }
+      updateTimecode();
+    }
+  });
+  player.addEventListener("timeupdate", function () {
+    if (ioStartMs !== null && ioEndMs !== null && !player.paused
+        && player.currentTime * 1000 >= ioEndMs) {
+      player.currentTime = ioStartMs / 1000;
+    }
+  });
+  var kbdToggle = document.getElementById("toggle-kbd-help");
+  if (kbdToggle) {
+    kbdToggle.addEventListener("click", function () {
+      var help = document.getElementById("kbd-help");
+      if (!help) { return; }
+      help.hidden = !help.hidden;
+      kbdToggle.setAttribute("aria-expanded", help.hidden ? "false" : "true");
+    });
+  }
 
   var filter = document.getElementById("filter-needs-review");
   filter.addEventListener("change", function () {

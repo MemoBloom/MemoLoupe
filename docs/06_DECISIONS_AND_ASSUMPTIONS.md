@@ -839,6 +839,75 @@ storyAnalysis）；工作台故事轨道为只读展示，目前 story 修正只
 `--story-only` 承接即可消除一条重复的参数面和一条独立的渲染链；
 validate 降级为 warning 兼容既有输出目录，避免对历史产物硬失败。
 
+### D-063：Phase 06 新增 review-timeline.json 与 shot-relations.json
+
+决策（2026-09-05）：按《专业拉片工作台计划》（Phase 06）新增两个确定性
+artifact 并注册到 `ArtifactName`（共 15 个）：
+
+- `raw/review-timeline.json`（`review-timeline.v1`）：逐帧真实 PTS 索引
+  与音频波形 min/max envelope。PTS 用 ffprobe 逐帧时间戳排序去重，
+  不用平均帧率伪造 VFR；波形用 ffmpeg 分块解码（默认 120s chunk，
+  内存上界约 3.8MB）生成归一化 envelope，不保存 PCM。bin 数默认
+  上限 24000，超限自适应增大 bin 时长（60 分钟长片 → 150ms/bin）。
+- `raw/shot-relations.json`（`shot-relations.v1`）：严格 N-1 相邻 pair，
+  pairID `SHxxxx--SHxxxx`；确定性指标（lumaDelta / audioLevelDeltaDb /
+  cameraMotionChange / audioCutAligned / speechGapMs /
+  speechSpansBoundary / musicContinuity）从既有 artifact 派生或对边界
+  帧实测；数据不足落 unknown/unavailable，不从缺失推断“没有变化”。
+
+管线新增两个默认运行、可 `--skip/--force` 的步骤
+`build_review_timeline`（在 analyze_camera_motion 之后）与
+`build_shot_relations`（在其后、render 之前），均接入指纹复用、
+checkpoint、schema 校验与跨文件校验。
+
+理由：帧精度与波形是确定性事实，pair 关系是镜头级之上的最小语义
+单元；两者分开存放使播放器 UI 与关系分析可独立演进，且不触碰
+既有 artifact 契约。
+
+### D-064：切点边界帧证据与 lumaDelta 实测
+
+决策（2026-09-05）：每个切点生成 left-exit 与 right-entry 两张 320px
+证据帧。取样时刻优先由 review-timeline 的真实 PTS 索引定位（严格小于
+boundaryMs 的最后一帧 / 大于等于的第一帧）；索引不可用时退化为
+finalEndMs-1 / finalStartMs（低帧率下两者可能同帧，luma 差失去意义，
+证据文件仍如实落盘），写入
+`evidence/transitions/TRxxxx-{side}.jpg`；lumaDelta 用 ffmpeg
+signalstats YAVG 归一化实测。亮度阈值（需复核 ≥0.40、疑似软切/误切
+<0.08）与语音停顿阈值（≥800ms）为 CALIBRATION，仅产生 needsReview
+候选，不产生剪辑评价。
+
+### D-065：pair 语义层用 textModel（MiMo）端口，可显式降级
+
+决策（2026-09-05）：切点语义（动作承接/视线/屏幕方向/时空关系/
+剪辑动机/摘要）通过 `ShotRelationSemanticsService` 端口由现有
+textModel 适配器（当前为小米 MiMo `mimo-v2.5`）提供，与 connect
+配置体系共用三要素；未配置时语义显式 unknown（不是 absent），模型
+异常/非法 JSON/枚举越界只影响该 pair 语义状态（failed/字段 unknown），
+绝不污染确定性指标。枚举越界字段落 unknown 并记录原文；
+`editMotivations` 全部越界时落 absent-claimed（空数组）。语义 raw 原文
+保留在 `relations[N].semantic.raw`，语义字段的 evidenceRefs 自引用
+该 raw，供人工核对。
+
+### D-066：指向缺失 artifact 的 evidenceRef 降级为 warning
+
+决策（2026-09-05）：shot-relations 的指标可引用 camera-motion 等可选
+artifact；当被引用 artifact 整体缺失（如 `--skip` 后的降级产物链）时，
+悬空引用从 error 降级为 warning——artifact 缺失本身已由入口 warning
+表达，引用悬空不携带额外错误信息；文件型证据（jpg 等）缺失仍为 error。
+
+### D-067：审片工作台首版渲染范围
+
+决策（2026-09-05）：shot-analysis.html 新增（与既有暖纸设计语言一致）：
+切点关系轨道（按 boundaryMs 定位的标记按钮，需复核高亮）、波形轨道
+（canvas 绘制嵌入 envelope；无音轨显示显式状态文字而非空图）、
+完整视频模式下的逐帧步进（PTS 索引优先，缺失时平均帧率近似并标注）、
+J/K/L 变速、I/O 临时区间（只影响播放状态，不改 raw/final 边界）、
+时间码复制与切点检查器（A/B 帧 + 指标 + 语义 + 复核原因）。
+审片数据经 HTML escape 后嵌入 `<script type="application/json">`
+节点；首版不嵌入视频、PCM 或模型原始响应全文。快捷键在输入控件
+聚焦时禁用。逐帧步进仅针对完整视频模式（clip 为按镜头裁剪的代理，
+时间轴不等于源时间轴）。
+
 ## 3. 推荐技术默认值
 
 以下不是稳定产品契约，开发可调整，但要更新测试和本文件：

@@ -1240,6 +1240,151 @@ needsVisualConfirmation=true、evidenceRefs。
 }
 ```
 
+## review-timeline.json（Phase 06）
+
+### 用途
+
+确定性审片支持数据：逐帧真实 PTS 索引与音频波形 min/max envelope，供
+shot-analysis.html 工作台完成逐帧定位、穿梭与音画对照。只承载确定性
+事实，不承载语义判断；不保存 PCM 或解码帧。
+
+### 文件级结构
+
+对象，顶层字段为 `schemaVersion`、`status`、`sourceRevisionID`、
+`analysis`、`videoFrames`、`waveform`。
+
+### 字段
+
+| 字段 | 类型 | 必填 | 允许值/单位 | 来源 | 说明 |
+|---|---|---:|---|---|---|
+| schemaVersion | integer | 是 | `1` | 系统 | 契约版本 |
+| status | string | 是 | complete/partial/failed | 系统 | partial=其一提取失败；unavailable 降级不影响 complete |
+| sourceRevisionID | string | 是 | 与 media.json 一致 | 系统 | 内容修订号 |
+| analysis.method | string | 是 | `ffprobe-frame-pts-and-ffmpeg-audio-envelope` | 系统 | 方法自证 |
+| analysis.algorithmVersion | string | 是 | `review-timeline.v1` | 系统 | 算法版本 |
+| analysis.analyzedRange | {startMs,endMs} | 是 | ms | media.json | 分析范围 |
+| videoFrames.status | string | 是 | complete/unavailable/failed | ffprobe | 索引状态 |
+| videoFrames.timingMode | string | 是 | pts-index/unavailable | ffprobe | unavailable 时 UI 按平均帧率近似并标注 |
+| videoFrames.ptsMs | integer[] | 条件必填 | ms，单调不减，位于 analyzedRange | ffprobe | 真实 PTS；不得用平均帧率伪造；排序去重 |
+| videoFrames.frameCount | integer | 条件必填 | =len(ptsMs) | 系统 | 自证 |
+| videoFrames.reason | string | 否 | - | 系统 | unavailable/failed 原因 |
+| waveform.status | string | 是 | complete/unavailable/failed | ffmpeg | 无音轨必须 unavailable，不是空波形 |
+| waveform.channelMode | string | 是 | mono-mixdown/unavailable | ffmpeg | 混音策略 |
+| waveform.binDurationMs | integer | 条件必填 | ms ≥1 | 系统 | 超长视频自适应增大 |
+| waveform.binCount | integer | 条件必填 | =len(peaks) | 系统 | 自证 |
+| waveform.peaks | number[][] | 条件必填 | [min,max] ∈ [-1,1]，min≤max | ffmpeg | 归一化 envelope |
+
+校验：PTS 单调不减且在范围内；binCount/frameCount 与数组一致；
+status=value 类指标引用可解析（见 shot-relations）。
+
+### 完整示例
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "sourceRevisionID": "a1b2c3d4e5f6",
+  "analysis": {
+    "method": "ffprobe-frame-pts-and-ffmpeg-audio-envelope",
+    "algorithmVersion": "review-timeline.v1",
+    "analyzedRange": {"startMs": 0, "endMs": 9800}
+  },
+  "videoFrames": {
+    "status": "complete",
+    "timingMode": "pts-index",
+    "frameCount": 3,
+    "ptsMs": [0, 3266, 6533]
+  },
+  "waveform": {
+    "status": "complete",
+    "channelMode": "mono-mixdown",
+    "binDurationMs": 20,
+    "binCount": 2,
+    "peaks": [[-0.5, 0.1], [-0.4, 0.7]]
+  }
+}
+```
+
+## shot-relations.json（Phase 06）
+
+### 用途
+
+相邻镜头对（pair）关系：确定性指标 + 可选模型语义 + 人工复核状态。
+pair 数量严格为 `max(shotCount - 1, 0)`，顺序与 `shots.json` 一致；
+pairID 使用稳定组合形式 `SH0001--SH0002`。首版不把 pair 字段写回
+`unified-media.json`；`editing.continuity` 若需要，由 resolver 从本文件读取。
+
+### 文件级结构
+
+对象，顶层字段为 `schemaVersion`、`status`、`sourceRevisionID`、
+`analysis`、`relations[]`。
+
+### 字段
+
+| 字段 | 类型 | 必填 | 允许值/单位 | 来源 | 说明 |
+|---|---|---:|---|---|---|
+| status | string | 是 | complete/partial/failed | 系统 | 语义解析失败时 partial |
+| analysis.pairCount | integer | 是 | N-1 | 系统 | 与 relations 长度一致 |
+| analysis.modelService | string | 是 | `none`/服务标记 | 系统 | 语义层来源；none=未运行 |
+| relations[].pairID | string | 是 | `SHxxxx--SHxxxx` | shots.json | 稳定组合 ID |
+| relations[].leftShotID/rightShotID | string | 是 | `SHxxxx` | shots.json | 严格相邻 |
+| relations[].boundaryMs | string→int | 是 | =左镜头 finalEndMs | shots.json | 切点时间 |
+| relations[].evidence.leftExitFrame/rightEntryFrame | object | 否 | status/fileRef/timeMs | ffmpeg | A/B 边界帧；失败写显式状态不伪造 fileRef |
+| relations[].metrics | object | 是 | 见下方指标 | 确定性 | status=value 必须带 ≥1 个 evidenceRef；数据不足落 unknown/unavailable，不得从缺失推断“没有变化” |
+| relations[].semantic.status | string | 是 | unknown/complete/partial/failed | 系统 | unknown=模型未运行；与五态独立 |
+| relations[].semantic.fields | object | 否 | 受控字段 → Observation | textModel | 模型声称“没有”只能 absent-claimed |
+| relations[].review.needsReview | boolean | 是 | true/false | 系统 | 阈值规则产生候选，不产生剪辑评价 |
+| relations[].review.reviewReasons | string[] | 是 | 中文原因 | 系统 | 与 needsReview 联动 |
+
+确定性指标键（status ∈ value/unknown/unavailable）：`lumaDelta`（边界帧
+signalstats 实测差）、`audioLevelDeltaDb`、`cameraMotionChange`、
+`audioCutAligned`、`speechGapMs`、`speechSpansBoundary`、`musicContinuity`。
+
+受控语义字段（v1）：`actionContinuity`（动作承接/动作跳跃/无法判断）、
+`eyelineContinuity`（视线承接/视线冲突/不适用/无法判断）、
+`screenDirection`（方向连续/方向反转/不适用/无法判断）、
+`spatialTemporalRelation`（同空间连续/跨空间/时间跳跃/蒙太奇并置/无法判断）、
+`editMotivations`（动作/对白/声音/节拍/视觉匹配/信息揭示/对比/时空推进）、
+`relationSummary`（≤60 字摘要）。枚举越界落 unknown 并记录原文，
+不得污染其他字段或确定性指标。
+
+模型输入白名单：shotID/时间范围/时长/边界类型、确定性指标、切点附近
+ASR 文本、边界帧存在性标记。模型不得修改镜头边界、pair 集合或指标数值。
+
+### 完整示例
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "sourceRevisionID": "a1b2c3d4e5f6",
+  "analysis": {
+    "method": "adjacent-pair-deterministic-metrics+text-model-semantics",
+    "algorithmVersion": "shot-relations.v1",
+    "pairCount": 1,
+    "modelService": "text-model:mimo-v2.5"
+  },
+  "relations": [
+    {
+      "pairID": "SH0001--SH0002",
+      "leftShotID": "SH0001",
+      "rightShotID": "SH0002",
+      "boundaryMs": 467,
+      "evidence": {
+        "leftExitFrame": {"status": "complete", "fileRef": "evidence/transitions/TR0001-left-exit.jpg", "timeMs": 466},
+        "rightEntryFrame": {"status": "complete", "fileRef": "evidence/transitions/TR0001-right-entry.jpg", "timeMs": 467}
+      },
+      "metrics": {
+        "lumaDelta": {"status": "value", "value": 0.12, "evidenceRefs": ["evidence/transitions/TR0001-left-exit.jpg", "evidence/transitions/TR0001-right-entry.jpg"]},
+        "audioLevelDeltaDb": {"status": "value", "value": -1.5, "unit": "dB", "evidenceRefs": ["raw/audio-energy.json#shots[0]", "raw/audio-energy.json#shots[1]"]}
+      },
+      "semantic": {"status": "unknown", "reason": "语义模型未配置"},
+      "review": {"needsReview": false, "reviewReasons": []}
+    }
+  ]
+}
+```
+
 ## 下游消费建议
 
 MemoLoupe 输出不应该让素材管理做 1:1 语义复刻。推荐消费顺序如下：

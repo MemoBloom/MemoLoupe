@@ -214,3 +214,32 @@ def default_mock_unified(shot_ids: Sequence[str]) -> MockUnifiedMediaService:
         return json.dumps(payload, ensure_ascii=False)
 
     return MockUnifiedMediaService(script)
+
+
+class MockShotRelationService:
+    """切点语义 mock：返回固定合法语义 JSON（--mock-services e2e 用）。"""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def marker(self) -> str:
+        return "mock"
+
+    def analyze_pair(self, payload: dict) -> str:
+        self.calls.append(payload)
+        return json.dumps(
+            {
+                "actionContinuity": "无法判断",
+                "eyelineContinuity": "无法判断",
+                "screenDirection": "无法判断",
+                "spatialTemporalRelation": "无法判断",
+                "editMotivations": [],
+                "relationSummary": "mock 语义：仅用于端到端测试占位",
+            },
+            ensure_ascii=False,
+        )
+
+
+def default_mock_shot_relation() -> MockShotRelationService:
+    """生成切点语义 mock 实例。"""
+    return MockShotRelationService()

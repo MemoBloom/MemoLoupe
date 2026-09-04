@@ -678,3 +678,65 @@ class TestAssignMotionLanes:
         events = [self._event(0.0, 10.0), self._event(10.4, 5.0)]
         assert _assign_motion_lanes(events) == 1
         assert [e["lane"] for e in events] == [0, 0]
+
+
+class TestReviewWorkbenchRendering:
+    """Phase 06：审片工作台视图（切点轨道/波形/嵌入 JSON）渲染。"""
+
+    def _render(self, tmp_path: Path) -> Path:
+        work = _copy_fixture(tmp_path)
+        return render_shot_html(work, status="draft")
+
+    def test_renders_transition_band_and_waveform(self, tmp_path: Path) -> None:
+        target = self._render(tmp_path)
+        doc = target.read_text(encoding="utf-8")
+        assert 'class="transition-band"' in doc
+        assert 'class="transition-marker' in doc
+        # 夹具无音轨 → 波形轨道存在但显式 unavailable（不伪造空波形）
+        assert 'class="waveform-band"' in doc
+        assert "波形不可用" in doc
+        assert "REVIEW_WORKBENCH" in doc
+        assert _errors(target, target.parent) == []
+
+    def test_waveform_canvas_when_available(self, tmp_path: Path) -> None:
+        work = _copy_fixture(tmp_path)
+        rt = json.loads(
+            (work / "raw" / "review-timeline.json").read_text(encoding="utf-8")
+        )
+        rt["waveform"] = {
+            "status": "complete",
+            "channelMode": "mono-mixdown",
+            "binDurationMs": 20,
+            "binCount": 4,
+            "peaks": [[-0.4, 0.4], [-0.2, 0.3], [0.0, 0.1], [-0.1, 0.2]],
+        }
+        (work / "raw" / "review-timeline.json").write_text(
+            json.dumps(rt, ensure_ascii=False), encoding="utf-8"
+        )
+        target = render_shot_html(work, status="draft")
+        doc = target.read_text(encoding="utf-8")
+        assert 'id="waveform-canvas"' in doc
+        assert _errors(target, target.parent) == []
+
+    def test_workbench_json_carries_pairs_and_frame_source(self, tmp_path: Path) -> None:
+        target = self._render(tmp_path)
+        doc = target.read_text(encoding="utf-8")
+        match = re.search(
+            r"var REVIEW_WORKBENCH = (.*?);\n", doc, re.DOTALL
+        )
+        assert match, "REVIEW_WORKBENCH 未嵌入"
+        payload = json.loads(match.group(1))
+        assert payload["frameSource"]["mode"] in ("pts", "approx")
+        assert len(payload["transitions"]) == 2
+        first = payload["transitions"][0]
+        assert first["pairID"] == "SH0001--SH0002"
+        assert "lumaDelta" in first["metrics"]
+        assert first["semanticStatus"] == "unknown"
+
+    def test_frame_refs_are_html_escaped(self, tmp_path: Path) -> None:
+        target = self._render(tmp_path)
+        doc = target.read_text(encoding="utf-8")
+        match = re.search(r"var REVIEW_WORKBENCH = (.*?);\n", doc, re.DOTALL)
+        assert match
+        # 嵌入 JSON 已转义 & < >（_json_for_script 契约），不含 script 闭合
+        assert "</script>" not in match.group(1)
