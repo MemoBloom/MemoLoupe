@@ -1,6 +1,6 @@
 {
   "name": "memoloupe-skill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent skill for the MemoLoupe reference-video analysis CLI (shot / story / style profile / review workbench)",
   "bin": {
     "memoloupe-skill": "bin/cli.mjs"

@@ -25,7 +25,9 @@ COMPLETION_VERSION = "completion.v1"
 #: 仓库根/rules/completion.json（本文件位于 src/memoloupe/analysis/completion.py）。
 _RULES_PATH = packaged_path("rules", "completion.json")
 
-#: 渲染器读取的 raw 逻辑名（与 render.shot_html.RAW_FILES 保持一致）。
+#: completion 评估实际消费的 raw 逻辑名（当前 resolver 集合所需；
+#: 与 render.shot_html.RAW_FILES 的差异是有意的——渲染器需要展示
+#: 的全部数据，而 completion 只读参与字段评估的文档）。
 _RAW_FILES: tuple[str, ...] = (
     "media",
     "shots",

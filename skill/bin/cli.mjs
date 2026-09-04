@@ -30,9 +30,15 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 const target = resolve(
-  argValue("--target") || join(process.env.HOME ?? "", ".agents", "skills", "memoloupe"),
+  argValue("--target") ||
+    join(process.env.HOME ?? "", ".agents", "skills", "memoloupe"),
 );
 const force = args.includes("--force");
+
+if (args.includes("--target") && !argValue("--target")) {
+  console.error("--target 需要一个目录参数；用法：npx memoloupe-skill --target <dir>");
+  process.exit(1);
+}
 
 if (existsSync(join(target, "SKILL.md")) && !force) {
   console.error(`已存在于 ${target}；覆盖请加 --force`);
