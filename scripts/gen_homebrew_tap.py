@@ -108,11 +108,26 @@ memoloupe connect status
 """
 
 
-def sha256_of(url: str) -> str:
+def sha256_of(url: str, *, tag: str, repo: str, plain_version: str) -> str:
+    """下载资产并计算 sha256；私有仓库 404 时回退 gh CLI（认证下载）。"""
+    import subprocess
+
     digest = hashlib.sha256()
-    with urllib.request.urlopen(url) as resp:  # noqa: S310 - 固定 GitHub 源
-        for chunk in iter(lambda: resp.read(1 << 20), b""):
-            digest.update(chunk)
+    try:
+        with urllib.request.urlopen(url) as resp:  # noqa: S310 - 固定 GitHub 源
+            for chunk in iter(lambda: resp.read(1 << 20), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+    # 私有仓库：资产 URL 未认证访问 404 → 用 gh 的凭据下载到内存流。
+    result = subprocess.run(
+        ["gh", "release", "download", tag, "--repo", repo,
+         "--pattern", f"memoloupe-{plain_version}.tar.gz", "-O", "-"],
+        check=True, capture_output=True,
+    )
+    digest.update(result.stdout)
     return digest.hexdigest()
 
 
@@ -127,7 +142,7 @@ def main() -> None:
     plain = tag.removeprefix("v")
     asset = f"https://github.com/{args.repo}/releases/download/{tag}/memoloupe-{plain}.tar.gz"
     print(f"下载并计算 sha256：{asset}")
-    digest = sha256_of(asset)
+    digest = sha256_of(asset, tag=tag, repo=args.repo, plain_version=plain)
 
     out = Path(args.out)
     (out / "Formula").mkdir(parents=True, exist_ok=True)
