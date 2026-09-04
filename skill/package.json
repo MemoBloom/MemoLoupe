@@ -1,0 +1,30 @@
+{
+  "name": "memoloupe-skill",
+  "version": "0.1.0",
+  "description": "Agent skill for the MemoLoupe reference-video analysis CLI (shot / story / style profile / review workbench)",
+  "bin": {
+    "memoloupe-skill": "bin/cli.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "bin/"
+  ],
+  "keywords": [
+    "memoloupe",
+    "skill",
+    "agent",
+    "ai",
+    "video-analysis",
+    "cli"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MemoBloom/MemoLoupe.git",
+    "directory": "skill"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
