@@ -16,13 +16,14 @@ from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations
 from memoloupe.core.atomic_io import read_json
 from memoloupe.core.errors import ContractError, EvidenceRefError
 from memoloupe.core.evidence_refs import parse_evidence_ref
+from memoloupe.core.packaged import packaged_path
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
 
 COMPLETION_VERSION = "completion.v1"
 
 #: 仓库根/rules/completion.json（本文件位于 src/memoloupe/analysis/completion.py）。
-_RULES_PATH = Path(__file__).resolve().parents[3] / "rules" / "completion.json"
+_RULES_PATH = packaged_path("rules", "completion.json")
 
 #: 渲染器读取的 raw 逻辑名（与 render.shot_html.RAW_FILES 保持一致）。
 _RAW_FILES: tuple[str, ...] = (

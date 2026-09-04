@@ -37,12 +37,13 @@ from memoloupe.vision.protocol import (
     build_request,
     parse_response,
 )
+from memoloupe.core.packaged import packaged_path
 from memoloupe.vision.unavailable import build_unavailable_camera_motion
 
 CAMERA_MOTION_VERSION = "camera-motion.v1"
 
 #: helper 源码（本文件位于 src/memoloupe/vision/apple_vision.py）
-HELPER_SOURCE: Path = Path(__file__).resolve().parents[3] / "helpers" / "apple-vision" / "main.swift"
+HELPER_SOURCE: Path = packaged_path("helpers", "apple-vision", "main.swift")
 
 #: helper 编译/运行默认超时（秒，CALIBRATION；可用 vision.helperTimeoutSec 覆盖）
 HELPER_TIMEOUT_SEC = 300.0

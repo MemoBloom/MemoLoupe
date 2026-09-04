@@ -31,6 +31,7 @@ from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations_w
 from memoloupe.analysis.vocabulary import FieldRule, Vocabulary, load_vocabulary
 from memoloupe.core.atomic_io import read_json, write_text_atomic
 from memoloupe.core.errors import ArtifactError, ContractError
+from memoloupe.core.packaged import packaged_path
 from memoloupe.validate.html_contract import DOCUMENT_STATUSES
 
 SHOT_RENDER_VERSION = "render.v3"
@@ -39,8 +40,8 @@ DOCUMENT_TYPE = "shotAnalysis"
 #: 故事轨道/故事卡片读取的 corrections 文档（storyAnalysis 修正叠加进本工作台）。
 STORY_DOCUMENT_TYPE = "storyAnalysis"
 
-_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "templates" / "shot-analysis.html"
-_LOGO_SOURCE = Path(__file__).resolve().parents[3] / "assets" / "brand" / "memoloupe-logo.png"
+_TEMPLATE_PATH = packaged_path("templates", "shot-analysis.html")
+_LOGO_SOURCE = packaged_path("assets", "brand", "memoloupe-logo.png")
 
 #: 渲染器读取的 raw 逻辑名（缺失时容忍为 None）。
 RAW_FILES: tuple[str, ...] = (

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import jsonschema
 
+from memoloupe.core.packaged import packaged_path
 from memoloupe.core.errors import ContractError
 
 
@@ -39,7 +40,7 @@ class ArtifactName(StrEnum):
 
 
 # 仓库根/schemas（本文件位于 src/memoloupe/artifacts/schemas.py）
-SCHEMA_DIR: Path = Path(__file__).resolve().parents[3] / "schemas"
+SCHEMA_DIR: Path = packaged_path("schemas")
 
 
 def schema_path(name: ArtifactName) -> Path:

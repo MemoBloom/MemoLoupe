@@ -196,15 +196,29 @@ class TestAudioCutsIntegration:
         assert result["shots"][0]["boundaryIn"]["classification"] == "sourceStart"
         assert result["shots"][1]["boundaryOut"]["classification"] == "sourceEnd"
 
-    def test_align_boundaries_respects_min_shot_length(self, sync_cut_clip) -> None:
-        # 2s 镜头短于 minimumFrames/analysisFps = 4s，即使高置信同步切也不移动
+    def test_align_boundaries_moves_sync_cut_within_tolerance(self, sync_cut_clip) -> None:
+        # 画面硬切与音色突变都在 2s：若音频切点与视觉边界完全相等则不移动；
+        # 否则（不同 ffmpeg 版本时序略有偏差）移动后的偏移必须落在
+        # syncTolerance 内，且移动目标两侧镜头时长仍 >= minimumShotMs。
         media = probe_media(sync_cut_clip, DEFAULT_CONFIG)
         shots = detect_shots(sync_cut_clip, media, DEFAULT_CONFIG)
         result = detect_audio_cuts(
             sync_cut_clip, shots, media, DEFAULT_CONFIG, align_boundaries=True
         )
         validate_artifact(ArtifactName.AUDIO_CUTS, result)
-        assert result["movedBoundaries"] == []
+        tolerance = int(result["analysis"]["syncToleranceMs"])
+        min_shot_ms = int(DEFAULT_CONFIG["shots"]["minimumShotMs"])
+        shots_by_id = {s["shotID"]: s for s in result["shots"]}
+        for moved in result["movedBoundaries"]:
+            assert abs(moved["offsetMs"]) <= tolerance
+            assert abs(moved["audioTimeMs"] - moved["visualTimeMs"]) <= tolerance
+            left = shots_by_id[moved["leftShotID"]]
+            right = shots_by_id[moved["rightShotID"]]
+            # audio-cuts.json 的镜头边界在 boundaryIn/Out.visualTimeMs
+            left_start = int(left["boundaryIn"]["visualTimeMs"])
+            right_end = int(right["boundaryOut"]["visualTimeMs"])
+            assert moved["audioTimeMs"] - left_start >= min_shot_ms
+            assert right_end - moved["audioTimeMs"] >= min_shot_ms
 
     def test_picture_cut_audio_continuous(self, continuous_audio_clip) -> None:
         media = probe_media(continuous_audio_clip, DEFAULT_CONFIG)
@@ -313,3 +327,57 @@ class TestDetectMusicIntegration:
         validate_artifact(ArtifactName.MUSIC_FLAGS, result)
         assert result["status"] == "unavailable"
         assert result["stateTally"] == {"music": 0, "silent": 0, "unknown": 2}
+
+
+class TestPlanBoundaryAlignment:
+    """plan_boundary_alignment 纯函数：最小镜头时长与同步切守卫。"""
+
+    def _shots(self) -> list[dict]:
+        return [
+            {"shotID": "SH0001", "finalStartMs": 0, "finalEndMs": 2000},
+            {"shotID": "SH0002", "finalStartMs": 2000, "finalEndMs": 4000},
+        ]
+
+    def _boundary(self, audio_time_ms: int) -> dict:
+        return {
+            "classification": "synchronizedCut",
+            "confidence": "high",
+            "visualTimeMs": 2000,
+            "audioTimeMs": audio_time_ms,
+            "offsetMs": audio_time_ms - 2000,
+            "audioBoundaryID": "AU0001",
+        }
+
+    def test_moves_within_min_length(self) -> None:
+        from memoloupe.media.audio_cuts import plan_boundary_alignment
+
+        # 移动后两侧镜头仍 >= 500ms：1980/2020 均可
+        moved = plan_boundary_alignment(
+            [self._boundary(1980)], self._shots(), min_shot_ms=500
+        )
+        assert len(moved) == 1
+        assert moved[0]["audioTimeMs"] == 1980
+
+    def test_blocked_below_min_length(self) -> None:
+        from memoloupe.media.audio_cuts import plan_boundary_alignment
+
+        # 移动到 300ms 会使左镜头只剩 300ms < 500ms → 不动
+        moved = plan_boundary_alignment(
+            [self._boundary(300)], self._shots(), min_shot_ms=500
+        )
+        assert moved == []
+        # 移动到 3800ms 会使右镜头只剩 200ms < 500ms → 不动
+        moved = plan_boundary_alignment(
+            [self._boundary(3800)], self._shots(), min_shot_ms=500
+        )
+        assert moved == []
+
+    def test_skips_non_sync_or_low_confidence_or_equal(self) -> None:
+        from memoloupe.media.audio_cuts import plan_boundary_alignment
+
+        hard_cut = self._boundary(1980) | {"classification": "hardCutCandidate"}
+        assert plan_boundary_alignment([hard_cut], self._shots(), min_shot_ms=500) == []
+        low = self._boundary(1980) | {"confidence": "medium"}
+        assert plan_boundary_alignment([low], self._shots(), min_shot_ms=500) == []
+        equal = self._boundary(2000)
+        assert plan_boundary_alignment([equal], self._shots(), min_shot_ms=500) == []

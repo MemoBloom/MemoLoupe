@@ -11,10 +11,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from memoloupe.core.packaged import packaged_path
 
 TRANSITION_SEPARATOR = " → "
 
-_DEFAULT_VOCABULARY_PATH = Path(__file__).resolve().parents[3] / "rules" / "vocabulary.json"
+_DEFAULT_VOCABULARY_PATH = packaged_path("rules", "vocabulary.json")
 
 
 @dataclass(frozen=True)

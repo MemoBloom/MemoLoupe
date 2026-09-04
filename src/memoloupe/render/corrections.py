@@ -29,11 +29,12 @@ from memoloupe.analysis.observations import (
 )
 from memoloupe.core.atomic_io import read_json, write_json_atomic
 from memoloupe.core.errors import ContractError
+from memoloupe.core.packaged import packaged_path
 
 CORRECTIONS_VERSION = "corrections.v1"
 
 #: 仓库根/schemas（本文件位于 src/memoloupe/render/corrections.py）。
-_SCHEMA_PATH = Path(__file__).resolve().parents[3] / "schemas" / "corrections.json"
+_SCHEMA_PATH = packaged_path("schemas", "corrections.json")
 
 #: 文档状态取值（docs/04 §2）；outdated 优先于一切。
 STATUS_DRAFT = "draft"

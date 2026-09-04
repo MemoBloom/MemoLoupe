@@ -23,6 +23,9 @@ import urllib.request
 from pathlib import Path
 
 FORMULA_TEMPLATE = '''class Memoloupe < Formula
+  include Language::Python::Virtualenv
+  include Language::Python::Shebang
+
   desc "Staged reference-video analysis CLI (shot / story / style profile)"
   homepage "https://github.com/{repo}"
   url "https://github.com/{repo}/releases/download/{tag}/memoloupe-{plain_version}.tar.gz"
@@ -31,12 +34,19 @@ FORMULA_TEMPLATE = '''class Memoloupe < Formula
   depends_on "python@3.12"
   depends_on "ffmpeg" # ffprobe/ffmpeg：切镜、波形、clip、审片索引
 
+  # PyPI 依赖下限与 pyproject.toml 保持一致
+  PYPI_DEPS = %w[numpy>=2.5.2 jsonschema>=4.23].freeze
+
   def install
-    venv = virtualenv_create(libexec, "python@3.12")
-    # 依赖（numpy/jsonschema 及传递依赖）在安装时从 PyPI 解析；
-    # numpy 走预编译 wheel，无需源码编译。个人 tap 权衡：非完全
-    # hermetic（PyPI 依赖未锁版本），详见 tap README。
-    system libexec/"bin/pip", "install", "-v", "."
+    venv = virtualenv_create(libexec, "python3.12")
+    host_python = Formula["python@3.12"].opt_bin/"python3.12"
+    # 本体：不解析依赖（Homebrew 6 的 venv 无 pip，用宿主 pip --python）
+    system host_python, "-m", "pip", "--python=#{{libexec}}/bin/python",
+                        "install", "--no-deps", "-v", buildpath
+    # 运行时依赖：从 PyPI 解析安装（numpy 命中预编译 wheel）。
+    # 个人 tap 权衡：非完全 hermetic（未用 resources 全锁定），见 README。
+    system host_python, "-m", "pip", "--python=#{{libexec}}/bin/python",
+                        "install", "-v", *PYPI_DEPS
     bin.install_symlink Dir[libexec/"bin/*"]
   end
 
@@ -49,6 +59,16 @@ end
 TAP_README_TEMPLATE = """# homebrew-memoloupe
 
 MemoLoupe 拉片分析 CLI 的 Homebrew tap。
+
+## 前提：仓库可见性
+
+Formula 的下载源是 GitHub Release 资产；**brew 安装时不携带 GitHub
+凭据**。若 MemoLoupe 仓库为 private，需要二选一：
+
+1. 把 MemoLoupe 仓库改为 public；或
+2. 建一个公开的发布仓库（如 `MemoBloom/memoloupe-releases`），Release
+   工作流改为把资产发布到该仓库，并用
+   `--repo MemoBloom/memoloupe-releases` 重新生成 formula。
 
 ## 安装
 
