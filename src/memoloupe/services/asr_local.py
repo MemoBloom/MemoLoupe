@@ -15,9 +15,15 @@
 
 from __future__ import annotations
 
+import tempfile
+import wave
+from pathlib import Path
 from typing import Iterable
 
+from memoloupe.core.errors import CapabilityUnavailableError
 from memoloupe.core.time_ranges import seconds_to_ms
+from memoloupe.media.proc import run_process
+from memoloupe.services.asr import ASRRequest, ASRResult
 
 #: provider 取值（asr.provider）。
 PROVIDER_LOCAL = "local-fireredvad-mlx"
@@ -124,15 +130,6 @@ def map_concat_segments(
             }
         )
     return out
-
-
-import tempfile
-import wave
-from pathlib import Path
-
-from memoloupe.core.errors import CapabilityUnavailableError
-from memoloupe.media.proc import run_process
-from memoloupe.services.asr import ASRRequest, ASRResult
 
 
 def _import_fireredvad():

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from memoloupe.core import atomic_io
 from memoloupe.core.atomic_io import read_json, write_json_atomic, write_text_atomic
 from memoloupe.core.errors import ContractError
 

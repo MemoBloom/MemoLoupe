@@ -420,8 +420,8 @@ class ContentSummaryResolver:
 
     def resolve(self, context: ShotEvidenceContext) -> Observation:
         concrete: list[Observation] = []
-        for field in _CONTENT_SUMMARY_FIELDS:
-            observation = ModelFieldResolver(field).resolve(context)
+        for name in _CONTENT_SUMMARY_FIELDS:
+            observation = ModelFieldResolver(name).resolve(context)
             if observation.state == ValueState.VALUE and isinstance(observation.value, str):
                 value = observation.value.strip()
                 if value:

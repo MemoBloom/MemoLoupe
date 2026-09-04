@@ -58,13 +58,12 @@ from memoloupe.analysis.story_prompts import (
     build_story_prompt,
 )
 from memoloupe.analysis.vocabulary import load_vocabulary
-from memoloupe.artifacts.schemas import ArtifactName, validate_artifact
+from memoloupe.artifacts.schemas import ArtifactName
 from memoloupe.artifacts.store import ArtifactStore, WriteMetadata
 from memoloupe.core.atomic_io import read_json, write_json_atomic
 from memoloupe.core.errors import MemoLoupeError
 from memoloupe.core.hashing import content_revision_id, fingerprint
 from memoloupe.core.logging import get_logger, log_step
-from memoloupe.services.base import ServiceError
 from memoloupe.services.text_model import TextModelRequest
 
 # 围栏剥离复用统一模型编排器的实现（包内私有，保持单一实现）。

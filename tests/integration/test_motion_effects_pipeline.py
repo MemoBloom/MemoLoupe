@@ -25,7 +25,6 @@ from memoloupe.analysis.shot_pipeline import (
     ShotAnalysisRequest,
 )
 from memoloupe.artifacts.schemas import validate_artifact, ArtifactName
-from memoloupe.core.config import DEFAULT_CONFIG
 
 _MODEL_SKIPS = frozenset({"run_asr", "unified_media_analysis"})
 

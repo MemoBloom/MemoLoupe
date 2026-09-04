@@ -1001,7 +1001,7 @@ class ShotAnalysisPipeline:
                     "version": FRAME_EXTRACTION_VERSION,
                 }
             )
-            frames = run_artifact_step(
+            run_artifact_step(
                 "extract_frames",
                 ArtifactName.FRAME_EVIDENCE,
                 frames_fp,

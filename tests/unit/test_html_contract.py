@@ -11,8 +11,6 @@ import sys
 import types
 from pathlib import Path
 
-import pytest
-
 from memoloupe.validate.html_contract import HTML_CONTRACT_VERSION, validate_html
 
 VALID_DOC = """<!DOCTYPE html>
@@ -395,8 +393,10 @@ class TestStrictConsistency:
             '<th scope="col" data-shot-id="SH0001" data-start-ms="0" data-end-ms="3203" data-needs-review="false" data-review-reasons="[]">SH0001</th>'
             '<th scope="col" data-shot-id="SH0002" data-start-ms="3203" data-end-ms="6400" data-needs-review="false" data-review-reasons="[]">SH0002</th>',
         )
-        issues = _errors(_validate(tmp_path, doc, root=root, strict=True))
         # SH0002 列缺少可追溯证据单元格 -> 仍报错；补上单元格后应为零。
+        assert _errors(_validate(tmp_path, doc, root=root, strict=True)), (
+            "缺少 SH0002 证据单元格时 strict 校验应报错"
+        )
         doc = doc.replace(
             "</tr>\n  </tbody>",
             '<td data-field="audio.energy" data-shot-id="SH0002" data-value-state="value"'

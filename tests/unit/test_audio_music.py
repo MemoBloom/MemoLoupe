@@ -38,7 +38,6 @@ class TestStftFeatures:
         feats = stft_features(samples, sample_rate=SR, window=2048, hop=512)
         assert feats["levelDb"].shape == feats["flatness"].shape == feats["bassEnergy"].shape
         assert len(feats["timesSec"]) == len(feats["levelDb"])
-        mid = len(feats["levelDb"]) // 2
         assert float(np.median(feats["levelDb"])) == pytest.approx(-9.0, abs=1.0)
         assert float(np.median(feats["flatness"])) < 0.05
         assert float(np.median(feats["bassEnergy"])) > 150.0

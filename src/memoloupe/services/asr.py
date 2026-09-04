@@ -103,6 +103,39 @@ class ASRService(Protocol):
     def transcribe(self, media_path: Path, request: ASRRequest) -> ASRResult: ...
 
 
+def _normalize_asr_response(response: dict, request: ASRRequest) -> ASRResult:
+    """将 OpenAI 兼容 ASR 响应归一化为 :class:`ASRResult`（两种传输实现共用）。"""
+    raw_segments = response.get("segments", [])
+    if not isinstance(raw_segments, list):
+        raise PermanentServiceError("asr response: segments is not a list")
+    segments: list[dict] = []
+    for index, seg in enumerate(raw_segments):
+        if not isinstance(seg, dict) or not {"start", "end", "text"} <= seg.keys():
+            raise PermanentServiceError(
+                f"asr response: segment[{index}] 缺少 start/end/text"
+            )
+        start_ms = seconds_to_ms(seg["start"])
+        end_ms = seconds_to_ms(seg["end"])
+        # 按请求时间窗做正交集过滤（docs/03 §2.7 的镜头对齐在解析层做）。
+        if end_ms <= request.start_ms:
+            continue
+        if request.end_ms is not None and start_ms >= request.end_ms:
+            continue
+        segments.append(
+            {
+                "startMs": start_ms,
+                "endMs": end_ms,
+                "text": str(seg["text"]),
+                "speaker": seg.get("speaker"),
+                "confidence": seg.get("confidence"),
+            }
+        )
+    raw_extras = {
+        "provider": {k: v for k, v in response.items() if k != "segments"}
+    }
+    return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
+
+
 class OpenAICompatibleASR:
     """OpenAI 兼容 ASR 适配器。
 
@@ -158,35 +191,7 @@ class OpenAICompatibleASR:
         return self._normalize(response, request)
 
     def _normalize(self, response: dict, request: ASRRequest) -> ASRResult:
-        raw_segments = response.get("segments", [])
-        if not isinstance(raw_segments, list):
-            raise PermanentServiceError("asr response: segments is not a list")
-        segments: list[dict] = []
-        for index, seg in enumerate(raw_segments):
-            if not isinstance(seg, dict) or not {"start", "end", "text"} <= seg.keys():
-                raise PermanentServiceError(
-                    f"asr response: segment[{index}] 缺少 start/end/text"
-                )
-            start_ms = seconds_to_ms(seg["start"])
-            end_ms = seconds_to_ms(seg["end"])
-            # 按请求时间窗做正交集过滤（docs/03 §2.7 的镜头对齐在解析层做）。
-            if end_ms <= request.start_ms:
-                continue
-            if request.end_ms is not None and start_ms >= request.end_ms:
-                continue
-            segments.append(
-                {
-                    "startMs": start_ms,
-                    "endMs": end_ms,
-                    "text": str(seg["text"]),
-                    "speaker": seg.get("speaker"),
-                    "confidence": seg.get("confidence"),
-                }
-            )
-        raw_extras = {
-            "provider": {k: v for k, v in response.items() if k != "segments"}
-        }
-        return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
+        return _normalize_asr_response(response, request)
 
 
 def _multipart_body(
@@ -270,35 +275,7 @@ class MultipartOpenAICompatibleASR:
         return self._normalize(response, request)
 
     def _normalize(self, response: dict, request: ASRRequest) -> ASRResult:
-        """与 OpenAICompatibleASR 同一归一化（segments → 稳定结构）。"""
-        raw_segments = response.get("segments", [])
-        if not isinstance(raw_segments, list):
-            raise PermanentServiceError("asr response: segments is not a list")
-        segments: list[dict] = []
-        for index, seg in enumerate(raw_segments):
-            if not isinstance(seg, dict) or not {"start", "end", "text"} <= seg.keys():
-                raise PermanentServiceError(
-                    f"asr response: segment[{index}] 缺少 start/end/text"
-                )
-            start_ms = seconds_to_ms(seg["start"])
-            end_ms = seconds_to_ms(seg["end"])
-            if end_ms <= request.start_ms:
-                continue
-            if request.end_ms is not None and start_ms >= request.end_ms:
-                continue
-            segments.append(
-                {
-                    "startMs": start_ms,
-                    "endMs": end_ms,
-                    "text": str(seg["text"]),
-                    "speaker": seg.get("speaker"),
-                    "confidence": seg.get("confidence"),
-                }
-            )
-        raw_extras = {
-            "provider": {k: v for k, v in response.items() if k != "segments"}
-        }
-        return ASRResult(segments=tuple(segments), raw_extras=raw_extras)
+        return _normalize_asr_response(response, request)
 
 
 def _decode_wav_range(

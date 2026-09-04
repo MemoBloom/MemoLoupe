@@ -11,7 +11,6 @@ import pytest
 from memoloupe.cli.main import (
     EXIT_INPUT,
     EXIT_OK,
-    EXIT_STAGE_FAILED,
     EXIT_VALIDATION_FAILED,
     main,
 )

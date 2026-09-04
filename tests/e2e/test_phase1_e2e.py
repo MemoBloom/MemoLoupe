@@ -9,8 +9,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
 from memoloupe.analysis.shot_pipeline import ShotAnalysisPipeline, ShotAnalysisRequest
 from memoloupe.cli.shot_analysis import (
     EXIT_OK,

@@ -6,10 +6,6 @@ shot_speech 归属规则（交集比例 ≥0.5）。
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 from memoloupe.analysis.asr_stage import (
     ASR_STAGE_VERSION,
     run_asr_stage,
@@ -18,7 +14,6 @@ from memoloupe.analysis.asr_stage import (
 )
 from memoloupe.artifacts.schemas import ArtifactName, validate_artifact
 from memoloupe.core.errors import CapabilityUnavailableError
-from memoloupe.services.asr import ASRResult
 from memoloupe.services.mock import MockASRService
 
 

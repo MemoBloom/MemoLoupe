@@ -58,7 +58,8 @@ class TestRunProcess:
             "open(sys.argv[1], 'w').write('started')\n"
             "time.sleep(60)\n"
         )
-        import tempfile, os
+        import os
+        import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             marker = os.path.join(tmp, "started")
             start = time.monotonic()

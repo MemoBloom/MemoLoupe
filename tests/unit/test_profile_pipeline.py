@@ -24,7 +24,7 @@ from memoloupe.analysis.profile_prompts import (
 from memoloupe.services.base import PermanentServiceError, TransientServiceError
 from memoloupe.services.mock import MockTextModelService
 
-from story_fixtures import read_blocks, write_out_dir
+from story_fixtures import write_out_dir
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "output_full" / "raw"
 
