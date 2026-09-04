@@ -43,7 +43,7 @@ MemoLoupe/
 │   ├── cli/
 │   │   ├── main.py
 │   │   ├── shot_analysis.py
-│   │   ├── story_analysis.py
+│   │   ├── story_analysis.py   # 实现模块，由 shot --story-only / 链式流程调用
 │   │   └── profile_build.py
 │   ├── core/
 │   │   ├── config.py
@@ -87,7 +87,6 @@ MemoLoupe/
 │   │   └── profile_aggregate.py
 │   ├── render/
 │   │   ├── shot_html.py
-│   │   ├── story_html.py
 │   │   └── corrections.py
 │   └── validate/
 │       ├── json_contracts.py
@@ -99,7 +98,6 @@ MemoLoupe/
 │   └── completion.json
 ├── templates/
 │   ├── shot-analysis.html
-│   ├── story-analysis.html
 │   └── assets/
 ├── helpers/apple-vision/
 ├── tests/
@@ -111,7 +109,7 @@ MemoLoupe/
 └── docs/
 ```
 
-为了兼容原说明，可以提供根级 `run_shot_analysis.py`、`run_story_analysis.py`、`run_profile_build.py` 薄包装，但业务实现必须位于包内。
+为了兼容原说明，可以提供根级 `run_shot_analysis.py`、`run_profile_build.py` 薄包装，但业务实现必须位于包内。
 
 ## 4. 核心基础设施
 
@@ -358,11 +356,10 @@ class ProfileBuildPipeline:
 
 ## 10. CLI 契约
 
-推荐一个主命令和三个子命令：
+推荐一个主命令和两个子命令：
 
 ```text
-memoloupe shot INPUT --output-dir DIR [options]
-memoloupe story --output-dir DIR [options]
+memoloupe shot INPUT --output-dir DIR [options]  # 默认镜头+故事合并流程；--skip-story 只跑镜头；--story-only 只跑故事（承接原 story 命令全部参数）
 memoloupe profile --output-dir DIR [options]
 memoloupe validate TARGET [--strict]
 ```
@@ -371,7 +368,6 @@ memoloupe validate TARGET [--strict]
 
 ```text
 python run_shot_analysis.py INPUT --output-dir DIR
-python run_story_analysis.py --output-dir DIR
 python run_profile_build.py --output-dir DIR
 ```
 

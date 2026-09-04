@@ -13,7 +13,6 @@ MemoLoupe 是一个**拉片分析工具**：给它一段参考视频，它把视
 | 命令 | 产物 | 内容 |
 |---|---|---|
 | `memoloupe shot` | `shot-analysis.html` | 合并分析（镜头 + 故事）：双轨时间线审片工作台，每个镜头的内容、运镜、光线、声音，逐镜可回看证据 |
-| `memoloupe story` | `story-analysis.html` | 故事结构（故事块、叙事插槽、块间关系）。默认已随 `shot` 自动运行，此命令用于校对修正后的单独重跑 |
 | `memoloupe profile` | `style-profile.json` | 风格档案：叙事/节奏/风格的分布与复刻要点（机器可读契约） |
 
 所有结论都能在 HTML 里点回原始证据（clip、帧、音频段），模型拿不准的地方会明确标记，不会伪装成确定结论。
@@ -61,8 +60,7 @@ uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 |---|---|---|
 | `connect add qwen\|mimo` | 连接模型服务；交互式，API key 存系统 Keychain | `--api-key-env ENV`、`--base-url`、`--media-model`、`--text-model`、`--asr-model`（非交互） |
 | `connect status` / `test` / `switch` / `remove` / `list` | 查看、健康检查、切换、删除连接 | `test [provider]` 默认测当前 provider |
-| `shot VIDEO --output-dir DIR` | Phase 1+2 合并流程：镜头分析后自动继续故事分析（`--skip-story` 退出合并） | `--skip-story`、`--gap-ms N`、`--skip STEP`、`--dry-run`、`--render-only`、`--strict`、`--max-shots N`、`--force STEP`、`--no-cache`、`--align-shot-boundaries-to-audio`、`--mock-services`、`--json-report` |
-| `story --output-dir DIR` | 独立重跑故事分析（如镜头校对修正后；默认已随 shot 运行） | `--allow-draft`、`--scaffold-only`、`--gap-ms N`、`--max-blocks N`、`--mock-text-model`、`--strict` |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 合并流程：镜头分析后自动继续故事分析（`--skip-story` 退出合并；`--story-only` 只重跑故事，如镜头校对修正后） | `--skip-story`、`--story-only`、`--gap-ms N`、`--skip STEP`、`--dry-run`、`--render-only`、`--strict`、`--max-shots N`、`--force STEP`、`--no-cache`、`--align-shot-boundaries-to-audio`、`--mock-services`、`--json-report` |
 | `profile --output-dir DIR` | Phase 3：风格档案（需 story 产物） | `--skip-distill`、`--mock-text-model`、`--strict` |
 | `review --output-dir DIR` | localhost 人工校对界面 | `--port 8765` |
 | `import-corrections FILE --output-dir DIR` | 导入离线校对结果并重渲染 | |

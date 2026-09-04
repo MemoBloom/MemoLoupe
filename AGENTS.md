@@ -60,7 +60,6 @@
 MemoLoupe 的输出止于：
 
 - `shot-analysis.html`
-- `story-analysis.html`
 - `style-profile.json`
 
 本仓库不负责 Story Spine 生成、用户素材匹配、自动粗剪或 FCPXML 导出；这些只能作为下游消费者验证数据是否足够，不能进入核心流程。

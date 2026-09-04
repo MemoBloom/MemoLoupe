@@ -13,7 +13,6 @@ MemoLoupe is a **film-analysis （拉片） tool**: give it a reference video, a
 | Command | Output | Contents |
 |---|---|---|
 | `memoloupe shot` | `shot-analysis.html` | Merged analysis (shots + story): dual story/shot timeline workbench — content, camera, lighting and sound per shot, each linked back to its evidence |
-| `memoloupe story` | `story-analysis.html` | Story structure (blocks, slots, relations). Runs automatically after `shot`; this standalone command is for re-runs after corrections |
 | `memoloupe profile` | `style-profile.json` | Style profile: structure/pacing/style distributions and remake notes (machine-readable contract) |
 
 Every conclusion in the HTML links back to raw evidence (clips, frames, audio segments). Anything the model is unsure about is explicitly marked — never dressed up as fact.
@@ -63,8 +62,7 @@ Global: every command accepts `--env-file PATH` to load a `.env` file (never ove
 |---|---|---|
 | `connect add qwen\|mimo` | Connect a model provider; interactive, API key stored in the OS Keychain | `--api-key-env ENV`, `--base-url`, `--media-model`, `--text-model`, `--asr-model` (non-interactive) |
 | `connect status` / `test` / `switch` / `remove` / `list` | Inspect, health-check, switch, or delete connections | `test [provider]` defaults to the active one |
-| `shot VIDEO --output-dir DIR` | Phase 1+2 merged: shot analysis, then story analysis automatically (`--skip-story` opts out) | `--skip-story`, `--gap-ms N`, `--skip STEP`, `--dry-run`, `--render-only`, `--strict`, `--max-shots N`, `--force STEP`, `--no-cache`, `--align-shot-boundaries-to-audio`, `--mock-services`, `--json-report` |
-| `story --output-dir DIR` | Standalone story re-run (e.g. after shot corrections; runs with `shot` by default) | `--allow-draft`, `--scaffold-only`, `--gap-ms N`, `--max-blocks N`, `--mock-text-model`, `--strict` |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 merged: shot analysis, then story analysis automatically (`--skip-story` opts out; `--story-only` re-runs story only, e.g. after shot corrections) | `--skip-story`, `--story-only`, `--gap-ms N`, `--skip STEP`, `--dry-run`, `--render-only`, `--strict`, `--max-shots N`, `--force STEP`, `--no-cache`, `--align-shot-boundaries-to-audio`, `--mock-services`, `--json-report` |
 | `profile --output-dir DIR` | Phase 3: style profile (expects story artifacts) | `--skip-distill`, `--mock-text-model`, `--strict` |
 | `review --output-dir DIR` | localhost human-review UI | `--port 8765` |
 | `import-corrections FILE --output-dir DIR` | Import offline corrections and re-render | |

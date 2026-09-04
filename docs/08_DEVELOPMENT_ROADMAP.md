@@ -50,7 +50,7 @@
   `memoloupe login`（官方托管服务）保留为未来项，不在本期。
 - shot+story 合并流程已交付（2026-09-03，决策 D-056）：`memoloupe shot`
   默认链式执行故事分析，主流程收敛为 `shot`（分析）+ `profile`（导出）
-  两条命令；独立 `memoloupe story` 保留为校对后重跑入口。
+  两条命令；校对后重跑故事用 `memoloupe shot --story-only`。
 - MiMo ASR 已交付（2026-09-03，决策 D-057）：`asr.provider=mimo-chat`
   （chat/completions + input_audio，窗口切片）；mimo provider 声明 ASR
   能力，`connect add mimo` 后管道自动走 mimo-v2.5-asr。mimo-v2.5-tts
@@ -222,9 +222,7 @@ class StoryAnalysisPipeline:
 
 新增：
 
-- `src/memoloupe/render/story_html.py`
-- `templates/story-analysis.html`
-- `src/memoloupe/cli/story_analysis.py`
+- `src/memoloupe/cli/story_analysis.py`（实现模块，由 shot --story-only / 链式流程调用）
 
 必须实现：
 
@@ -232,7 +230,7 @@ class StoryAnalysisPipeline:
 - [x] 复用 Phase 1 的五态、confidence、evidenceRefs、verified 语义。
 - [x] story-block DOM 只出现在 storyAnalysis 文档。
 - [x] 资源离线、路径相对、无外链脚本。
-- [x] `memoloupe story --output-dir DIR` 替换 `_cmd_not_implemented`。
+- [x] 独立 story 入口由 `memoloupe shot --story-only` 承接（替换 `_cmd_not_implemented`）。
 - [x] 默认要求 shot analysis 可用；`--allow-draft` 显式允许未确认输入。
 - [x] validate 命令同时检查 story JSON 和 story HTML。
 - [x] 跨文件校验 block→shot、slot→block、relation→block。
@@ -265,7 +263,6 @@ Phase 1 fixture/output
 → story scaffold
 → Mock text model enrichment
 → raw/story-blocks.json
-→ story-analysis.html
 → memoloupe validate --strict
 ```
 

@@ -618,7 +618,7 @@ Observation、corrections 或 raw/schema 契约。
 时间线”：上方故事轨道按故事段时长排布，下方镜头轨道保留逐镜头切分和代表帧
 胶片条。故事轨道只显示段落标题、结构归属、叙事作用、时间范围和镜头数量；
 详细故事摘要与结构归属进入右侧 Sidebar，随当前 SHOT 切换。`story-analysis.html`
-仍作为 Phase 2 契约产物保留，但不再是人工复查 story 的主要入口。
+已废弃（见 D-062），story 结果只呈现在 shot-analysis.html。
 
 约束：该变更只影响 HTML 呈现层，不改变 `raw/story-blocks.json`、`raw/shots.json`
 或 `style-profile.json` 契约。`shotAnalysis` 文档不得输出
@@ -687,7 +687,7 @@ None 并记非静默 warning（含 connect 引导与 `uv sync --extra asr-local`
 主流程只剩两条命令——`shot`（分析：镜头 + 故事）与 `profile`（风格档案）。
 链式 story 隐式 `--allow-draft`：独立 story 命令的 confirmed 门禁面向
 "先校对镜头、再跑故事"的两段式工作流；合并流程的校对发生在统一工作台
-之后，corrections 使 story 失效后用独立 `memoloupe story` 重跑。
+之后，corrections 使 story 失效后用 `memoloupe shot --story-only` 重跑。
 `--skip-story` 只跑 Phase 1；`--render-only` 不触发 story；shot 失败不链式；
 story 的退出码原样透传。`--mock-services` → story 用 mock 文本模型；
 `--dry-run` → story 只出确定性 scaffold；`--gap-ms` 由 shot 透传给 story。
@@ -811,6 +811,29 @@ NumPy 帧差/边缘加权运动能量 → 暴力块匹配估平移 → 五档缩
 平移二阶差分估 shake → 分位数自适应阈值 → cut guard 抑制切点附近
 position/scale/shake（exposure 允许在切点）。默认 `sampleFps=8.0`
 （只此配置键影响行为，其余为算法常量并写入 analysis 自证）。
+
+### D-062：CLI 入口统一——删除 `memoloupe story` 子命令与 story-analysis.html
+
+决策（2026-09-04）：删除独立 `memoloupe story` 子命令与
+`story-analysis.html` 产物链（`render/story_html.py`、
+`templates/story-analysis.html`、根级 `run_story_analysis.py` 薄包装）。
+故事分析能力由 `memoloupe shot --story-only` 完整承接（原 story 命令
+全部参数原样保留）；`cli/story_analysis.py` 保留为实现模块，由
+`shot --story-only` 与链式流程调用。story 结果只呈现在
+`shot-analysis.html` 工作台。`style-profile.json` 的 `storyAnalysisPath`
+与校验器 `_HTML_FILES` 中 storyAnalysis 的值改指 `shot-analysis.html`，
+schema 不变。`memoloupe validate` 对目标目录中残留的 legacy
+`story-analysis.html` 只发 warning，不再报错。
+
+已知限制：`storyAnalysis` corrections documentType 仍然有效，但只有
+shot 工作台故事轨道实际展示的 story 字段（如 block 标题）能获得可见
+overlay；对未展示字段（如 `audienceReaction`）的修正仍会持久化到
+`corrections/storyAnalysis.json` 并产生渲染 warning，但没有显示面。
+
+理由：三阶段 CLI 冗余——story 结果已合并呈现于统一工作台（D-051），
+合并流程（D-056）落地后独立 story 命令只剩校对后重跑入口的价值，由
+`--story-only` 承接即可消除一条重复的参数面和一条独立的渲染链；
+validate 降级为 warning 兼容既有输出目录，避免对历史产物硬失败。
 
 ## 3. 推荐技术默认值
 
