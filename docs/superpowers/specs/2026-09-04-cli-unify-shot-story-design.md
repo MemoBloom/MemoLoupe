@@ -33,7 +33,13 @@
 
 - 删除 `src/memoloupe/render/story_html.py` 与 `templates/story-analysis.html`。
 - story 流程（无论链式还是 `--story-only`）完成后只重渲 shot-analysis.html（现有 D-051 逻辑保留，渲染目标只剩它）。
+- `src/memoloupe/render/review_server.py`：移除 story-analysis.html 的路由、重渲染调用与 404 分支；`/` 与 `/shot-analysis.html` 行为不变。
 - `memoloupe validate`：不再把 story-analysis.html 列为校验对象；若 target 目录中**存在** story-analysis.html（旧版残留），输出一条 warning（「旧版产物，可删除」），不产生 error，保证旧 output-dir 仍可校验通过。
+
+### 2.1 契约毗邻点（规划阶段补充，用户已确认）
+
+- `style-profile.json` 的 `source.storyAnalysisPath` 字段**保留**，值由 `"story-analysis.html"` 改为 `"shot-analysis.html"`（`src/memoloupe/analysis/profile_aggregate.py:784`）。schema 版本不变，下游消费者仍能沿该字段找到故事结果。
+- `src/memoloupe/analysis/completion.py` 的 `_HTML_FILES["storyAnalysis"]` 映射值改为 `"shot-analysis.html"`：确认 storyAnalysis 文档时校验主工作台页面。corrections 的 `documentType: "storyAnalysis"` 保持合法不变。
 
 ### 3. 文档
 
@@ -51,7 +57,7 @@
 
 ## 不变量
 
-- JSON 契约零改动：`raw/story-blocks.json` 等 raw 产物、schema、校验规则全部保留。
+- JSON 契约零改动：`raw/story-blocks.json` 等 raw 产物、schema、校验规则全部保留；style-profile.json 仅 `storyAnalysisPath` 字段取值变化（见 2.1），schema 版本不变。
 - 故事分析管线（scaffold + 文本模型填充）行为、退出码语义不变。
 - 确定性渲染、断点续跑、降级显式状态等仓库工程规则不受影响。
 - corrections → story 失效 → `shot --story-only` 重跑的工作流能力不丢。
