@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import wave
+from pathlib import Path
+
+import pytest
+
+from memoloupe.core.errors import CapabilityUnavailableError
+from memoloupe.services.asr import ASRRequest, build_asr_service
 from memoloupe.services.asr_local import (
+    LOCAL_ASR_VERSION,
+    PROVIDER_LOCAL,
+    LocalFireRedVadMlxASR,
     build_concat_map,
     concat_to_source,
     map_concat_segments,
@@ -75,20 +85,6 @@ def test_map_concat_segments_offsets_and_filters():
             "confidence": None,
         },
     ]
-
-
-import wave
-from pathlib import Path
-
-import pytest
-
-from memoloupe.core.errors import CapabilityUnavailableError
-from memoloupe.services.asr import ASRRequest, build_asr_service
-from memoloupe.services.asr_local import (
-    LOCAL_ASR_VERSION,
-    PROVIDER_LOCAL,
-    LocalFireRedVadMlxASR,
-)
 
 
 def _write_wav(path: Path, total_ms: int = 10_000) -> Path:

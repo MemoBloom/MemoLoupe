@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import array
 import math
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def effective_bin_duration_ms(duration_ms: int, bin_ms: int, max_bins: int) -> i
     needed = math.ceil(duration_ms / max(bin_ms, 1))
     if needed <= max_bins:
         return max(bin_ms, 1)
-    return max(int(math.ceil(duration_ms / max_bins)), 1)
+    return max(math.ceil(duration_ms / max_bins), 1)
 
 
 def _parse_pts_ms(stdout: bytes) -> list[int]:
@@ -106,9 +107,8 @@ def build_waveform(
     一个 chunk 的 PCM（默认 ≤ 120s × 16kHz × 2B ≈ 3.8MB）。
     音频短于/超出 analyzedRange 的块自然为空数据，不视为失败。
     """
-    import array
-
     total_bins = max(1, math.ceil(duration_ms / max(bin_ms, 1)))
+    samples_per_bin = max(sample_rate * bin_ms // 1000, 1)
     mins = [1.0] * total_bins
     maxs = [-1.0] * total_bins
     filled = 0
@@ -130,10 +130,9 @@ def build_waveform(
             "-f", "s16le",
             "pipe:1",
         ]
-        result = pool.run(argv, timeout_sec=timeout_sec, capture_limit_bytes=None)
+        result = pool.run(argv, timeout_sec=timeout_sec)
         samples = array.array("h")
         samples.frombytes(result.stdout[: len(result.stdout) // 2 * 2])
-        samples_per_bin = max(sample_rate * bin_ms // 1000, 1)
         base_index = offset_ms // bin_ms
         for i, sample in enumerate(samples):
             index = base_index + i // samples_per_bin
@@ -246,12 +245,13 @@ def build_review_timeline(
             wave_reason = f"波形提取失败：{exc}"
             warnings.append(wave_reason)
 
-    if frames_status == "failed" or wave_status == "failed":
-        top_status = "partial"
-    elif frames_status == "complete" and wave_status == "complete":
-        top_status = "complete"
-    else:
-        top_status = "complete"
+    # unavailable 是确定性降级（无音轨/无索引），不影响整体 complete；
+    # 只有进程失败才 partial（下次续跑）。
+    top_status = (
+        "partial"
+        if frames_status == "failed" or wave_status == "failed"
+        else "complete"
+    )
 
     video_frames: dict = {"status": frames_status}
     if frames_status == "complete":

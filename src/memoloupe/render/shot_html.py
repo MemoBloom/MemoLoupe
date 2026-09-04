@@ -1307,10 +1307,10 @@ def _review_workbench_view(raws: dict[str, dict | None]) -> dict:
     payload = {
         "analyzedRange": analyzed,
         "reviewTimelineStatus": rt.get("status", "unavailable"),
+        # 降级原因：帧索引优先，其次波形。
         "reviewTimelineReason": (
-            ((rt.get("videoFrames") or {}).get("reason"))
-            if (rt.get("videoFrames") or {}).get("reason")
-            else (rt.get("waveform") or {}).get("reason")
+            (rt.get("videoFrames") or {}).get("reason")
+            or (rt.get("waveform") or {}).get("reason")
         ),
         "frameSource": frame_source,
         "waveform": wave_view,

@@ -11,6 +11,7 @@ fileRef，其余 pair 继续（docs/03 降级矩阵）。
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from pathlib import Path
 
 from memoloupe.media.proc import ProcessError
@@ -38,15 +39,15 @@ def boundary_frame_times_from_pts(
     - left-exit：严格小于 boundaryMs 的最后一帧（左镜头最后一展示帧）；
     - right-entry：大于等于 boundaryMs 的第一帧（右镜头首展示帧）。
 
-    索引不可用（None/空）时退化为 ``endMs-1`` / ``startMs``；此时 30fps
-    下的 endMs-1 与 startMs 可能落在同一展示帧，luma 差将失去意义，
-    调用方须自行标记证据降级。
+    二分查找，长片（10^5 帧量级 × N-1 pair）不退化为线性扫描。
+    索引不可用（None/空/切点超出范围）时退化为 ``endMs-1`` /
+    ``startMs``；此时低帧率下两者可能落在同一展示帧，luma 差将失去
+    意义，调用方须自行标记证据降级。
     """
     if pts_ms:
-        left_pts = [p for p in pts_ms if p < boundary_ms]
-        right_pts = [p for p in pts_ms if p >= boundary_ms]
-        if left_pts and right_pts:
-            return left_pts[-1], right_pts[0]
+        left_pos = bisect_left(pts_ms, boundary_ms)  # 第一个 >= boundary
+        if 0 < left_pos < len(pts_ms):
+            return pts_ms[left_pos - 1], pts_ms[left_pos]
     return left_end_ms - 1, right_start_ms
 
 

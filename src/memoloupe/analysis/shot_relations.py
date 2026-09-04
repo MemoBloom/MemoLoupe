@@ -369,7 +369,7 @@ def build_shot_relations(
 
         # 7. 可选语义层（MiMo 文本模型）：先记 payload，稍后并发执行 --------
         if model_service is None:
-            semantic: dict = {
+            semantic: dict | None = {
                 "status": "unknown",
                 "reason": "语义模型未配置（textModel 三要素缺失），语义层未运行",
             }

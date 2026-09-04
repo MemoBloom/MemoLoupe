@@ -88,7 +88,11 @@ from memoloupe.analysis.shot_relations import (
 from memoloupe.services.shot_relation_model import build_shot_relation_service
 from memoloupe.render.shot_html import SHOT_RENDER_VERSION, render_shot_html
 from memoloupe.services.asr import build_asr_service
-from memoloupe.services.mock import MockASRService, default_mock_unified
+from memoloupe.services.mock import (
+    MockASRService,
+    default_mock_shot_relation,
+    default_mock_unified,
+)
 from memoloupe.services.unified_media import OpenAICompatibleUnifiedMedia
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
@@ -1196,8 +1200,6 @@ class ShotAnalysisPipeline:
             relation_service = request.relation_service
             if relation_service is None:
                 if request.mock_services:
-                    from memoloupe.services.mock import default_mock_shot_relation
-
                     relation_service = default_mock_shot_relation()
                 else:
                     relation_service = build_shot_relation_service(config)
