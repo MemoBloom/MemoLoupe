@@ -60,7 +60,7 @@ uv run memoloupe shot ./video.mp4 --output-dir ./out --env-file .env
 |---|---|---|
 | `connect add qwen\|mimo` | 连接模型服务；交互式，API key 存系统 Keychain | `--api-key-env ENV`、`--base-url`、`--media-model`、`--text-model`、`--asr-model`（非交互） |
 | `connect status` / `test` / `switch` / `remove` / `list` | 查看、健康检查、切换、删除连接 | `test [provider]` 默认测当前 provider |
-| `shot VIDEO --output-dir DIR` | Phase 1+2 合并流程：镜头分析后自动继续故事分析（`--skip-story` 退出合并；`--story-only` 只重跑故事，如镜头校对修正后） | `--skip-story`、`--story-only`、`--gap-ms N`、`--skip STEP`、`--dry-run`、`--render-only`、`--strict`、`--max-shots N`、`--force STEP`、`--no-cache`、`--align-shot-boundaries-to-audio`、`--mock-services`、`--json-report` |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 合并流程：镜头分析后自动继续故事分析（`--skip-story` 退出合并；`--story-only` 只重跑故事，如镜头校对修正后） | `--skip-story`、`--story-only`、`--allow-draft`、`--scaffold-only`、`--max-blocks N`、`--mock-text-model`、`--gap-ms N`、`--skip STEP`、`--dry-run`、`--render-only`、`--strict`、`--max-shots N`、`--force STEP`、`--no-cache`、`--align-shot-boundaries-to-audio`、`--mock-services`、`--json-report` |
 | `profile --output-dir DIR` | Phase 3：风格档案（需 story 产物） | `--skip-distill`、`--mock-text-model`、`--strict` |
 | `review --output-dir DIR` | localhost 人工校对界面 | `--port 8765` |
 | `import-corrections FILE --output-dir DIR` | 导入离线校对结果并重渲染 | |

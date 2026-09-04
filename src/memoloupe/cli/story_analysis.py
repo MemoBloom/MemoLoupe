@@ -17,7 +17,8 @@ analysis confirmed）→ StoryAnalysisPipeline（scaffold + 可选文本模型�
 - ``0`` 完成（含 partial，降级以 warning 呈现）；
 - ``2`` 用户参数或配置错误；
 - ``3`` 输入/契约错误（output-dir 缺失、shot analysis 不可用）；
-- ``5`` 阶段执行失败。
+- ``5`` 阶段执行失败（含 ``--strict`` 下 partial 或重渲 shot-analysis.html
+  失败；非 strict 时重渲失败仅 warning）。
 """
 
 from __future__ import annotations
@@ -256,11 +257,14 @@ def run_story_analysis(argv: Sequence[str]) -> int:
 
     # D-051：story 结果合并进 shot 工作台。story 完成后必须重渲
     # shot-analysis.html，否则工作台的故事轨道停留在 story 之前的旧状态。
-    # 工作台重渲失败只记 warning，不影响 story 产物与退出码。
+    # 工作台重渲失败默认只记 warning，不影响 story 产物；--strict 下视为
+    # 阶段失败（CI 门禁），返回非零退出码。
+    render_failed = False
     if report.status != "failed":
         try:
             render_shot_html(out_dir)
         except Exception as exc:
+            render_failed = True
             print(
                 f"  [warning] 重渲 shot-analysis.html（合并故事轨道）失败：{exc}",
                 file=sys.stderr,
@@ -274,6 +278,6 @@ def run_story_analysis(argv: Sequence[str]) -> int:
 
     if report.status == "failed":
         return EXIT_STAGE_FAILED
-    if args.strict and report.status == "partial":
+    if args.strict and (report.status == "partial" or render_failed):
         return EXIT_STAGE_FAILED
     return EXIT_OK

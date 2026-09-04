@@ -829,6 +829,10 @@ schema 不变。`memoloupe validate` 对目标目录中残留的 legacy
 shot 工作台故事轨道实际展示的 story 字段（如 block 标题）能获得可见
 overlay；对未展示字段（如 `audienceReaction`）的修正仍会持久化到
 `corrections/storyAnalysis.json` 并产生渲染 warning，但没有显示面。
+此外，被删除的 story-analysis.html 曾是唯一用于**撰写** storyAnalysis
+corrections 的界面（其单元格编辑控件会 POST documentType
+storyAnalysis）；工作台故事轨道为只读展示，目前 story 修正只能通过
+`memoloupe import-corrections` 或手工构造 API 调用创建。
 
 理由：三阶段 CLI 冗余——story 结果已合并呈现于统一工作台（D-051），
 合并流程（D-056）落地后独立 story 命令只剩校对后重跑入口的价值，由

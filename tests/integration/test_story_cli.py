@@ -127,6 +127,34 @@ class TestStoryOnlyCLI:
         ])
         assert code == EXIT_STAGE_FAILED
 
+    def test_strict_fails_when_workbench_rerender_fails(self, tmp_path, monkeypatch):
+        import memoloupe.cli.story_analysis as story_cli
+
+        work = _copy_fixture(tmp_path)
+
+        def _raise(out_dir):
+            raise RuntimeError("render boom")
+
+        monkeypatch.setattr(story_cli, "render_shot_html", _raise)
+        code = main([
+            "shot", "--story-only", "--output-dir", str(work), "--allow-draft", "--strict",
+        ])
+        assert code == 5
+
+    def test_rerender_failure_is_warning_only_without_strict(self, tmp_path, monkeypatch):
+        import memoloupe.cli.story_analysis as story_cli
+
+        work = _copy_fixture(tmp_path)
+
+        def _raise(out_dir):
+            raise RuntimeError("render boom")
+
+        monkeypatch.setattr(story_cli, "render_shot_html", _raise)
+        code = main([
+            "shot", "--story-only", "--output-dir", str(work), "--allow-draft",
+        ])
+        assert code == 0
+
     def test_story_rerun_reuses_checkpoint(self, tmp_path):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)

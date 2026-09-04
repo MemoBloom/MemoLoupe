@@ -62,7 +62,7 @@ Global: every command accepts `--env-file PATH` to load a `.env` file (never ove
 |---|---|---|
 | `connect add qwen\|mimo` | Connect a model provider; interactive, API key stored in the OS Keychain | `--api-key-env ENV`, `--base-url`, `--media-model`, `--text-model`, `--asr-model` (non-interactive) |
 | `connect status` / `test` / `switch` / `remove` / `list` | Inspect, health-check, switch, or delete connections | `test [provider]` defaults to the active one |
-| `shot VIDEO --output-dir DIR` | Phase 1+2 merged: shot analysis, then story analysis automatically (`--skip-story` opts out; `--story-only` re-runs story only, e.g. after shot corrections) | `--skip-story`, `--story-only`, `--gap-ms N`, `--skip STEP`, `--dry-run`, `--render-only`, `--strict`, `--max-shots N`, `--force STEP`, `--no-cache`, `--align-shot-boundaries-to-audio`, `--mock-services`, `--json-report` |
+| `shot VIDEO --output-dir DIR` | Phase 1+2 merged: shot analysis, then story analysis automatically (`--skip-story` opts out; `--story-only` re-runs story only, e.g. after shot corrections) | `--skip-story`, `--story-only`, `--allow-draft`, `--scaffold-only`, `--max-blocks N`, `--mock-text-model`, `--gap-ms N`, `--skip STEP`, `--dry-run`, `--render-only`, `--strict`, `--max-shots N`, `--force STEP`, `--no-cache`, `--align-shot-boundaries-to-audio`, `--mock-services`, `--json-report` |
 | `profile --output-dir DIR` | Phase 3: style profile (expects story artifacts) | `--skip-distill`, `--mock-text-model`, `--strict` |
 | `review --output-dir DIR` | localhost human-review UI | `--port 8765` |
 | `import-corrections FILE --output-dir DIR` | Import offline corrections and re-render | |

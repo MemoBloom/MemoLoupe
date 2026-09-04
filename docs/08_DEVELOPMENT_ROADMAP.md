@@ -97,7 +97,7 @@
 - resolver 冲突理由显示在 shot 镜头列，并能被 HTML 校验器验证。
 - 默认按 ASR gap 确定性聚块；模型失败时仍输出 `status=scaffold`。
 - 文本模型只补充叙事字段和 slot，不修改确定性镜头集合。
-- `memoloupe story` 可运行、可复用 checkpoint、可显式降级。
+- `memoloupe story` 可运行、可复用 checkpoint、可显式降级。（已于 D-062 废弃，入口由 `memoloupe shot --story-only` 承接）
 - `raw/story-blocks.json` 通过 schema 和跨文件严格校验。
 - `story-analysis.html` 离线可打开，具备五态、证据和人工校对语义。
 - 全量测试通过，并新增 Phase 2 E2E。
@@ -232,7 +232,7 @@ class StoryAnalysisPipeline:
 - [x] 资源离线、路径相对、无外链脚本。
 - [x] 独立 story 入口由 `memoloupe shot --story-only` 承接（替换 `_cmd_not_implemented`）。
 - [x] 默认要求 shot analysis 可用；`--allow-draft` 显式允许未确认输入。
-- [x] validate 命令同时检查 story JSON 和 story HTML。
+- [x] validate 命令同时检查 story JSON 和 story HTML。（story HTML 已于 D-062 废弃，现仅校验 story JSON 并对残留 story-analysis.html 发 warning）
 - [x] 跨文件校验 block→shot、slot→block、relation→block。
 - [x] 生成最小样例和完整 Mock 样例。
 
