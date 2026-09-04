@@ -11,7 +11,7 @@ MemoLoupe 是面向“拉片”的分阶段媒体分析系统。它把一支参�
 系统依次产生三类最终产物：
 
 1. Phase 1：`shot-analysis.html`，展示镜头时间线和镜头级观察。
-2. Phase 2：`story-analysis.html`，展示故事块、故事插槽及叙事作用。
+2. Phase 2：故事分析结果并入 `shot-analysis.html`，展示故事块、故事插槽及叙事作用。
 3. Phase 3：`style-profile.json`，表达可复刻的叙事、节奏和风格协商契约。
 
 最终边界止于 `style-profile.json`。系统 MUST NOT：
@@ -140,7 +140,9 @@ Phase 1 完成不等于人工确认。HTML 文档状态至少要区分 `draft`�
 
 输入：已生成的镜头契约，默认要求 shot analysis 为 confirmed；开发模式可通过显式参数允许 draft。  
 主要过程：按 ASR 停顿生成确定性候选块，将镜头文本摘要送入文本模型，产生故事块字段和故事插槽。  
-输出：`raw/story-blocks.json`、`story-analysis.html`。
+输出：`raw/story-blocks.json`；故事块与故事插槽渲染进 `shot-analysis.html`，不再生成独立的 `story-analysis.html`。
+
+Phase 2 的重跑入口统一为 `memoloupe shot --story-only`；不存在独立的 story 子命令。
 
 Phase 2 MUST NOT 把视频 clip 发送给叙事模型。叙事模型只能看到结构化镜头摘要、ASR 和必要的确定性信号。
 
@@ -179,7 +181,6 @@ output-dir/
 ├── checkpoints/
 ├── corrections/
 ├── shot-analysis.html
-├── story-analysis.html
 └── style-profile.json
 ```
 
