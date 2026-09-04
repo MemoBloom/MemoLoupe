@@ -1,4 +1,4 @@
-"""CLI 分发回归：shot/story/profile --help 必须显示各自完整帮助。"""
+"""CLI 分发回归：shot/profile --help 必须显示各自完整帮助。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from memoloupe.cli.main import main
     ("command", "expected"),
     [
         ("shot", "--output-dir"),
-        ("story", "--scaffold-only"),
+        ("shot", "--scaffold-only"),
         ("profile", "--skip-distill"),
     ],
 )

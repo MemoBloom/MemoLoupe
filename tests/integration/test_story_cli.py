@@ -1,4 +1,4 @@
-"""``memoloupe story`` CLI 集成测试（roadmap 03-04）。
+"""``memoloupe shot --story-only`` CLI 集成测试（承接原 ``memoloupe story``）。
 
 覆盖：默认门禁（shot analysis 可用性）、--allow-draft 降级、mock 文本模型
 纵向链路、story HTML 渲染、validate 对 story JSON + story HTML 的闭环。
@@ -29,11 +29,17 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-class TestStoryCLI:
+def _copy_fixture(tmp_path: Path) -> Path:
+    work = tmp_path / "out"
+    shutil.copytree(FIXTURE_FULL, work)
+    return work
+
+
+class TestStoryOnlyCLI:
     def test_story_on_full_fixture_renders_html(self, tmp_path):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
-        code = main(["story", "--output-dir", str(work), "--allow-draft"])
+        code = main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"])
         assert code == EXIT_OK
         assert (work / "raw" / "story-blocks.json").is_file()
         assert (work / "story-analysis.html").is_file()
@@ -43,7 +49,7 @@ class TestStoryCLI:
     def test_story_default_rejects_unconfirmed_shot_analysis(self, tmp_path, capsys):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
-        code = main(["story", "--output-dir", str(work)])
+        code = main(["shot", "--story-only", "--output-dir", str(work)])
         assert code == EXIT_INPUT
         err = capsys.readouterr().err
         assert "尚未 confirmed" in err
@@ -69,13 +75,13 @@ class TestStoryCLI:
             ),
             encoding="utf-8",
         )
-        assert main(["story", "--output-dir", str(work), "--mock-text-model"]) == EXIT_OK
+        assert main(["shot", "--story-only", "--output-dir", str(work), "--mock-text-model"]) == EXIT_OK
 
     def test_story_with_mock_text_model_fills_slots(self, tmp_path):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         code = main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ])
         assert code == EXIT_OK
         blocks = _read_json(work / "raw" / "story-blocks.json")
@@ -87,7 +93,7 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         code = main([
-            "story", "--output-dir", str(work), "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--allow-draft",
             "--scaffold-only", "--force", "scaffold_story_blocks",
         ])
         assert code == EXIT_OK
@@ -99,7 +105,7 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         code = main([
-            "story", "--output-dir", str(work), "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--allow-draft",
             "--scaffold-only", "--mock-text-model",
         ])
         assert code == EXIT_USAGE
@@ -116,7 +122,7 @@ class TestStoryCLI:
             lambda config: (service, None),
         )
         code = main([
-            "story", "--output-dir", str(work), "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--allow-draft",
             "--strict", "--force", "story_model_fill",
         ])
         assert code == EXIT_STAGE_FAILED
@@ -125,11 +131,11 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         assert main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ]) == EXIT_OK
         first = _read_json(work / "raw" / "story-blocks.json")
         assert main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ]) == EXIT_OK
         second = _read_json(work / "raw" / "story-blocks.json")
         assert second["generatedAt"] == first["generatedAt"]
@@ -139,7 +145,7 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         assert main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ]) == EXIT_OK
         html = (work / "shot-analysis.html").read_text(encoding="utf-8")
         assert 'id="story-timeline-band"' in html
@@ -148,7 +154,7 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         (work / "raw" / "shots.json").unlink()
-        code = main(["story", "--output-dir", str(work)])
+        code = main(["shot", "--story-only", "--output-dir", str(work)])
         assert code == EXIT_INPUT
         assert "shot analysis 不可用" in capsys.readouterr().err
 
@@ -156,13 +162,13 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         (work / "raw" / "shots.json").unlink()
-        code = main(["story", "--output-dir", str(work), "--allow-draft"])
+        code = main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"])
         assert code == EXIT_STAGE_FAILED
 
     def test_validate_checks_story_html(self, tmp_path):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
-        assert main(["story", "--output-dir", str(work), "--allow-draft"]) == EXIT_OK
+        assert main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"]) == EXIT_OK
         html_path = work / "story-analysis.html"
         text = html_path.read_text(encoding="utf-8")
         # 破坏一个五态单元格：去掉 data-value-state。
@@ -177,7 +183,7 @@ class TestStoryCLI:
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         assert main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ]) == EXIT_OK
         assert not (work / "style-profile.json").exists()
         assert list((work / "checkpoints" / "outdated").glob("style-profile.*.json"))
@@ -186,8 +192,18 @@ class TestStoryCLI:
     def test_json_report_includes_story_html(self, tmp_path, capsys):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
-        code = main(["story", "--output-dir", str(work), "--json-report", "--allow-draft"])
+        code = main(["shot", "--story-only", "--output-dir", str(work), "--json-report", "--allow-draft"])
         assert code == EXIT_OK
         report = json.loads(capsys.readouterr().out)
         assert report["phase"] == "story"
         assert report["storyHtml"] == "story-analysis.html"
+
+    def test_story_only_rejects_input_positional(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        code = main(["shot", "some.mp4", "--story-only", "--output-dir", str(work)])
+        assert code == 2
+
+    def test_story_only_conflicts_with_skip_story(self, tmp_path):
+        work = _copy_fixture(tmp_path)
+        code = main(["shot", "--story-only", "--skip-story", "--output-dir", str(work)])
+        assert code == 2

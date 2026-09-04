@@ -3,8 +3,7 @@
 子命令：
 
 - ``memoloupe validate TARGET [--strict] [--json-report]``：校验一个 output-dir。
-- ``memoloupe shot``：Phase 1+2 合并流程（镜头分析 → 故事分析；--skip-story 只跑 Phase 1）。
-- ``memoloupe story``：Phase 2 故事分析（独立重跑入口，如 corrections 使 story 失效后）。
+- ``memoloupe shot``：镜头 + 故事分析（--skip-story 只跑镜头；--story-only 只跑故事）。
 - ``memoloupe profile``：Phase 3 风格档案。
 - ``memoloupe connect``：管理模型服务提供商连接（add/status/test/switch/remove/list）。
 - ``memoloupe review --output-dir DIR [--port 8765]``：localhost review server。
@@ -40,7 +39,6 @@ from .connect import run_connect
 from .profile_build import run_profile_build
 from .review import run_review
 from .shot_analysis import run_shot_analysis
-from .story_analysis import run_story_analysis
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -53,7 +51,7 @@ EXIT_VALIDATION_FAILED = 6
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="memoloupe",
-        description="MemoLoupe 拉片分析：shot / story / profile 三阶段与产物校验。",
+        description="MemoLoupe 拉片分析：shot（镜头+故事）/ profile 两阶段与产物校验。",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -72,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="输出机器可读 JSON 报告（默认人类可读摘要）",
     )
 
-    # shot/story/profile 的参数由各自子命令模块自行解析，这里用 REMAINDER 透传。
+    # shot/profile 的参数由各自子命令模块自行解析，这里用 REMAINDER 透传。
     p_shot = sub.add_parser("shot", help="镜头 + 故事分析（Phase 1+2 合并流程）")
     p_shot.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
@@ -85,7 +83,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_import.add_argument("args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
     for name, help_text in (
-        ("story", "Phase 2：故事分析"),
         ("profile", "Phase 3：风格档案"),
     ):
         p = sub.add_parser(name, help=help_text)
@@ -212,7 +209,7 @@ def _extract_env_file(argv: Sequence[str]) -> tuple[list[str], str | None]:
 def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:]) if argv is None else list(argv)
     # argparse.REMAINDER 无法捕获以选项开头的余数（已知限制），shot、review、
-    # import-corrections、story、profile 与 connect 的参数全部以选项开头，因此在主
+    # import-corrections、profile 与 connect 的参数全部以选项开头，因此在主
     # parser 之前分流。
     argv, env_file = _extract_env_file(argv)
     injected_env: dict[str, str] = {}
@@ -240,8 +237,6 @@ def _dispatch(argv: Sequence[str]) -> int:
         return run_review(argv[1:])
     if argv[:1] == ["import-corrections"]:
         return run_import_corrections(argv[1:])
-    if argv[:1] == ["story"]:
-        return run_story_analysis(argv[1:])
     if argv[:1] == ["profile"]:
         return run_profile_build(argv[1:])
 

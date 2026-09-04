@@ -2,8 +2,10 @@
 
 shot+story 合并流程（D-056）：默认在 Phase 1 镜头分析完成后链式执行
 Phase 2 故事分析（隐式 ``--allow-draft``——合并流程的校对发生在统一工作台
-之后，corrections 使 story 失效后用独立的 ``memoloupe story`` 重跑）；
+之后，corrections 使 story 失效后用 ``--story-only`` 重跑）；
 ``--skip-story`` 只跑 Phase 1。``--render-only`` 不触发 story。
+``--story-only`` 只跑 Phase 2 故事分析（承接原 ``memoloupe story`` 子命令；
+默认要求 shotAnalysis 已 confirmed，可用 ``--allow-draft`` 降级）。
 
 ``run_shot_analysis(argv)`` 同时服务包内 CLI 与根级 ``run_shot_analysis.py``
 薄包装。退出码：
@@ -59,7 +61,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description="镜头 + 故事分析（Phase 1+2 合并流程）：探测、硬切检测、证据抽取、"
         "故事聚块、降级产物、HTML 与校验。",
     )
-    parser.add_argument("input", type=Path, help="源视频路径")
+    parser.add_argument("input", type=Path, nargs="?", help="源视频路径（--story-only 时省略）")
     parser.add_argument("--output-dir", type=Path, required=True, help="输出目录")
     parser.add_argument("--start-ms", type=int, default=None, help="分析范围起点（毫秒）")
     parser.add_argument("--end-ms", type=int, default=None, help="分析范围终点（毫秒）")
@@ -128,6 +130,33 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="调试模式：只分析前 N 个镜头（产物不满足完整范围契约，validate 预期报错）",
     )
+    parser.add_argument(
+        "--story-only",
+        action="store_true",
+        help="只跑故事分析阶段（承接原 memoloupe story；默认要求 shotAnalysis 已 confirmed）",
+    )
+    parser.add_argument(
+        "--allow-draft",
+        action="store_true",
+        help="--story-only：显式允许未确认/草稿输入（跳过 confirmed 门禁）",
+    )
+    parser.add_argument(
+        "--max-blocks",
+        type=int,
+        default=None,
+        metavar="N",
+        help="--story-only 调试：只保留前 N 个 block",
+    )
+    parser.add_argument(
+        "--mock-text-model",
+        action="store_true",
+        help="--story-only：文本模型使用可编程 mock（不发起网络请求）",
+    )
+    parser.add_argument(
+        "--scaffold-only",
+        action="store_true",
+        help="--story-only：只生成确定性 scaffold，不调用文本模型",
+    )
     return parser
 
 
@@ -153,6 +182,54 @@ def _print_summary(report: PipelineReport) -> None:
 
 def run_shot_analysis(argv: Sequence[str]) -> int:
     args = _build_parser().parse_args(list(argv))
+
+    if args.story_only:
+        conflicts = []
+        if args.input is not None:
+            conflicts.append("位置参数 input")
+        if args.skip_story:
+            conflicts.append("--skip-story")
+        if args.render_only:
+            conflicts.append("--render-only")
+        if args.max_shots is not None:
+            conflicts.append("--max-shots")
+        if args.start_ms is not None or args.end_ms is not None:
+            conflicts.append("--start-ms/--end-ms")
+        if args.mock_services:
+            conflicts.append("--mock-services（请改用 --mock-text-model）")
+        if args.dry_run:
+            conflicts.append("--dry-run（请改用 --scaffold-only）")
+        if args.skip:
+            conflicts.append("--skip")
+        if args.align_shot_boundaries_to_audio:
+            conflicts.append("--align-shot-boundaries-to-audio")
+        if conflicts:
+            print(
+                f"错误：--story-only 与 {'、'.join(conflicts)} 不能同时使用",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        story_argv = ["--output-dir", str(args.output_dir), "--gap-ms", str(args.gap_ms)]
+        if args.allow_draft:
+            story_argv.append("--allow-draft")
+        for step in args.force:
+            story_argv += ["--force", step]
+        if args.no_cache:
+            story_argv.append("--no-cache")
+        if args.max_blocks is not None:
+            story_argv += ["--max-blocks", str(args.max_blocks)]
+        if args.mock_text_model:
+            story_argv.append("--mock-text-model")
+        if args.scaffold_only:
+            story_argv.append("--scaffold-only")
+        if args.strict:
+            story_argv.append("--strict")
+        if args.json_report:
+            story_argv.append("--json-report")
+        return run_story_analysis(story_argv)
+    if args.input is None:
+        print("错误：缺少源视频路径 input（或使用 --story-only）", file=sys.stderr)
+        return EXIT_USAGE
 
     if args.render_only:
         return _run_render_only(args.output_dir)
@@ -255,9 +332,9 @@ def run_shot_analysis(argv: Sequence[str]) -> int:
 def _run_chained_story(args: argparse.Namespace) -> int:
     """shot+story 合并流程（D-056）：shot 成功后链式执行 story。
 
-    隐式 ``--allow-draft``：独立 ``memoloupe story`` 的 confirmed 门禁面向
+    隐式 ``--allow-draft``：``--story-only`` 的 confirmed 门禁面向
     "先校对镜头、再跑故事"的两段式工作流；合并流程的校对发生在统一工作台
-    之后，corrections 使 story 失效后用独立 story 命令重跑。
+    之后，corrections 使 story 失效后用 ``--story-only`` 重跑。
 
     mock/dry-run 语义透传：``--mock-services`` → story 用 mock 文本模型；
     ``--dry-run`` → story 只出确定性 scaffold（不调用文本模型）。
