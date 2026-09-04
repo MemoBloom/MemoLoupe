@@ -66,13 +66,13 @@ class TestUnimplementedCommands:
         assert "不存在" in capsys.readouterr().err
 
     def test_story_command_missing_output_dir_is_usage_error(self, capsys):
-        # story 已实现：缺 --output-dir 是参数错误（退出码 2）。
+        # shot --story-only（承接原 story）：缺 --output-dir 是参数错误（退出码 2）。
         with pytest.raises(SystemExit) as exc_info:
-            main(["story"])
+            main(["shot", "--story-only"])
         assert exc_info.value.code == 2
 
     def test_story_command_missing_dir_is_input_error(self, tmp_path, capsys):
-        assert main(["story", "--output-dir", str(tmp_path / "nonexistent")]) == EXIT_INPUT
+        assert main(["shot", "--story-only", "--output-dir", str(tmp_path / "nonexistent")]) == EXIT_INPUT
         assert "不存在" in capsys.readouterr().err
 
     def test_profile_command_missing_dir_is_input_error(self, tmp_path, capsys):
