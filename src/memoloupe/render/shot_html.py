@@ -26,7 +26,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import quote
 
-from memoloupe.analysis.observations import Observation, Source, ValueState
+from memoloupe.analysis.observations import Confidence, Observation, Source, ValueState
 from memoloupe.analysis.resolvers import DEFAULT_RESOLVERS, build_observations_with_review
 from memoloupe.analysis.vocabulary import FieldRule, Vocabulary, load_vocabulary
 from memoloupe.core.atomic_io import read_json, write_text_atomic
@@ -36,6 +36,8 @@ from memoloupe.validate.html_contract import DOCUMENT_STATUSES
 SHOT_RENDER_VERSION = "render.v3"
 CONTRACT_VERSION = "1.0"
 DOCUMENT_TYPE = "shotAnalysis"
+#: 故事轨道/故事卡片读取的 corrections 文档（storyAnalysis 修正叠加进本工作台）。
+STORY_DOCUMENT_TYPE = "storyAnalysis"
 
 _TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "templates" / "shot-analysis.html"
 _LOGO_SOURCE = Path(__file__).resolve().parents[3] / "assets" / "brand" / "memoloupe-logo.png"
@@ -557,8 +559,115 @@ def _story_slot_map(slots: list[dict]) -> dict[str, list[dict]]:
     return result
 
 
-def _story_context_by_shot(raws: dict[str, dict | None]) -> dict[str, dict]:
+#: storyAnalysis corrections 叠加到本工作台展示的故事字段（entityID=storyBlockID）。
+_STORY_OVERLAY_BLOCK_FIELDS: tuple[str, ...] = (
+    "blockTitle",
+    "primaryRole",
+    "coreContent",
+    "narrativeDensity",
+    "visualIndependence",
+)
+
+#: storyAnalysis corrections 叠加的 slot 展示字段（entityID=slotID）。
+_STORY_OVERLAY_SLOT_FIELDS: tuple[str, ...] = ("slotTitle", "slotType")
+
+#: 故事展示字段 overlay 查询结果的类型别名：``{(entityID, field): 取值}``。
+StoryOverlay = dict[tuple[str, str], object]
+
+
+def _load_story_corrections(out_dir: Path):
+    """加载 storyAnalysis corrections overlay，返回 ``(module, Corrections)`` 或 None。"""
+    corr_path = out_dir / "corrections" / f"{STORY_DOCUMENT_TYPE}.json"
+    if not corr_path.is_file():
+        return None
+    try:
+        corrections_mod = importlib.import_module("memoloupe.render.corrections")
+    except ImportError:
+        return None
+    return corrections_mod, corrections_mod.load_corrections(out_dir, STORY_DOCUMENT_TYPE)
+
+
+def _story_field_observation(
+    entity_id: str,
+    field: str,
+    value: object,
+    index: int,
+    *,
+    collection: str,
+) -> Observation:
+    """把 block/slot 的一个展示字段构造为五态 Observation（与旧 story 渲染器同语义）。"""
+    text = str(value).strip() if value is not None else ""
+    is_value = bool(text) and text != "unknown"
+    return Observation(
+        field=field,
+        shot_id=entity_id,  # 通用实体位：storyBlockID 或 slotID
+        value=text if is_value else None,
+        state=ValueState.VALUE if is_value else ValueState.UNKNOWN,
+        confidence=Confidence.HIGH if is_value else Confidence.UNKNOWN,
+        evidence_refs=(f"raw/story-blocks.json#{collection}[{index}].{field}",),
+        source=Source.TEXT_MODEL,
+        verified=False,
+    )
+
+
+def _story_corrections_overlay(
+    raws: dict[str, dict | None],
+    out_dir: Path,
+    revision: str,
+    warnings: list[str],
+) -> StoryOverlay:
+    """storyAnalysis corrections 叠加到故事轨道/Sidebar 故事卡片的展示字段。
+
+    渲染顺序沿用 raw → 五态观察 → corrections overlay（docs/02 §6），
+    entityID=storyBlockID/slotID。无 corrections 文件或渲染层不可用时返回
+    空 overlay（展示 raw 原值）；overlay 命中的修正警告并入 ``warnings``。
+    """
+    loaded = _load_story_corrections(out_dir)
+    if loaded is None:
+        return {}
+    corrections_mod, corrections = loaded
+    observations: list[Observation] = []
+    for index, block in enumerate(_story_blocks(raws)):
+        block_id = str(block.get("storyBlockID") or f"B{index + 1:04d}")
+        for field in _STORY_OVERLAY_BLOCK_FIELDS:
+            observations.append(
+                _story_field_observation(
+                    block_id, field, block.get(field), index, collection="blocks"
+                )
+            )
+    for index, slot in enumerate(_story_slots(raws)):
+        slot_id = str(slot.get("slotID") or f"S{index + 1:03d}")
+        for field in _STORY_OVERLAY_SLOT_FIELDS:
+            observations.append(
+                _story_field_observation(
+                    slot_id, field, slot.get(field), index, collection="slots"
+                )
+            )
+    corrected, corr_warnings = corrections_mod.apply_corrections(
+        observations, corrections, revision
+    )
+    warnings.extend(str(w) for w in corr_warnings)
+    return {
+        (obs.shot_id, obs.field): obs.value
+        for obs in corrected
+        if obs.state == ValueState.VALUE and obs.value is not None
+    }
+
+
+def _overlay_value(overlay: StoryOverlay, entity_id: str, field: str, raw_value: object) -> object:
+    """overlay 命中（修正为非空 value）时取修正值，否则回落 raw 原值。"""
+    corrected = overlay.get((entity_id, field))
+    if corrected is not None and str(corrected).strip():
+        return corrected
+    return raw_value
+
+
+def _story_context_by_shot(
+    raws: dict[str, dict | None],
+    overlay: StoryOverlay | None = None,
+) -> dict[str, dict]:
     """shotID -> story 摘要；用于右侧 Sidebar 的故事归属卡片。"""
+    overlay = overlay or {}
     blocks = _story_blocks(raws)
     slots_by_block = _story_slot_map(_story_slots(raws))
     result: dict[str, dict] = {}
@@ -573,11 +682,27 @@ def _story_context_by_shot(raws: dict[str, dict | None]) -> dict[str, dict]:
         slots = slots_by_block.get(block_id, [])
         context = {
             "blockID": block_id,
-            "blockTitle": str(block.get("blockTitle") or block_id),
-            "coreContent": str(block.get("coreContent") or "待确认"),
-            "primaryRole": _story_role_label(block.get("primaryRole")),
-            "narrativeDensity": str(block.get("narrativeDensity") or "密度待确认"),
-            "visualIndependence": str(block.get("visualIndependence") or "静音可读性待确认"),
+            "blockTitle": str(
+                _overlay_value(overlay, block_id, "blockTitle", block.get("blockTitle"))
+                or block_id
+            ),
+            "coreContent": str(
+                _overlay_value(overlay, block_id, "coreContent", block.get("coreContent"))
+                or "待确认"
+            ),
+            "primaryRole": _story_role_label(
+                _overlay_value(overlay, block_id, "primaryRole", block.get("primaryRole"))
+            ),
+            "narrativeDensity": str(
+                _overlay_value(overlay, block_id, "narrativeDensity", block.get("narrativeDensity"))
+                or "密度待确认"
+            ),
+            "visualIndependence": str(
+                _overlay_value(
+                    overlay, block_id, "visualIndependence", block.get("visualIndependence")
+                )
+                or "静音可读性待确认"
+            ),
             "timecode": (
                 f"{_timecode(start_ms)} – {_timecode(end_ms)}"
                 if isinstance(start_ms, int) and isinstance(end_ms, int)
@@ -586,8 +711,24 @@ def _story_context_by_shot(raws: dict[str, dict | None]) -> dict[str, dict]:
             "slots": [
                 {
                     "slotID": str(slot.get("slotID") or ""),
-                    "slotTitle": str(slot.get("slotTitle") or "结构段"),
-                    "slotType": str(slot.get("slotType") or "待确认"),
+                    "slotTitle": str(
+                        _overlay_value(
+                            overlay,
+                            str(slot.get("slotID") or ""),
+                            "slotTitle",
+                            slot.get("slotTitle"),
+                        )
+                        or "结构段"
+                    ),
+                    "slotType": str(
+                        _overlay_value(
+                            overlay,
+                            str(slot.get("slotID") or ""),
+                            "slotType",
+                            slot.get("slotType"),
+                        )
+                        or "待确认"
+                    ),
                 }
                 for slot in slots
             ],
@@ -980,7 +1121,9 @@ def _story_timeline_band_html(
     raws: dict[str, dict | None],
     shots: list[dict],
     out_dir: Path,
+    overlay: StoryOverlay | None = None,
 ) -> str:
+    overlay = overlay or {}
     story = raws.get("story-blocks")
     blocks = _story_blocks(raws)
     if not story or not blocks:
@@ -1019,9 +1162,25 @@ def _story_timeline_band_html(
         )
         block_slots = slots_by_block.get(block_id, [])
         slot_text = " / ".join(
-            str(slot.get("slotTitle") or slot.get("slotID") or "结构段")
+            str(
+                _overlay_value(
+                    overlay, str(slot.get("slotID") or ""), "slotTitle", slot.get("slotTitle")
+                )
+                or slot.get("slotID")
+                or "结构段"
+            )
             for slot in block_slots
         ) or "未归入结构段"
+        block_title = str(
+            _overlay_value(overlay, block_id, "blockTitle", block.get("blockTitle"))
+            or block_id
+        )
+        core_content = str(
+            _overlay_value(overlay, block_id, "coreContent", block.get("coreContent")) or ""
+        )
+        primary_role = _overlay_value(
+            overlay, block_id, "primaryRole", block.get("primaryRole")
+        )
         src_attr = f' data-clip-src="{html.escape(clip_src)}"' if clip_src else ""
         shot_attr = f' data-shot-id="{html.escape(first_shot_id)}"' if first_shot_id else ""
         start_attr = (
@@ -1040,15 +1199,15 @@ def _story_timeline_band_html(
             f'style="--story-width: {width:.2f}%" data-layer-id="{html.escape(block_id)}"'
             f' data-layer-shot-ids="{html.escape(" ".join(shot_ids))}"'
             f'{shot_attr}{src_attr}{start_attr}{end_attr}{disabled} '
-            f'title="{html.escape(str(block.get("coreContent") or ""))}" '
-            f'aria-label="查看故事段 {html.escape(str(block.get("blockTitle") or block_id))}">'
+            f'title="{html.escape(core_content)}" '
+            f'aria-label="查看故事段 {html.escape(block_title)}">'
             '<span class="story-segment-topline">'
             f'<span class="badge badge-outline">{html.escape(block_id)}</span>'
             f'<span class="story-time">{html.escape(range_text)}</span>'
             "</span>"
-            f'<strong>{html.escape(str(block.get("blockTitle") or block_id))}</strong>'
+            f'<strong>{html.escape(block_title)}</strong>'
             '<span class="story-segment-meta">'
-            f'{html.escape(slot_text)} · {html.escape(_story_role_label(block.get("primaryRole")))} · {len(shot_ids)} 镜头'
+            f'{html.escape(slot_text)} · {html.escape(_story_role_label(primary_role))} · {len(shot_ids)} 镜头'
             "</span>"
             "</button>"
         )
@@ -1062,6 +1221,7 @@ def _timeline_html(
     frame_refs: dict[str, str],
     out_dir: Path,
     raws: dict[str, dict | None],
+    story_overlay: StoryOverlay | None = None,
 ) -> str:
     total_duration = sum(_shot_duration_ms(shot) for shot in shots) or 1
     music_states = _music_by_shot(raws)
@@ -1075,7 +1235,7 @@ def _timeline_html(
         "金色表示需复核，绿色表示有背景音乐，虚线表示声音仍待确认。"
         "</p>",
         '</div><span class="badge badge-outline">按时长</span></div>',
-        _story_timeline_band_html(raws, shots, out_dir),
+        _story_timeline_band_html(raws, shots, out_dir, story_overlay),
         _motion_timeline_band_html(raws, shots, out_dir),
         '<div class="shot-timeline-band" aria-label="镜头轨道">',
         '<div class="timeline-lane-label"><span>镜头</span><small>'
@@ -1161,6 +1321,7 @@ def _shot_inspector_json(
     frame_refs: dict[str, str],
     out_dir: Path,
     raws: dict[str, dict | None],
+    story_overlay: StoryOverlay | None = None,
 ) -> str:
     groups = [
         {
@@ -1172,7 +1333,7 @@ def _shot_inspector_json(
         for group in _FIELD_GROUPS
     ]
     shot_items = []
-    story_context = _story_context_by_shot(raws)
+    story_context = _story_context_by_shot(raws, story_overlay)
     motion_context = _motion_context_by_shot(raws, shots)
     for shot in shots:
         shot_id = str(shot.get("shotID", ""))
@@ -1614,6 +1775,8 @@ def render_shot_html(
     observations_by_shot: dict[str, list[Observation]] = {}
     review_reasons_by_shot: dict[str, list[str]] = {}
     warnings: list[str] = []
+    # storyAnalysis corrections 叠加到故事轨道/Sidebar 故事卡片的展示字段。
+    story_overlay = _story_corrections_overlay(raws, out_dir, revision, warnings)
     for shot in shots:
         shot_id = str(shot["shotID"])
         observations, reasons = build_observations_with_review(
@@ -1661,6 +1824,7 @@ def render_shot_html(
             frame_refs,
             out_dir,
             raws,
+            story_overlay,
         ),
         "<!--METADATA-->": _metadata_html(document_status, len(shots), revision),
         "<!--VALIDATION_SUMMARY-->": _validation_html(validation_summary, warnings),
@@ -1668,7 +1832,7 @@ def render_shot_html(
             document_status, shots, review_reasons_by_shot, raws
         ),
         "<!--SHOT_TIMELINE-->": _timeline_html(
-            shots, review_reasons_by_shot, frame_refs, out_dir, raws
+            shots, review_reasons_by_shot, frame_refs, out_dir, raws, story_overlay
         ),
         "<!--SHOT_TABLE-->": _table_html(
             shots,

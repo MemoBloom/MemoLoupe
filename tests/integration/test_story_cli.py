@@ -1,7 +1,8 @@
 """``memoloupe shot --story-only`` CLI 集成测试（承接原 ``memoloupe story``）。
 
 覆盖：默认门禁（shot analysis 可用性）、--allow-draft 降级、mock 文本模型
-纵向链路、story HTML 渲染、validate 对 story JSON + story HTML 的闭环。
+纵向链路、story 完成后重渲合并 shot 工作台、validate 对 story JSON 的闭环
+与旧版 story-analysis.html 残留的 warning 提示。
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ from memoloupe.cli.main import (
     EXIT_OK,
     EXIT_STAGE_FAILED,
     EXIT_USAGE,
-    EXIT_VALIDATION_FAILED,
     main,
 )
 from memoloupe.services.base import PermanentServiceError
@@ -36,15 +36,15 @@ def _copy_fixture(tmp_path: Path) -> Path:
 
 
 class TestStoryOnlyCLI:
-    def test_story_on_full_fixture_renders_html(self, tmp_path):
+    def test_story_only_renders_workbench(self, tmp_path):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         code = main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"])
         assert code == EXIT_OK
         assert (work / "raw" / "story-blocks.json").is_file()
-        assert (work / "story-analysis.html").is_file()
-        html = (work / "story-analysis.html").read_text(encoding="utf-8")
-        assert 'data-document-type="storyAnalysis"' in html
+        assert not (work / "story-analysis.html").exists()
+        shot_html = (work / "shot-analysis.html").read_text(encoding="utf-8")
+        assert 'id="story-timeline-band"' in shot_html
 
     def test_story_default_rejects_unconfirmed_shot_analysis(self, tmp_path, capsys):
         work = tmp_path / "out"
@@ -165,19 +165,17 @@ class TestStoryOnlyCLI:
         code = main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"])
         assert code == EXIT_STAGE_FAILED
 
-    def test_validate_checks_story_html(self, tmp_path):
-        work = tmp_path / "out"
-        shutil.copytree(FIXTURE_FULL, work)
-        assert main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"]) == EXIT_OK
-        html_path = work / "story-analysis.html"
-        text = html_path.read_text(encoding="utf-8")
-        # 破坏一个五态单元格：去掉 data-value-state。
-        assert "data-value-state=" in text
-        html_path.write_text(
-            text.replace("data-value-state=", "data-value-status=", 1), encoding="utf-8"
-        )
+    def test_validate_warns_on_legacy_story_html(self, tmp_path, capsys):
+        work = _copy_fixture(tmp_path)
+        assert main(["shot", "--story-only", "--output-dir", str(work), "--allow-draft"]) == 0
+        assert not (work / "story-analysis.html").exists()
+        # 模拟旧版残留：validate 只 warning，不 error。
+        (work / "story-analysis.html").write_text("<html></html>", encoding="utf-8")
         code = main(["validate", str(work)])
-        assert code == EXIT_VALIDATION_FAILED
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "story-analysis.html" in out
+        assert "warning" in out
 
     def test_validate_strict_passes_full_story_chain(self, tmp_path):
         work = tmp_path / "out"
@@ -189,14 +187,13 @@ class TestStoryOnlyCLI:
         assert list((work / "checkpoints" / "outdated").glob("style-profile.*.json"))
         assert main(["validate", str(work), "--strict"]) == EXIT_OK
 
-    def test_json_report_includes_story_html(self, tmp_path, capsys):
+    def test_json_report_story_phase(self, tmp_path, capsys):
         work = tmp_path / "out"
         shutil.copytree(FIXTURE_FULL, work)
         code = main(["shot", "--story-only", "--output-dir", str(work), "--json-report", "--allow-draft"])
         assert code == EXIT_OK
         report = json.loads(capsys.readouterr().out)
         assert report["phase"] == "story"
-        assert report["storyHtml"] == "story-analysis.html"
 
     def test_story_only_rejects_input_positional(self, tmp_path):
         work = _copy_fixture(tmp_path)

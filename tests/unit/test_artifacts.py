@@ -75,7 +75,7 @@ def minimal_style_profile() -> dict:
             "videoPath": "input.mp4",
             "durationSeconds": 10.0,
             "shotAnalysisPath": "shot-analysis.html",
-            "storyAnalysisPath": "story-analysis.html",
+            "storyAnalysisPath": "shot-analysis.html",
             "sourceRevision": "a1b2c3d4e5f6",
         },
         "structure": {

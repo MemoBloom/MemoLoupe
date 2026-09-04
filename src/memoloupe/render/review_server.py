@@ -1,13 +1,13 @@
 """render.review_server — localhost 人工校对 review server（docs/04 §5.1 模式 2）。
 
 - 仅用 stdlib ``http.server``，只绑 127.0.0.1；
-- GET 提供 output-dir 静态文件只读服务：``shot-analysis.html``、
-  ``story-analysis.html`` 与
+- GET 提供 output-dir 静态文件只读服务：``shot-analysis.html`` 与
   ``clips/``、``evidence/``、``raw/``；路径 resolve 后必须留在 out_dir 内，
   否则 400/403；
-- 每次 GET ``/``、``/shot-analysis.html`` 或 ``/story-analysis.html`` 前以
-  ``server_mode=True`` 重渲染（保证页面看到最新 corrections）；重渲染失败
-  回退磁盘现有文件并记 stderr；
+- 每次 GET ``/`` 或 ``/shot-analysis.html`` 前以 ``server_mode=True``
+  重渲染（保证页面看到最新 corrections）；重渲染失败回退磁盘现有文件并记
+  stderr；``storyAnalysis`` 修正同样重渲染 shot-analysis.html（故事轨道
+  已合并进 shot 工作台）；
 - ``POST /api/corrections`` 接受 ``{"changes": [...]}`` 或直接数组，逐项校验
   后经 :func:`memoloupe.render.corrections.append_changes` 原子落盘并重渲染；
 - ``POST /api/confirm`` 走 :func:`memoloupe.analysis.completion.confirm_document`
@@ -34,7 +34,6 @@ from memoloupe.render.corrections import (
     load_corrections,
 )
 from memoloupe.render.shot_html import render_shot_html
-from memoloupe.render.story_html import render_story_html
 
 DEFAULT_DOCUMENT_TYPE = "shotAnalysis"
 DOCUMENT_TYPES = frozenset({"shotAnalysis", "storyAnalysis"})
@@ -45,7 +44,6 @@ _ALLOWED_TOP = frozenset({
     "evidence",
     "raw",
     "shot-analysis.html",
-    "story-analysis.html",
 })
 
 #: POST body 上限（10 MiB，防内存耗尽）。
@@ -120,21 +118,9 @@ def make_review_handler(out_dir: Path) -> type[BaseHTTPRequestHandler]:
         except Exception as exc:  # 渲染失败不应击垮只读服务
             print(f"review-server：重渲染失败，回退磁盘现有文件：{exc}", file=sys.stderr)
 
-    def _rerender_story() -> None:
-        """server_mode 重渲染 story；失败回退磁盘现有文件并记 stderr。"""
-        try:
-            render_story_html(root, server_mode=True)
-        except Exception as exc:  # 渲染失败不应击垮只读服务
-            print(
-                f"review-server：story 重渲染失败，回退磁盘现有文件：{exc}",
-                file=sys.stderr,
-            )
-
     def _rerender_document(document_type: str) -> None:
-        if document_type == "storyAnalysis":
-            _rerender_story()
-        else:
-            _rerender_shot()
+        # storyAnalysis 修正后重渲合并工作台（故事轨道在 shot-analysis.html）。
+        _rerender_shot()
 
     class ReviewHandler(BaseHTTPRequestHandler):
         server_version = "MemoLoupeReview/0.1"
@@ -181,16 +167,6 @@ def make_review_handler(out_dir: Path) -> type[BaseHTTPRequestHandler]:
                 if not target.is_file():
                     self._send_json(
                         404, {"ok": False, "errors": ["shot-analysis.html 不存在"]}
-                    )
-                    return
-                self._send_file(target)
-                return
-            if rel == "/story-analysis.html":
-                _rerender_story()
-                target = root / "story-analysis.html"
-                if not target.is_file():
-                    self._send_json(
-                        404, {"ok": False, "errors": ["story-analysis.html 不存在"]}
                     )
                     return
                 self._send_file(target)

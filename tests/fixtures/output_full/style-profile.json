@@ -82,7 +82,7 @@
     "platform": null,
     "shotAnalysisPath": "/outputs/travel/shot-analysis.html",
     "sourceRevision": "a1b2c3d4e5f6",
-    "storyAnalysisPath": "/outputs/travel/story-analysis.html",
+    "storyAnalysisPath": "/outputs/travel/shot-analysis.html",
     "videoPath": "/Users/me/Videos/travel-reference.mp4",
     "videoTitle": "travel-reference"
   },

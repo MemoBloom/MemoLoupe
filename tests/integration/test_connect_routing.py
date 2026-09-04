@@ -76,7 +76,7 @@ def captured_story(monkeypatch, tmp_path: Path) -> dict:
 
     monkeypatch.setattr(story_cli, "build_text_model_service", fake_build_text_service)
     monkeypatch.setattr(story_cli.StoryAnalysisPipeline, "run", fake_run)
-    monkeypatch.setattr(story_cli, "render_story_html", lambda out_dir: None)
+    monkeypatch.setattr(story_cli, "render_shot_html", lambda out_dir: None)
     return captured
 
 
@@ -158,7 +158,7 @@ class TestStoryCliProviderRouting:
                 elapsed_ms=0,
             ),
         )
-        monkeypatch.setattr(story_cli, "render_story_html", lambda out_dir: None)
+        monkeypatch.setattr(story_cli, "render_shot_html", lambda out_dir: None)
 
         out_dir = tmp_path / "out"
         out_dir.mkdir()

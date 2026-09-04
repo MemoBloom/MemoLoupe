@@ -23,7 +23,7 @@
     "durationSeconds": 1.0,
     "shotAnalysisPath": "/outputs/minimal/shot-analysis.html",
     "sourceRevision": "0123456789ab",
-    "storyAnalysisPath": "/outputs/minimal/story-analysis.html",
+    "storyAnalysisPath": "/outputs/minimal/shot-analysis.html",
     "videoPath": "/Users/me/Videos/minimal-reference.mp4",
     "videoTitle": "minimal-reference"
   },

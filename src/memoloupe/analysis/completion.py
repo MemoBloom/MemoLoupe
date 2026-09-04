@@ -40,7 +40,7 @@ _RAW_FILES: tuple[str, ...] = (
 #: documentType → 对应 HTML 文件名。
 _HTML_FILES: dict[str, str] = {
     "shotAnalysis": "shot-analysis.html",
-    "storyAnalysis": "story-analysis.html",
+    "storyAnalysis": "shot-analysis.html",  # 故事结果合并呈现在 shot 工作台
 }
 
 #: requiredFields 视为已解决的取值状态。

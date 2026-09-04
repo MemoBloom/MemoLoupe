@@ -2,7 +2,6 @@
 
 覆盖：
 - GET / 提供重渲染后的 shot-analysis.html；
-- GET /story-analysis.html 提供重渲染后的 story-analysis.html；
 - 路径防逃逸（编码变体 / 越权目录）；
 - POST /api/corrections 合法/非法两条路径；
 - POST /api/confirm 前置不满足时 400 带 reasons。
@@ -23,7 +22,6 @@ import pytest
 
 from memoloupe.render.review_server import make_review_handler
 from memoloupe.render.shot_html import render_shot_html
-from memoloupe.render.story_html import render_story_html
 
 FIXTURE_FULL = Path(__file__).parent.parent / "fixtures" / "output_full"
 
@@ -60,7 +58,6 @@ def review_env(tmp_path):
     out_dir = tmp_path / "out"
     shutil.copytree(FIXTURE_FULL, out_dir)
     render_shot_html(out_dir, server_mode=True)
-    render_story_html(out_dir, server_mode=True)
     handler = make_review_handler(out_dir)
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -94,12 +91,6 @@ class TestGet:
         status, body = _request(base, "/shot-analysis.html")
         assert status == 200
         assert 'data-document-type="shotAnalysis"' in body
-
-    def test_story_analysis_html_by_name(self, review_env):
-        _, base = review_env
-        status, body = _request(base, "/story-analysis.html")
-        assert status == 200
-        assert 'data-document-type="storyAnalysis"' in body
 
     def test_raw_file_served_read_only(self, review_env):
         _, base = review_env
@@ -194,9 +185,8 @@ class TestPostCorrections:
         assert corr["documentType"] == "storyAnalysis"
         assert corr["changes"][0]["entityID"] == "B0001"
 
-        status, html_text = _request(base, "/story-analysis.html")
+        status, html_text = _request(base, "/shot-analysis.html")
         assert status == 200
-        assert 'data-document-status="underReview"' in html_text
         assert "新的故事标题" in html_text
 
     def test_invalid_state_rejected_without_write(self, review_env):

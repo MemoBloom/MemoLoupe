@@ -31,6 +31,7 @@ from typing import Sequence
 
 from memoloupe.validate.cross_artifact import validate_output_dir
 from memoloupe.validate.html_contract import validate_html
+from memoloupe.validate.json_contracts import ValidationIssue
 
 from memoloupe.core.config import load_env_file
 
@@ -101,11 +102,22 @@ def _cmd_validate(target: Path, *, strict: bool, json_report: bool) -> int:
         return EXIT_INPUT
 
     issues = validate_output_dir(target, strict=strict)
-    # target 中存在 shot/story HTML 时追加 HTML 语义校验（strict 透传）。
-    for html_name in ("shot-analysis.html", "story-analysis.html"):
-        html_path = target / html_name
-        if html_path.is_file():
-            issues.extend(validate_html(html_path, root=target, strict=strict))
+    # target 中存在 shot HTML 时追加 HTML 语义校验（strict 透传）。
+    html_path = target / "shot-analysis.html"
+    if html_path.is_file():
+        issues.extend(validate_html(html_path, root=target, strict=strict))
+    legacy_story_html = target / "story-analysis.html"
+    if legacy_story_html.is_file():
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                artifact="story-analysis.html",
+                json_path="",
+                message="旧版残留产物：story-analysis.html 已废弃，故事结果合并呈现在 shot-analysis.html，可删除该文件",
+                expected="不存在",
+                actual="存在（未校验）",
+            )
+        )
     errors = [i for i in issues if i.severity == "error"]
     warnings = [i for i in issues if i.severity == "warning"]
 

@@ -1,8 +1,8 @@
-"""``memoloupe story`` 子命令（docs/01 §10、roadmap 03-04）。
+"""``memoloupe shot --story-only`` 故事阶段（docs/01 §10、roadmap 03-04）。
 
-``run_story_analysis(argv)`` 同时服务包内 CLI 与根级 ``run_story_analysis.py``
-薄包装。流程：门禁（默认要求 shot analysis confirmed）→ StoryAnalysisPipeline
-（scaffold + 可选文本模型填充）→ 渲染 story-analysis.html。
+``run_story_analysis(argv)`` 由包内 CLI 调用。流程：门禁（默认要求 shot
+analysis confirmed）→ StoryAnalysisPipeline（scaffold + 可选文本模型填充）→
+完成后重渲 shot-analysis.html（故事轨道合并呈现）。
 
 草稿门禁（roadmap 03-04）：
 
@@ -17,7 +17,7 @@
 - ``0`` 完成（含 partial，降级以 warning 呈现）；
 - ``2`` 用户参数或配置错误；
 - ``3`` 输入/契约错误（output-dir 缺失、shot analysis 不可用）；
-- ``5`` 阶段执行失败（含渲染失败）。
+- ``5`` 阶段执行失败。
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ from memoloupe.connect.runtime import (
 from memoloupe.connect.store import ConnectionStoreError
 from memoloupe.render.corrections import document_status, load_corrections
 from memoloupe.render.shot_html import render_shot_html
-from memoloupe.render.story_html import render_story_html
 from memoloupe.services.mock import MockTextModelService
 
 from .text_model_config import build_text_model_service
@@ -74,8 +73,8 @@ _MOCK_BLOCK_NARRATIVE = {
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="memoloupe story",
-        description="Phase 2 故事分析：确定性聚块 scaffold + 可选文本模型叙事填充 + HTML 渲染。",
+        prog="memoloupe shot --story-only",
+        description="Phase 2 故事分析：确定性聚块 scaffold + 可选文本模型叙事填充，完成后合并重渲 shot 工作台。",
     )
     parser.add_argument("--output-dir", type=Path, required=True, help="输出目录（须已有 Phase 1 产物）")
     parser.add_argument("--gap-ms", type=int, default=2000, help="ASR 停顿聚块阈值（毫秒，默认 2000）")
@@ -255,18 +254,10 @@ def run_story_analysis(argv: Sequence[str]) -> int:
     )
     report = StoryAnalysisPipeline().run(request)
 
-    # 渲染 story HTML（raw/story-blocks.json 就绪后）。渲染失败以 warning
-    # 呈现（HTML 是校对视图，不应击垮阶段结果），但会反映在退出码上。
-    render_failed = False
+    # D-051：story 结果合并进 shot 工作台。story 完成后必须重渲
+    # shot-analysis.html，否则工作台的故事轨道停留在 story 之前的旧状态。
+    # 工作台重渲失败只记 warning，不影响 story 产物与退出码。
     if report.status != "failed":
-        try:
-            render_story_html(out_dir)
-        except Exception as exc:
-            render_failed = True
-            print(f"  [warning] 渲染 story-analysis.html 失败：{exc}", file=sys.stderr)
-        # D-051：story 结果合并进 shot 工作台。story 完成后必须重渲
-        # shot-analysis.html，否则工作台的故事轨道停留在 story 之前的旧状态。
-        # 工作台重渲失败只记 warning，不影响 story 产物与退出码。
         try:
             render_shot_html(out_dir)
         except Exception as exc:
@@ -276,16 +267,12 @@ def run_story_analysis(argv: Sequence[str]) -> int:
             )
 
     if args.json_report:
-        payload = report.to_dict()
-        payload["storyHtml"] = "story-analysis.html" if not render_failed else None
-        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
+        json.dump(report.to_dict(), sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
     else:
         _print_summary(report)
-        if not render_failed:
-            print("  story-analysis.html")
 
-    if report.status == "failed" or render_failed:
+    if report.status == "failed":
         return EXIT_STAGE_FAILED
     if args.strict and report.status == "partial":
         return EXIT_STAGE_FAILED

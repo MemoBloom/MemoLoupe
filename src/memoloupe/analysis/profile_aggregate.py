@@ -781,7 +781,7 @@ def _source(media: Mapping | None) -> dict:
         "platform": None,
         "formType": None,
         "shotAnalysisPath": "shot-analysis.html",
-        "storyAnalysisPath": "story-analysis.html",
+        "storyAnalysisPath": "shot-analysis.html",
         "sourceRevision": src.get("revisionID") if isinstance(src.get("revisionID"), str) else None,
     }
 

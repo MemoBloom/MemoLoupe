@@ -168,8 +168,8 @@ class TestThreeStageCliChain:
     def test_shot_fixture_to_profile(self, tmp_path):
         work = _fixture_copy(tmp_path)
         # fixture 已是 Phase 1/2 产物；重跑 story 与 profile 验证全链路。
-        # fixture 无 confirmed corrections，story CLI 用 --allow-draft。
-        assert main(["story", "--output-dir", str(work), "--mock-text-model", "--allow-draft"]) == EXIT_OK
+        # fixture 无 confirmed corrections，story 经 shot --story-only --allow-draft。
+        assert main(["shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft"]) == EXIT_OK
         assert main(["profile", "--output-dir", str(work), "--mock-text-model"]) == EXIT_OK
         assert main(["validate", str(work), "--strict"]) == EXIT_OK
         profile = json.loads((work / "style-profile.json").read_text(encoding="utf-8"))

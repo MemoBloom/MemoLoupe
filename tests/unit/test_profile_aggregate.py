@@ -327,7 +327,7 @@ class TestAsrStatsAndSource:
         assert source["durationSeconds"] == pytest.approx(9.8, abs=0.001)
         assert source["sourceRevision"] == "a1b2c3d4e5f6"
         assert source["shotAnalysisPath"] == "shot-analysis.html"
-        assert source["storyAnalysisPath"] == "story-analysis.html"
+        assert source["storyAnalysisPath"] == "shot-analysis.html"
         assert doc["id"] == "profile-a1b2c3d4e5f6"
         assert doc["schemaVersion"] == 2
 

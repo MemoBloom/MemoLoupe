@@ -1,14 +1,13 @@
 """Phase 2 端到端测试（roadmap 03-04 Phase 03 E2E）。
 
 纵向链路：Phase 1 fixture/output → story scaffold → Mock 文本模型填充 →
-raw/story-blocks.json → story-analysis.html → memoloupe validate --strict。
+raw/story-blocks.json → memoloupe validate --strict。
 
 场景：
 1. 完整 Mock 样例：output_full fixture → scaffold + mock fill（complete）→
-   story HTML → strict 校验 0 error；
-2. 最小样例：minimal fixture → scaffold（无模型）→ story HTML → strict 校验 0 error；
-3. 模型失败降级：mock 抛永久错误 → 保留 scaffold → story HTML 仍渲染 →
    strict 校验 0 error；
+2. 最小样例：minimal fixture → scaffold（无模型）→ strict 校验 0 error；
+3. 模型失败降级：mock 抛永久错误 → 保留 scaffold → strict 校验 0 error；
 4. 同配置重跑复用 checkpoint，不重发模型请求。
 """
 
@@ -24,11 +23,9 @@ from memoloupe.analysis.story_pipeline import (
     StoryAnalysisRequest,
 )
 from memoloupe.cli.main import EXIT_OK, main
-from memoloupe.render.story_html import render_story_html
 from memoloupe.services.base import PermanentServiceError
 from memoloupe.services.mock import MockTextModelService
 from memoloupe.validate.cross_artifact import validate_output_dir
-from memoloupe.validate.html_contract import validate_html
 
 FIXTURE_FULL = Path(__file__).resolve().parent.parent / "fixtures" / "output_full"
 FIXTURE_MINIMAL = Path(__file__).resolve().parent.parent / "fixtures" / "minimal"
@@ -36,9 +33,6 @@ FIXTURE_MINIMAL = Path(__file__).resolve().parent.parent / "fixtures" / "minimal
 
 def _strict_errors(out_dir: Path) -> list:
     issues = list(validate_output_dir(out_dir, strict=True))
-    story_html = out_dir / "story-analysis.html"
-    if story_html.is_file():
-        issues.extend(validate_html(story_html, root=out_dir, strict=True))
     return [i for i in issues if i.severity == "error"]
 
 
@@ -113,11 +107,7 @@ class TestPhase2FullMockChain:
         assert [b["storyBlockID"] for b in story["blocks"]] == ["B0001"]
         assert story["blocks"][0]["shotIDs"] == ["SH0001", "SH0002", "SH0003"]
 
-        render_story_html(work)
-        html = (work / "story-analysis.html").read_text(encoding="utf-8")
-        assert 'data-document-type="storyAnalysis"' in html
-        assert 'class="story-block" data-story-block-id="B0001"' in html
-        assert 'data-slot-id="S001"' in html
+        assert not (work / "story-analysis.html").exists()
         assert not (work / "style-profile.json").exists()
         assert list((work / "checkpoints" / "outdated").glob("style-profile.*.json"))
         assert _strict_errors(work) == []
@@ -141,19 +131,15 @@ class TestPhase2MinimalScaffold:
         assert [b["storyBlockID"] for b in story["blocks"]] == ["B0001"]
         assert story["slots"] == []
 
-        render_story_html(work)
-        html = (work / "story-analysis.html").read_text(encoding="utf-8")
-        # scaffold 的叙事字段必须呈 unknown 状态，不得伪装确定结论。
-        assert 'data-value-state="unknown"' in html
-        assert "待确认" in html
+        assert not (work / "story-analysis.html").exists()
         assert not (work / "style-profile.json").exists()
         assert _strict_errors(work) == []
 
 
 class TestPhase2ModelDegradation:
-    """场景 3：模型永久失败 → 保留 scaffold，HTML 照常渲染。"""
+    """场景 3：模型永久失败 → 保留 scaffold。"""
 
-    def test_permanent_failure_keeps_scaffold_and_html(self, tmp_path):
+    def test_permanent_failure_keeps_scaffold(self, tmp_path):
         work = _full_fixture_copy(tmp_path)
         report = StoryAnalysisPipeline().run(
             StoryAnalysisRequest(
@@ -168,7 +154,7 @@ class TestPhase2ModelDegradation:
         assert story["status"] == "scaffold"
         assert [b["storyBlockID"] for b in story["blocks"]] == ["B0001"]
 
-        render_story_html(work)
+        assert not (work / "story-analysis.html").exists()
         assert _strict_errors(work) == []
 
 
@@ -187,11 +173,11 @@ class TestPhase2CheckpointReuse:
 
 
 class TestPhase2CliChain:
-    """CLI 纵向链路：memoloupe story → validate --strict。"""
+    """CLI 纵向链路：shot --story-only → validate --strict。"""
 
     def test_cli_story_then_strict_validate(self, tmp_path):
         work = _full_fixture_copy(tmp_path)
         assert main([
-            "story", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
+            "shot", "--story-only", "--output-dir", str(work), "--mock-text-model", "--allow-draft",
         ]) == EXIT_OK
         assert main(["validate", str(work), "--strict"]) == EXIT_OK
