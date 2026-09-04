@@ -28,8 +28,7 @@ FORMULA_TEMPLATE = '''class Memoloupe < Formula
 
   desc "Staged reference-video analysis CLI (shot / story / style profile)"
   homepage "https://github.com/{repo}"
-  url "https://github.com/{repo}/releases/download/{tag}/memoloupe-{plain_version}.tar.gz"
-  sha256 "{sha256}"
+{url_lines}
 
   depends_on "python@3.12"
   depends_on "ffmpeg" # ffprobe/ffmpeg：切镜、波形、clip、审片索引
@@ -55,6 +54,17 @@ FORMULA_TEMPLATE = '''class Memoloupe < Formula
   end
 end
 '''
+
+RELEASE_URL_LINES = '''  url "https://github.com/{repo}/releases/download/{tag}/memoloupe-{plain_version}.tar.gz"
+  sha256 "{sha256}"'''
+
+GIT_URL_LINES = '''  url "git@github.com:{repo}.git", using: :git, tag: "{tag}"
+  version "{plain_version}"'''
+
+GIT_URL_NOTE = (
+    "git 策略：源仓库私有时，brew 经 SSH 克隆（需本机 ssh key 有仓库权限）；"
+    "仓库转 public 后建议用 --strategy release 切换为 Release 资产 + sha256 校验。"
+)
 
 TAP_README_TEMPLATE = """# homebrew-memoloupe
 
@@ -133,26 +143,45 @@ def sha256_of(url: str, *, tag: str, repo: str, plain_version: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True, help="tag 名，如 v0.1.0")
+    parser.add_argument("--version", required=True, help="tag 名，如 v0.1.1")
     parser.add_argument("--repo", default="MemoBloom/MemoLoupe")
     parser.add_argument("--out", default="dist/homebrew-tap")
+    parser.add_argument(
+        "--strategy",
+        choices=["release", "git"],
+        default="git",
+        help="release=Release 资产 + sha256（要求源仓库 public）；"
+        "git=SSH 克隆（私有源可用，无 sha256 校验）",
+    )
     args = parser.parse_args()
 
     tag = args.version
     plain = tag.removeprefix("v")
     asset = f"https://github.com/{args.repo}/releases/download/{tag}/memoloupe-{plain}.tar.gz"
-    print(f"下载并计算 sha256：{asset}")
-    digest = sha256_of(asset, tag=tag, repo=args.repo, plain_version=plain)
+
+    if args.strategy == "release":
+        print(f"下载并计算 sha256：{asset}")
+        digest = sha256_of(asset, tag=tag, repo=args.repo, plain_version=plain)
+        url_lines = RELEASE_URL_LINES.format(
+            repo=args.repo, tag=tag, plain_version=plain, sha256=digest
+        )
+    else:
+        digest = "（git 策略，无 sha256）"
+        url_lines = GIT_URL_LINES.format(repo=args.repo, tag=tag, plain_version=plain)
 
     out = Path(args.out)
     (out / "Formula").mkdir(parents=True, exist_ok=True)
     formula = FORMULA_TEMPLATE.format(
-        repo=args.repo, tag=tag, plain_version=plain, sha256=digest
+        repo=args.repo, tag=tag, plain_version=plain, url_lines=url_lines
     )
     (out / "Formula" / "memoloupe.rb").write_text(formula, encoding="utf-8")
-    (out / "README.md").write_text(TAP_README_TEMPLATE, encoding="utf-8")
-    print(f"tap 内容已生成：{out}")
-    print(f"  sha256({plain}) = {digest}")
+    readme = TAP_README_TEMPLATE
+    if args.strategy == "git":
+        readme += f"\n> 当前 formula 使用 git（SSH）策略：{GIT_URL_NOTE}\n"
+    (out / "README.md").write_text(readme, encoding="utf-8")
+    print(f"tap 内容已生成：{out}（strategy={args.strategy}）")
+    if args.strategy == "release":
+        print(f"  sha256({plain}) = {digest}")
 
 
 if __name__ == "__main__":
